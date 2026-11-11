@@ -50,6 +50,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -58,13 +59,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           name: ${{ steps.tag.outputs.tag }}
           tag_name: ${{ steps.tag.outputs.tag }}
-          files: artifacts/**/* 
+          files: |
+            artifacts/*.zip
+            artifacts/*.dmg
+            artifacts/*.tar.gz 
           draft: false
           prerelease: false
         env:
