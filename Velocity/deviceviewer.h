@@ -25,6 +25,8 @@
 #include "partitiondialog.h"
 #include "singleprogressdialog.h"
 #include "packageviewer.h"
+#include "xexdialog.h"
+#include "svoddialog.h"
 #include "flashdriveconfigdatadialog.h"
 #include "devicehelperclient.h"
 

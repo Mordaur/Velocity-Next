@@ -316,7 +316,8 @@ void QtHelpers::CollapseAllChildren(QTreeWidgetItem *item)
         QtHelpers::CollapseAllChildren(item->child(i));
 }
 
-void QtHelpers::GetFileIcon(DWORD magic, QString fileName, QIcon &icon, QTreeWidgetItem &item)
+void QtHelpers::GetFileIcon(DWORD magic, QString fileName, QIcon &icon, QTreeWidgetItem &item,
+                            FileSystem fileSystem)
 {
     item.setData(1, Qt::UserRole, "");
 
@@ -326,7 +327,8 @@ void QtHelpers::GetFileIcon(DWORD magic, QString fileName, QIcon &icon, QTreeWid
         case LIVE:
         case PIRS:
             icon = QIcon(":/Images/PackageFileIcon.png");
-            item.setData(1, Qt::UserRole, "STFS");
+            // STFS and SVOD share the header magic; only the file system differs.
+            item.setData(1, Qt::UserRole, fileSystem == FileSystemSVOD ? "SVOD" : "STFS");
             break;
         case 0x58444246:    // Xdbf
             icon = QIcon(":/Images/GpdFileIcon.png");

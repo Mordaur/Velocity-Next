@@ -525,6 +525,24 @@ void DeviceViewer::on_treeWidget_doubleClicked(const QModelIndex &index)
             package.Close();
             io.Close();
         }
+        else if (item->data(1, Qt::UserRole).toString() == "SVOD")
+        {
+            const std::string rootFilePath = currentParent->path + currentParent->name;
+            SVOD *svod = new SVOD(rootFilePath, currentDrive);
+
+            // the dialog takes ownership of the SVOD
+            SvodDialog dialog(svod, statusBar, this);
+            dialog.exec();
+        }
+        else if (item->data(1, Qt::UserRole).toString() == "XEX")
+        {
+            // the dialog owns the Xex, the stack FatxIO stays alive for exec()
+            FatxIO io = currentDrive->GetFatxIO(currentParent);
+            Xex *xex = new Xex(&io);
+
+            XexDialog dialog(xex, this);
+            dialog.exec();
+        }
 
         if ((currentParent->fileAttributes & FatxDirectory) == 0)
             return;
@@ -612,7 +630,8 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
 
                 currentDrive->GetFileEntryMagic(entry);
 
-                QtHelpers::GetFileIcon(entry->magic, QString::fromStdString(entry->name), fileIcon, *entryItem);
+                QtHelpers::GetFileIcon(entry->magic, QString::fromStdString(entry->name), fileIcon,
+                        *entryItem, entry->fileSystem);
 
                 entryItem->setIcon(0, fileIcon);
                 entryItem->setText(1, QString::fromStdString(ByteSizeToString(entry->fileSize)));

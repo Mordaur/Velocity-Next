@@ -18,6 +18,8 @@
 #include <QCheckBox>
 #include <QProgressBar>
 #include <QMdiArea>
+
+#include <XboxInternals/Stfs/XContentHeader.h>
 #include <QStandardPaths>
 #include <QStringList>
 
@@ -76,7 +78,8 @@ public:
 
     static void CollapseAllChildren(QTreeWidgetItem *item);
 
-    static void GetFileIcon(DWORD magic, QString fileName, QIcon &icon, QTreeWidgetItem &item);
+    static void GetFileIcon(DWORD magic, QString fileName, QIcon &icon, QTreeWidgetItem &item,
+                            FileSystem fileSystem = FileSystemSTFS);
 
     static void AddSubWindow(QMdiArea *mdiArea, QWidget *widget);
 
