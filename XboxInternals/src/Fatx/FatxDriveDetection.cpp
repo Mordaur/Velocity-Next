@@ -30,7 +30,7 @@ std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives(
     std::vector<std::wstring> logicalDrivePaths = getLogicalDrives();
     std::vector<std::unique_ptr<FatxDrive>> drives;
 
-    auto physicalDiskPaths = getPhysicalDiskPaths();
+    auto physicalDiskPaths = GetPhysicalDiskPaths();
 
     for (const auto &path : physicalDiskPaths)
     {
@@ -153,7 +153,7 @@ std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives(
     return drives;
 }
 
-std::vector<std::wstring> FatxDriveDetection::getPhysicalDiskPaths()
+std::vector<std::wstring> FatxDriveDetection::GetPhysicalDiskPaths()
 {
     std::vector<std::wstring> physicalDiskPaths;
 

@@ -15,8 +15,10 @@ public:
     static std::vector<std::unique_ptr<FatxDrive>> GetAllFatxDrives(
             std::vector<DeviceDiagnostic> *diagnostics = nullptr);
 
+    // Candidate whole-disk paths, without opening them.
+    static std::vector<std::wstring> GetPhysicalDiskPaths();
+
 private:
-    static std::vector<std::wstring> getPhysicalDiskPaths();
     static std::vector<std::wstring> getLogicalDrives();
 };
 

@@ -66,6 +66,7 @@ set(SOURCES
   fatxdevicenotifier.cpp
   profileselectiondialog.cpp
   devicecontentviewer.cpp
+  devicehelperclient.cpp
   svodvolumedescriptordialog.cpp
   stfsvolumedescriptordialog.cpp
   themecreationwizard.cpp
@@ -173,6 +174,7 @@ target_link_libraries(VelocityNext
     Qt6::Concurrent
     XboxInternals::XboxInternals  # Use namespaced target (modern CMake)
     BotanAmalgamation  # Our custom amalgamation on ALL platforms
+    device_helper_protocol  # Portable helper IPC framing
     velocity_compiler_flags  # Inherit common compile options
 )
 

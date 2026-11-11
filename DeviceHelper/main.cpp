@@ -129,9 +129,13 @@ namespace
             return;
         }
 
-        const bool writable = mode == static_cast<uint8_t>(vh::OpenMode::ReadWrite);
-        const int flags = (writable ? O_RDWR : O_RDONLY) | O_CLOEXEC;
-        const int fd = open(path.c_str(), flags);
+        bool writable = mode == static_cast<uint8_t>(vh::OpenMode::ReadWrite);
+        int fd = open(path.c_str(), (writable ? O_RDWR : O_RDONLY) | O_CLOEXEC);
+        if (fd < 0 && writable && (errno == EACCES || errno == EROFS))
+        {
+            fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+            writable = false;
+        }
         if (fd < 0)
         {
             send_error(client, requestId,
@@ -162,6 +166,7 @@ namespace
         std::vector<uint8_t> response;
         vh::append_u32(response, handle);
         vh::append_u64(response, size);
+        response.push_back(writable ? 1 : 0);
         send_frame(client, vh::MessageType::Open, requestId, response);
     }
 

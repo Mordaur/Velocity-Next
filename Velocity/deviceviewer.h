@@ -26,6 +26,7 @@
 #include "singleprogressdialog.h"
 #include "packageviewer.h"
 #include "flashdriveconfigdatadialog.h"
+#include "devicehelperclient.h"
 
 // xbox
 #include <XboxInternals/Fatx/FatxDriveDetection.h>
@@ -88,6 +89,7 @@ private:
     QTreeWidgetItem *currentDriveItem;
     QString previousName;
     bool drivesLoaded;
+    std::shared_ptr<HelperClient> helperClient;
 
     void LoadFolderAll(FatxFileEntry *folder);
     void LoadFolderTree(QTreeWidgetItem *item);
