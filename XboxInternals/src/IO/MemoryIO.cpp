@@ -8,12 +8,12 @@ MemoryIO::MemoryIO(BYTE *data, size_t length) :
 
 MemoryIO::~MemoryIO()
 {
-    SetPosition(0);
+    // Destructors must not throw; no seek is needed on teardown.
 }
 
 void MemoryIO::SetPosition(UINT64 pos, std::ios_base::seekdir dir)
 {
-    DWORD newPos;
+    UINT64 newPos;
     switch (dir)
     {
         case std::ios_base::beg:

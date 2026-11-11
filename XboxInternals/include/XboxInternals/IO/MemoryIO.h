@@ -25,7 +25,7 @@ private:
     BYTE *memory;
     size_t length;
 
-    DWORD pos;
+    UINT64 pos;
 };
 
 #endif // MEMORYSTREAM_H
