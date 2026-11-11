@@ -140,7 +140,7 @@ set(CMAKE_AUTOUIC ON)
 # ------------------------------
 # Qt Discovery
 # ------------------------------
-set(QT_MIN_VERSION "6.7.3")
+set(QT_MIN_VERSION "6.10.0")
 
 # Primary method: Use CMake's built-in Qt discovery
 find_package(Qt6 ${QT_MIN_VERSION} COMPONENTS Core CorePrivate Xml Widgets Network)

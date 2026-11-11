@@ -38,7 +38,7 @@ jobs:
         if: matrix.os == 'windows-latest' && matrix.compiler == 'mingw'
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.0'
+          version: '6.10.3'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw'
@@ -113,7 +113,7 @@ jobs:
         if: matrix.os == 'windows-latest' && matrix.compiler == 'msvc'
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.0'
+          version: '6.10.3'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
@@ -125,7 +125,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.0'
+          version: '6.10.3'
           host: 'mac'
           target: 'desktop'
           arch: 'clang_64'
@@ -137,7 +137,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.0'
+          version: '6.10.3'
           host: 'linux'
           target: 'desktop'
           modules: 'qtnetworkauth'
