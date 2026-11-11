@@ -323,15 +323,26 @@ DWORD StfsPackage::GetHashAddressOfBlock(DWORD blockNum)
         hashAddr += ((metaData->stfsVolumeDescriptor.blockSeparation & 2) << 0xB);
         break;
     case 1:
-        hashAddr += ((topTable.entries[blockNum / 0xAA].status & 0x40) << 6);
+    {
+        const DWORD tableIndex = blockNum / 0xAA;
+        if (tableIndex >= 0xAA)
+            throw string("STFS: Illegal level-1 table index.\n");
+        hashAddr += ((topTable.entries[tableIndex].status & 0x40) << 6);
         break;
+    }
     case 2:
-        DWORD level1Off = ((topTable.entries[blockNum / 0x70E4].status & 0x40) << 6);
+    {
+        const DWORD tableIndex = blockNum / 0x70E4;
+        if (tableIndex >= 0xAA)
+            throw string("STFS: Illegal level-2 table index.\n");
+
+        DWORD level1Off = ((topTable.entries[tableIndex].status & 0x40) << 6);
         DWORD pos = ((ComputeLevel1BackingHashBlockNumber(blockNum) << 0xC) + firstHashTableAddress +
             level1Off) + ((blockNum % 0xAA) * 0x18);
         io->SetPosition(pos + 0x14);
         hashAddr += ((io->ReadByte() & 0x40) << 6);
         break;
+    }
     }
     return hashAddr;
 }
@@ -1229,6 +1240,9 @@ DWORD StfsPackage::GetHashTableAddress(DWORD index, Level lvl)
 
 DWORD StfsPackage::GetBaseHashTableAddress(DWORD index, Level lvl)
 {
+    if (lvl > Two)
+        throw string("STFS: Invalid hash table level.\n");
+
     return ((ComputeLevelNBackingHashBlockNumber(index * dataBlocksPerHashTreeLevel[lvl],
         lvl) << 0xC) + firstHashTableAddress);
 }
@@ -1280,6 +1294,9 @@ void StfsPackage::HashBlock(BYTE* block, BYTE* outBuffer)
 
 void StfsPackage::BuildTableInMemory(HashTable* table, BYTE* outBuffer)
 {
+    if (table->entryCount > 0x1000 / 0x18)
+        throw string("STFS: Hash table entry count exceeds buffer size.\n");
+
     memset(outBuffer, 0, 0x1000);
     for (DWORD i = 0; i < table->entryCount; i++)
     {
@@ -1463,7 +1480,11 @@ void StfsPackage::SetNextBlock(DWORD blockNum, INT24 nextBlockNum)
     io->Write((INT24)nextBlockNum);
 
     if (topLevel == Zero)
+    {
+        if (blockNum >= 0xAA)
+            throw string("STFS: Illegal top-level block index.\n");
         topTable.entries[blockNum].nextBlock = nextBlockNum;
+    }
 
     io->Flush();
 }
@@ -1576,9 +1597,13 @@ UINT24 StfsPackage::AllocateBlock()
 
     if (topLevel == Zero)
     {
+        const DWORD lastBlock = metaData->stfsVolumeDescriptor.allocatedBlockCount - 1;
+        if (lastBlock >= 0xAA)
+            throw string("STFS: Illegal top-level block index.\n");
+
         topTable.entryCount++;
-        topTable.entries[metaData->stfsVolumeDescriptor.allocatedBlockCount - 1].status = (BYTE)Allocated;
-        topTable.entries[metaData->stfsVolumeDescriptor.allocatedBlockCount - 1].nextBlock = BLOCK_CHAIN_TERMINATOR;
+        topTable.entries[lastBlock].status = (BYTE)Allocated;
+        topTable.entries[lastBlock].nextBlock = BLOCK_CHAIN_TERMINATOR;
     }
 
     // terminate the chain
