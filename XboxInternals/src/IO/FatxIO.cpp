@@ -32,6 +32,10 @@ void FatxIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
     if (pos == entry->fileSize && !(entry->fileAttributes & FatxDirectory))
         return;
 
+    // A zero cluster size indicates a corrupt partition header.
+    if (entry->partition->clusterSize == 0)
+        throw std::string("FATX: Invalid cluster size.\n");
+
     // calculate the cluster index to look at
     DWORD clusterIndex =  position / entry->partition->clusterSize;
 
