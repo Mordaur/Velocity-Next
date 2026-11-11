@@ -18,9 +18,10 @@ void XexZeroBasedCompressionIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
     DWORD bytesRemaining = readLength;
     while (bytesRemaining > 0)
     {
-        bool isData;
-        XexCompressionBlock curBlock;
-        DWORD offset;
+        bool isData = false;
+        bool foundBlock = false;
+        XexCompressionBlock curBlock{};
+        DWORD offset = 0;
         DWORD byteCounter = 0;
 
         // find the location in the zero compression table
@@ -47,12 +48,16 @@ void XexZeroBasedCompressionIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
                 }
 
                 offset = position - byteCounter;
+                foundBlock = true;
                 break;
             }
 
             // advance past the data block
             byteCounter += curBlockTotalSize;
         }
+
+        if (!foundBlock)
+            throw std::string("XexZeroBasedCompressionIO: Position is outside the compression table.");
 
         // read the data bytes in
         if (isData)
