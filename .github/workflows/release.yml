@@ -7,6 +7,11 @@ on:
       - completed
   workflow_dispatch:
 
+# Needed for actions/download-artifact with a run-id and for gh-release.
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   create-release:
     name: Create GitHub Release
@@ -37,7 +42,19 @@ jobs:
           fi
           cat "$GITHUB_OUTPUT"
 
-      - name: Download all artifacts
+      # In a workflow_run context the artifacts live in the triggering run, not
+      # in this one; without the run-id download-artifact looks in the wrong run
+      # and the release ends up without files.
+      - name: Download artifacts from the triggering build
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download artifacts from this run
+        if: github.event_name != 'workflow_run'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
