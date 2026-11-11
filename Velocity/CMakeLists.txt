@@ -167,6 +167,9 @@ target_include_directories(VelocityNext
 target_link_libraries(VelocityNext
   PRIVATE
     Qt6::Core
+    # Qt 6.10+ stopped adding the private include dirs to Qt6::Core, and
+    # zipviewer.cpp uses qzipreader_p.h, so the private module is required.
+    Qt6::CorePrivate
     Qt6::Gui
     Qt6::Xml
     Qt6::Widgets  

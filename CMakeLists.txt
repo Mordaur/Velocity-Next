@@ -143,7 +143,7 @@ set(CMAKE_AUTOUIC ON)
 set(QT_MIN_VERSION "6.7.3")
 
 # Primary method: Use CMake's built-in Qt discovery
-find_package(Qt6 ${QT_MIN_VERSION} COMPONENTS Core Xml Widgets Network)
+find_package(Qt6 ${QT_MIN_VERSION} COMPONENTS Core CorePrivate Xml Widgets Network)
 
 if(NOT Qt6_FOUND)
     # Secondary method: Try qmake-based discovery
@@ -158,7 +158,7 @@ if(NOT Qt6_FOUND)
         if(QT_PREFIX AND EXISTS "${QT_PREFIX}")
             message(STATUS "Found Qt via qmake at: ${QT_PREFIX}")
             set(CMAKE_PREFIX_PATH ${QT_PREFIX} ${CMAKE_PREFIX_PATH})
-            find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core Xml Widgets Network)
+            find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core CorePrivate Xml Widgets Network)
         endif()
     endif()
 endif()
@@ -168,7 +168,7 @@ if(NOT Qt6_FOUND)
     if(DEFINED ENV{QT6_PREFIX_PATH})
         message(STATUS "Trying QT6_PREFIX_PATH environment variable: $ENV{QT6_PREFIX_PATH}")
         set(CMAKE_PREFIX_PATH $ENV{QT6_PREFIX_PATH} ${CMAKE_PREFIX_PATH})
-        find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core Xml Widgets Network)
+        find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core CorePrivate Xml Widgets Network)
     endif()
 endif()
 
