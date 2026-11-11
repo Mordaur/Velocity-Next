@@ -1,5 +1,52 @@
 # Changelog
 
+## Velocity-Next v0.3.0 - 2026-11-11
+
+### 🔐 Device Access
+
+- **On-demand privileged helper** (`velocity-device-helper`), shipped next to the
+  application and started only when a raw-device probe is denied:
+  - Windows: named-pipe transport with a DACL for the owning user and a
+    medium-integrity label, launched with `ShellExecuteEx(..., "runas")`
+  - Linux: Unix socket with peer-credential checks, launched with `pkexec` or
+    passwordless `sudo`
+  - macOS: `getpeereid()` peer check (elevation still requires `sudo`)
+- The GUI no longer needs a right-click "Run as administrator" or a whole-app
+  relaunch; declining the prompt reports "Administrator access was not granted"
+  on both Windows and Linux
+- Typed device diagnostics (permission denied / not found / busy) instead of a
+  bare "no drives detected"
+
+### 🐞 Fixes
+
+- FATX: corrupt cluster chains are rejected instead of looping until the process
+  dies; zero-length files extract correctly
+- DeviceIO: honours the device's logical sector size (4Kn media) and fixes the
+  POSIX partial-sector write that wrote the wrong buffer
+- Partitions and Cluster Tool dialogs own their data by value, fixing garbage
+  values and a SIGSEGV after the dialogs were made non-modal
+- GPD editor: `indexToEntry()` returns `std::optional` and no longer hands
+  callers an uninitialised entry
+- GUI handlers also catch `std::exception`, so container range errors surface as
+  a message instead of terminating the app
+- ISO: initialised `gdfxHeader` and entry headers; account encryption no longer
+  dereferences a null output path
+- Disk enumeration probes candidates instead of listing phantom device paths
+
+### 🧩 Formats and UI
+
+- XEX and SVOD files open from the device tree (ported from Gualdimar)
+- SVOD packages are tagged as SVOD rather than STFS
+- Repository links point at `Mordaur/Velocity-Next`
+
+### 🛠️ Build
+
+- Requires `Qt6::CorePrivate`, fixing builds against Qt 6.10+ (Fedora 44,
+  Arch with Qt 6.11/6.12)
+- Botan configuration passes an explicit `--prefix`, fixing MinGW builds on
+  Windows
+- Clean build is warning-free on GCC
+
 ## Velocity-Next v0.2.1 - 2025-11-16
 
 ### 🔧 Core Refactoring & Improvements

@@ -14,6 +14,29 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     
     steps:
+      - name: Check out the triggering revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # The matrix build also runs on branches, so derive the tag from the
+      # project version rather than publishing a release named after `master`.
+      - name: Determine release tag
+        id: tag
+        run: |
+          ref="${{ github.event.workflow_run.head_branch || github.ref_name }}"
+          if [ "${ref#v}" != "$ref" ]; then
+            echo "tag=$ref" >> "$GITHUB_OUTPUT"
+          else
+            version=$(sed -n 's/^project(VelocityNext VERSION \([0-9.]*\).*/v\1/p' CMakeLists.txt | head -1)
+            if [ -z "$version" ]; then
+              echo "Could not determine a release tag from CMakeLists.txt" >&2
+              exit 1
+            fi
+            echo "tag=$version" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -22,8 +45,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: ${{ github.event.workflow_run.head_branch || github.ref_name }}
-          tag_name: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ steps.tag.outputs.tag }}
           files: artifacts/**/* 
           draft: false
           prerelease: false

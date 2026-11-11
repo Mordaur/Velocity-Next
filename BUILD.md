@@ -2,8 +2,13 @@
 
 ## Prerequisites
 
-- **Qt 6.7.3 or higher** (Components: Core, Xml, Widgets, Network)
-  - Tested with: Qt 6.8.0 and above
+- **Qt 6.7.3 or higher** (Components: Core, CorePrivate, Xml, Widgets, Network)
+  - Qt 6.10 and newer require the `CorePrivate` component explicitly; the
+    package browser uses `qzipreader_p.h`
+  - Private headers ship with Qt on Windows/macOS; on Linux they may be a
+    separate package (`qt6-base-private-dev` on Debian/Ubuntu,
+    `qt6-qtbase-private-devel` on Fedora, included in `qt6-base` on Arch)
+  - Tested with: Qt 6.8.0 and 6.12
 - **CMake 3.20+**
 - **C++20 compiler**:
   - **Windows**: MinGW 13.1.0+ or MSVC 2022 (Visual Studio 17.0+)
@@ -34,7 +39,9 @@ cmake --build --preset [chosen-preset]
 
 ## Automated Builds (GitHub Actions)
 
-**Don't want to build locally?** Fork this repository and GitHub Actions will automatically build for all platforms!
+Prefer not to build locally? Every workflow can be run manually from the
+Actions tab (they are `workflow_dispatch`), and a `v*` tag triggers the full
+matrix build followed by a release.
 
 ### Available Workflows
 
@@ -48,11 +55,15 @@ cmake --build --preset [chosen-preset]
 1. **Fork the repository** on GitHub
 2. **Enable Actions** in your fork (Settings → Actions → General)
 3. **Manual builds**: Go to Actions tab → Select workflow → "Run workflow"
-4. **Automated releases**: Push a version tag (e.g., `v0.2.0`) to trigger all platforms
+4. **Automated releases**: Push a version tag (e.g., `v0.3.0`); `build-matrix.yml`
+   builds every platform and `release.yml` publishes the artifacts under the tag
+   derived from `project(VelocityNext VERSION ...)`
 
 ### Downloading Pre-built Releases
 
-Visit the [Releases page](https://github.com/Mordaur/Velocity-Next/releases) for official builds.
+See the [Releases page](https://github.com/Mordaur/Velocity-Next/releases). No
+release has been published yet, so until v0.3.0 is tagged build from source with
+the presets above.
 
 ## Botan Dependency
 
@@ -296,9 +307,13 @@ Build outputs are organized in:
 
 ### Windows - Raw Device Access
 
-Velocity starts normally (as invoker). Browsing uses read-only raw access where Windows permits it. Writing to a device requires Administrator privileges.
+Velocity starts normally (as invoker). Browsing uses read-only raw access where
+Windows permits it. When a device probe is denied, the app launches
+`velocity-device-helper.exe` (shipped next to `VelocityNext.exe`) through a UAC
+prompt; only the helper runs elevated, and it exits when the viewer closes.
 
-**To get write access:**
+**Manual fallback** (if the helper cannot start, for example on a machine where
+UAC is disabled or the helper was not copied):
 
 1. Navigate to the VelocityNext executable:
    - Release: `out/build/windows-mingw-release/VelocityNext/VelocityNext.exe`
@@ -308,13 +323,17 @@ Velocity starts normally (as invoker). Browsing uses read-only raw access where 
 
 You can also create an administrator shortcut: right-click the executable → **Create shortcut** → shortcut **Properties** → **Advanced** → **Run as administrator**.
 
-If a drive is not detected, run as administrator. Windows does not allow a running process to gain administrator rights mid-session; a separate elevated helper process is the least-privilege long-term design.
+Declining the UAC prompt leaves the device list empty and shows
+"Administrator access was not granted" — that is expected, not a detection bug.
 
 ### Linux
 
-On Linux, raw block devices are normally `root:disk` with mode `0660`.
+On Linux, raw block devices are normally `root:disk` with mode `0660`. Velocity
+starts `velocity-device-helper` through `pkexec` (or passwordless `sudo` when it
+is available) as soon as a probe is denied, so normally no manual step is
+required.
 
-**Option 1: Run with sudo** (for testing or one-off use)
+**Option 1: Run with sudo** (manual fallback for testing or one-off use)
 ```bash
 sudo ./out/build/linux-release/VelocityNext/VelocityNext
 ```
@@ -329,14 +348,19 @@ sudo usermod -a -G disk $USER
 
 ### macOS
 
-On macOS, access to raw disk devices typically requires administrator privileges.
+On macOS, raw disk devices (`/dev/rdisk*`) can only be opened by root.
 
-**Run with sudo:**
+There is **no elevation helper on macOS yet** — `velocity-device-helper` can be
+built but the GUI has no way to start it (it relies on `pkexec`/UAC elsewhere).
+Run the application itself with `sudo`:
+
 ```bash
 sudo ./out/build/macos-release/VelocityNext.app/Contents/MacOS/VelocityNext
 ```
 
-**Note**: Xbox 360 drives should appear as `/dev/disk*` or `/dev/rdisk*` devices.
+**Note**: Xbox 360 drives appear as whole-disk nodes (`/dev/disk*`); Velocity
+enumerates them and opens the raw counterpart (`/dev/rdisk*`). Drive detection
+on macOS is a known gap tracked in the issue tracker.
 
 ---
 

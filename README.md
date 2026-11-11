@@ -5,12 +5,23 @@ Velocity-Next
 
 ### What's New in Velocity-Next
 
-- **Smart Pointer Refactoring**: Modern C++20 memory management for improved stability
-- **ISO/XEX Integration**: Merged improvements from Gualdimar/Velocity fork
-- **MSVC 2022 Support**: Full compatibility with Visual Studio 2022 alongside MinGW
-- **Modernized Build System**: CMake 3.20+ with modern target-based patterns
-- **Standalone XboxInternals Library**: Can now be distributed and used independently
-- **Active Development**: Issues and PRs are welcomed and will be addressed
+- **On-demand privileged helper**: raw device access without relaunching the app
+  or right-clicking — UAC on Windows, polkit/sudo on Linux
+- **Typed device diagnostics**: permission, not-found and busy failures are
+  reported instead of a bare "no drives detected"
+- **XEX and SVOD open from the device tree**, not only from packages and ISOs
+- **XUIZ, STRB, ZIP and text viewers** (CJK encodings) in the package browser
+- **Hardened FATX**: corrupt cluster chains, zero-length files and non-512-byte
+  sector sizes are handled safely
+- **Smart Pointer Refactoring**: Modern C++20 memory management in XboxInternals
+- **MSVC 2022 and MinGW**, CMake 3.20+ presets, standalone XboxInternals library
+
+### Getting Velocity-Next
+
+No packaged release has been published yet. Until the first release is tagged,
+build from source using [BUILD.md](BUILD.md). Release archives keep
+`velocity-device-helper` next to the executable, which the app needs for raw
+device access.
 
 ### Credits
 
@@ -18,16 +29,29 @@ Original Velocity was developed mainly by Stevie Hetelekides (Hetelek) and Adam 
 
 ## Raw Device Access
 
-On **Windows**, Velocity starts without elevation. Browsing uses read-only raw access where Windows permits it; writing to a device (copy/delete/resign) requires running as administrator.
+Velocity always starts unprivileged. Reading a raw disk usually needs
+administrator rights, so when the first probe is denied the app starts a small
+helper (`velocity-device-helper`, shipped next to the executable) that performs
+only the device I/O:
+
+- **Windows** — the helper is launched with a UAC prompt; the app itself keeps
+  running as the logged-in user. No right-click or administrator shortcut is
+  needed.
+- **Linux** — the helper starts through `pkexec`, or through passwordless `sudo`
+  when available. Adding your user to the `disk` group also lets the app read
+  devices directly.
+- **macOS** — there is no elevation helper yet; run the app with `sudo`.
+
+Declining the prompt is not an error: the app reports that administrator access
+was not granted and simply leaves the device list empty.
 
 ## Running Velocity-Next
 
-- If Xbox 360 drives are not detected, **right-click** `VelocityNext.exe` → **"Run as administrator"**
-- Or create an administrator shortcut: executable → **Create shortcut** → shortcut **Properties** → **Advanced** → **Run as administrator**
-- On **Linux**, run with `sudo` or add your user to the `disk` group
-- On **macOS**, run with `sudo` for now
-
-See [BUILD.md](BUILD.md#running-velocity) for Linux/macOS requirements and more details.
+1. Keep `velocity-device-helper` in the same folder as the main executable.
+2. Start the app normally; it asks for elevation only when raw device access is
+   denied, and only for the helper process.
+3. If a drive still does not appear, [BUILD.md](BUILD.md#running-velocity)
+   documents the manual fallbacks (run as administrator, `disk` group, `sudo`).
 
 
 About Velocity-Next
@@ -44,6 +68,10 @@ Velocity-Next is a cross-platform Xbox 360 file management application built wit
 - **XEX** - Xbox executables with metadata parsing
 - **SVOD** - Secure Video on Demand packages
 - **YTGR** - Avatar asset packages
+- **XUIZ** - Dashboard package files, with extraction
+- **STRB** - Avatar asset blocks
+- **ZIP** - Archives inside ISO images and packages
+- **Account** - Profile account data inside STFS packages
 
 ### International Text Support
 
@@ -62,10 +90,11 @@ If no copy of the GNU General Public License was received with this program (FIL
 
 ### Third-Party Components
 
-Velocity-Next includes and statically links the following third-party libraries:
+Velocity-Next includes the following third-party libraries:
 
 - **Botan** (BSD-2-Clause): Cryptography library embedded as amalgamation build. See [LICENSE-Botan.txt](LICENSE-Botan.txt) for full license text.
-- **Qt 6**: Cross-platform application framework (LGPL v3 / GPL v3). Qt is dynamically linked (MSVC builds) or statically linked (MinGW builds).
+- **Qt 6**: Cross-platform application framework (LGPL v3 / GPL v3). Qt is
+  dynamically linked on every platform and shipped alongside the executable.
 
 ### Build System Acknowledgments
 
