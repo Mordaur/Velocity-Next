@@ -567,6 +567,19 @@ void FatxIO::GetConsecutive(std::vector<DWORD> &list, std::vector<Range> &outRan
 
 void FatxIO::SaveFile(std::string savePath, void(*progress)(void*, DWORD, DWORD), void *arg)
 {
+    // A zero-length file has no cluster chain. Handle it before the chain is
+    // indexed below, which would otherwise read clusterChain.at(size() - 1) out
+    // of bounds.
+    if (entry->fileSize == 0)
+    {
+        FileIO outFile(savePath, true);
+        outFile.Close();
+
+        if (progress)
+            progress(arg, 1, 1);
+        return;
+    }
+
     // get the current position
     UINT64 pos;
     UINT64 originalPos = device->GetPosition();
@@ -618,14 +631,6 @@ void FatxIO::SaveFile(std::string savePath, void(*progress)(void*, DWORD, DWORD)
 
     // open the new file
     FileIO outFile(savePath, true);
-
-    if (entry->fileSize == 0)
-    {
-        outFile.Close();
-        if (progress)
-            progress(arg, 1, 1);
-        return;
-    }
 
     // read all the data in
     for (DWORD i = 0; i < readRanges.size(); i++)
