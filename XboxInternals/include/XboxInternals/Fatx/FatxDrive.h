@@ -38,6 +38,9 @@ public:
     // get the drives partitions
     std::vector<Partition*> GetPartitions();
 
+    // owned, copyable snapshots of the partition metadata
+    std::vector<PartitionInfo> GetPartitionInfo() const;
+
     // get the drive type
     FatxDriveType GetFatxDriveType();
 

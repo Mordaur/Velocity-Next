@@ -6,7 +6,8 @@
 DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
         QList<QAction *> gameActions, QWidget *parent) :
     QDialog(parent), ui(new Ui::DeviceViewer), currentDrive(nullptr), parentEntry(nullptr),
-    gpdActions(gpdActions), gameActions(gameActions), statusBar(statusBar), drivesLoaded(false)
+    gpdActions(gpdActions), gameActions(gameActions), statusBar(statusBar), drivesLoaded(false),
+    loadingFolder(false)
 {
     ui->setupUi(this);
 
@@ -555,6 +556,16 @@ FatxFileEntry* DeviceViewer::GetFatxFileEntry(QTreeWidgetItem *item)
 
 void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
 {
+    if (loadingFolder)
+        return;
+
+    loadingFolder = true;
+    struct ResetLoading
+    {
+        bool &flag;
+        ~ResetLoading() { flag = false; }
+    } resetLoading{loadingFolder};
+
     try
     {
         if (directoryChain.at(directoryChain.size() - 1) != folder)
@@ -637,6 +648,16 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
 
 void DeviceViewer::LoadFolderTree(QTreeWidgetItem *item)
 {
+    if (loadingFolder)
+        return;
+
+    loadingFolder = true;
+    struct ResetLoading
+    {
+        bool &flag;
+        ~ResetLoading() { flag = false; }
+    } resetLoading{loadingFolder};
+
     try
     {
         // get the FatxFile entry and make sure it's a directory
@@ -792,9 +813,7 @@ void DeviceViewer::on_btnSecurityBlob_clicked()
 
 void DeviceViewer::on_btnPartitions_clicked()
 {
-    std::vector<Partition*> partitions = currentDrive->GetPartitions();
-
-    PartitionDialog *dialog = new PartitionDialog(partitions, this);
+    PartitionDialog *dialog = new PartitionDialog(currentDrive->GetPartitionInfo(), this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
 }

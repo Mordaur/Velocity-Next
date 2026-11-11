@@ -89,6 +89,10 @@ private:
     QTreeWidgetItem *currentDriveItem;
     QString previousName;
     bool drivesLoaded;
+    // Guards against re-entering a folder load from the event loop that
+    // GetChildFileEntries pumps: a nested load would clear the tree the outer
+    // loop is still iterating and interleave reads on the same drive.
+    bool loadingFolder;
     std::shared_ptr<HelperClient> helperClient;
 
     void LoadFolderAll(FatxFileEntry *folder);

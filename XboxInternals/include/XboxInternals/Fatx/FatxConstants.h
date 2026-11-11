@@ -124,6 +124,29 @@ struct Partition
     std::vector<DWORD> freeClusters;
 };
 
+// Copyable snapshot of a partition's metadata. Consumers such as dialogs and
+// tools own this by value, so no raw Partition pointers leave the IO layer and
+// nothing can dangle when a drive is reloaded or a temporary vector dies.
+struct PartitionInfo
+{
+    std::string name;
+    DWORD partitionId = 0;
+    DWORD sectorsPerCluster = 0;
+    DWORD rootDirectoryCluster = 0;
+    DWORD clusterCount = 0;
+    DWORD clusterSize = 0;
+    INT64 address = 0;
+    UINT64 size = 0;
+    UINT64 clusterStartingAddress = 0;
+    UINT64 freeMemory = 0;
+
+    // Byte offset of a cluster inside the partition; FATX clusters start at 1.
+    UINT64 ClusterToOffset(DWORD cluster) const
+    {
+        return clusterStartingAddress + static_cast<UINT64>(clusterSize) * (cluster - 1);
+    }
+};
+
 enum FatxDirentAttributes
 {
     FatxReadOnly = 0x01,

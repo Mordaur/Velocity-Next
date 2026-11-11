@@ -58,6 +58,30 @@ std::vector<Partition*> FatxDrive::GetPartitions()
     return rawPartitions;
 }
 
+std::vector<PartitionInfo> FatxDrive::GetPartitionInfo() const
+{
+    std::vector<PartitionInfo> infos;
+    infos.reserve(partitions.size());
+
+    for (const auto& partition : partitions)
+    {
+        PartitionInfo info;
+        info.name = partition->name;
+        info.partitionId = partition->partitionId;
+        info.sectorsPerCluster = partition->sectorsPerCluster;
+        info.rootDirectoryCluster = partition->rootDirectoryCluster;
+        info.clusterCount = partition->clusterCount;
+        info.clusterSize = partition->clusterSize;
+        info.address = partition->address;
+        info.size = partition->size;
+        info.clusterStartingAddress = partition->clusterStartingAddress;
+        info.freeMemory = partition->freeMemory;
+        infos.push_back(info);
+    }
+
+    return infos;
+}
+
 FatxDriveType FatxDrive::GetFatxDriveType()
 {
     return type;
@@ -535,13 +559,18 @@ void FatxDrive::ReadClusterChain(FatxFileEntry *entry)
     while (previousCluster != lastCluster && previousCluster != availableCluster)
     {
         if (previousCluster == 0 || previousCluster > maxCluster)
-            throw std::string("FATX: Cluster chain references a cluster outside the partition.\n");
+            throw std::string("FATX: Cluster chain of \"") + entry->name +
+                    "\" references cluster " + std::to_string(previousCluster) +
+                    " outside partition \"" + entry->partition->name + "\" (1.." +
+                    std::to_string(maxCluster) + ").\n";
 
         if (entry->clusterChain.size() >= maxChainLength)
-            throw std::string("FATX: Cluster chain is longer than the partition.\n");
+            throw std::string("FATX: Cluster chain of \"") + entry->name +
+                    "\" is longer than partition \"" + entry->partition->name + "\".\n";
 
         if (!visited.insert(previousCluster).second)
-            throw std::string("FATX: Cluster chain contains a loop.\n");
+            throw std::string("FATX: Cluster chain of \"") + entry->name +
+                    "\" contains a loop at cluster " + std::to_string(previousCluster) + ".\n";
 
         // add it to the cluster chain
         entry->clusterChain.push_back(previousCluster);

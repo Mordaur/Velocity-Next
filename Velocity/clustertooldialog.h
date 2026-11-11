@@ -5,7 +5,6 @@
 #include <QDialog>
 
 #include <XboxInternals/Fatx/FatxConstants.h>
-#include <XboxInternals/IO/FatxIO.h>
 
 namespace Ui
 {
@@ -17,7 +16,7 @@ class ClusterToolDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit ClusterToolDialog(Partition &partition, QWidget *parent = 0);
+    explicit ClusterToolDialog(PartitionInfo partition, QWidget *parent = 0);
     ~ClusterToolDialog();
 
 private slots:
@@ -25,7 +24,7 @@ private slots:
 
 private:
     Ui::ClusterToolDialog *ui;
-    Partition &part;
+    PartitionInfo part;
 };
 
 #endif // CLUSTERTOOLDIALOG_H

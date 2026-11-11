@@ -1,16 +1,17 @@
 #include "partitiondialog.h"
 #include "ui_partitiondialog.h"
 
-PartitionDialog::PartitionDialog(std::vector<Partition*> &partitions, QWidget *parent) :
-    QDialog(parent), ui(new Ui::PartitionDialog), partitions(partitions)
+PartitionDialog::PartitionDialog(std::vector<PartitionInfo> infos, QWidget *parent) :
+    QDialog(parent), ui(new Ui::PartitionDialog), partitions(std::move(infos))
 {
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     ui->setupUi(this);
 
-    for (DWORD i = 0; i < partitions.size(); i++)
-        ui->comboBox->addItem(QString::fromStdString(partitions.at(i)->name));
+    for (const PartitionInfo &info : partitions)
+        ui->comboBox->addItem(QString::fromStdString(info.name));
 
-    on_comboBox_currentIndexChanged(0);
+    if (!partitions.empty())
+        on_comboBox_currentIndexChanged(0);
 }
 
 PartitionDialog::~PartitionDialog()
@@ -20,19 +21,23 @@ PartitionDialog::~PartitionDialog()
 
 void PartitionDialog::on_comboBox_currentIndexChanged(int index)
 {
-    Partition *part = partitions.at(index);
-    ui->lblPartID->setText("0x" + QString::number(part->partitionId, 16).toUpper());
-    ui->lblPartSize->setText(QString::fromStdString(ByteSizeToString(part->size)));
-    ui->lblPartClusterSize->setText("0x" + QString::number(part->clusterSize, 16).toUpper());
-    ui->lblPartFirstClusterAddr->setText("0x" + QString::number(part->clusterStartingAddress,
+    if (index < 0 || static_cast<size_t>(index) >= partitions.size())
+        return;
+
+    const PartitionInfo &part = partitions.at(static_cast<size_t>(index));
+    ui->lblPartID->setText("0x" + QString::number(part.partitionId, 16).toUpper());
+    ui->lblPartSize->setText(QString::fromStdString(ByteSizeToString(part.size)));
+    ui->lblPartClusterSize->setText("0x" + QString::number(part.clusterSize, 16).toUpper());
+    ui->lblPartFirstClusterAddr->setText("0x" + QString::number(part.clusterStartingAddress,
             16).toUpper());
-    ui->lblPartSectorsPerCluster->setText(QString::number(part->sectorsPerCluster));
-    ui->lblPartRootDirCluster->setText("0x" + QString::number(part->rootDirectoryCluster,
+    ui->lblPartSectorsPerCluster->setText(QString::number(part.sectorsPerCluster));
+    ui->lblPartRootDirCluster->setText("0x" + QString::number(part.rootDirectoryCluster,
             16).toUpper());
 
     // calculate the percentage
-    float freeMemPercentage = (part->freeMemory * 100.0) / ((UINT64)part->clusterCount *
-            part->clusterSize);
+    const UINT64 totalBytes = static_cast<UINT64>(part.clusterCount) * part.clusterSize;
+    float freeMemPercentage = totalBytes ? static_cast<float>((part.freeMemory * 100.0) /
+            totalBytes) : 0.0f;
 
     // draw the chart
     QPixmap chart(391, 221);
@@ -56,8 +61,12 @@ void PartitionDialog::on_comboBox_currentIndexChanged(int index)
 
 void PartitionDialog::on_btnClusterTool_clicked()
 {
-    Partition part = *partitions.at(ui->comboBox->currentIndex());
-    ClusterToolDialog *dialog = new ClusterToolDialog(part, this);
+    const int index = ui->comboBox->currentIndex();
+    if (index < 0 || static_cast<size_t>(index) >= partitions.size())
+        return;
+
+    ClusterToolDialog *dialog = new ClusterToolDialog(partitions.at(static_cast<size_t>(index)),
+                                                      this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
 }
