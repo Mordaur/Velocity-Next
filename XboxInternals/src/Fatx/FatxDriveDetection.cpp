@@ -162,6 +162,24 @@ std::vector<std::wstring> FatxDriveDetection::GetPhysicalDiskPaths()
     {
         std::wstringstream ss;
         ss << L"\\\\.\\PHYSICALDRIVE" << i;
+
+        // Probe existence without requesting access: a standard user may open a
+        // disk with desired access 0, and this avoids handing the helper a list
+        // of drives that do not exist.
+        HANDLE probe = CreateFileW(ss.str().c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                   nullptr, OPEN_EXISTING, 0, nullptr);
+        if (probe != INVALID_HANDLE_VALUE)
+        {
+            CloseHandle(probe);
+            physicalDiskPaths.push_back(ss.str());
+            continue;
+        }
+
+        const DWORD lastError = GetLastError();
+        if (lastError == ERROR_FILE_NOT_FOUND || lastError == ERROR_PATH_NOT_FOUND)
+            continue; // no such physical drive
+
+        // Denied or otherwise unknown: keep it so the helper can report why.
         physicalDiskPaths.push_back(ss.str());
     }
 #else
@@ -177,12 +195,16 @@ std::vector<std::wstring> FatxDriveDetection::GetPhysicalDiskPaths()
             {
                 physicalDiskPaths.push_back(L"/dev/r" + std::wstring(name.begin(), name.end()));
             }
-#elif __linux
+#elif __linux__
             const bool wholeDisk = name.rfind("sd", 0) == 0 &&
                     name.find_first_of("0123456789") == std::string::npos;
             if (wholeDisk)
             {
-                physicalDiskPaths.push_back(L"/dev/" + std::wstring(name.begin(), name.end()));
+                const std::string path = "/dev/" + name;
+                struct stat st {};
+                // Only real block devices; skip /dev/sd* nodes that are not present.
+                if (stat(path.c_str(), &st) == 0 && S_ISBLK(st.st_mode))
+                    physicalDiskPaths.push_back(std::wstring(path.begin(), path.end()));
             }
 #endif
         }

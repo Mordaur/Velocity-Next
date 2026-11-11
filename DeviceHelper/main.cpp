@@ -406,7 +406,17 @@ namespace
         }
 
         struct stat status {};
-        if (fstat(fd, &status) != 0 || !S_ISBLK(status.st_mode))
+        // macOS exposes whole disks as character devices (/dev/rdisk*), so both
+        // node types are valid; Linux uses block devices.
+        const bool isDeviceNode = fstat(fd, &status) == 0 &&
+                                  (S_ISBLK(status.st_mode) ||
+#if defined(__APPLE__)
+                                   S_ISCHR(status.st_mode)
+#else
+                                   false
+#endif
+                                   );
+        if (!isDeviceNode)
         {
             close(fd);
             code = vh::ErrorCode::InvalidRequest;
