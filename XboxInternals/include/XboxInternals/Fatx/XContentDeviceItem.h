@@ -30,7 +30,7 @@ private:
     std::string pathOnDevice;
     std::vector<std::string> contentFilePaths;
     std::string rawName;
-    UINT64 fileSize;
+    UINT64 fileSize = 0;
 };
 
 #endif // XCONTENTDEVICEITEM_H

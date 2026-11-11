@@ -35,10 +35,10 @@ struct XdbfHeader
 
 struct XdbfEntry
 {
-    EntryType type;
-    UINT64 id;
-    DWORD addressSpecifier;
-    DWORD length;
+    EntryType type = static_cast<EntryType>(0);
+    UINT64 id = 0;
+    DWORD addressSpecifier = 0;
+    DWORD length = 0;
 };
 
 struct XdbfFreeMemEntry

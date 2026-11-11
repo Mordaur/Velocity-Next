@@ -74,24 +74,24 @@ struct FlashDriveConfigurationData
 
 struct FatxFileEntry
 {
-    Partition *partition;
+    Partition *partition = nullptr;
 
-    BYTE nameLen;
-    BYTE fileAttributes;
+    BYTE nameLen = 0;
+    BYTE fileAttributes = 0;
 
     std::string name;
-    DWORD startingCluster;
-    DWORD fileSize;
+    DWORD startingCluster = 0;
+    DWORD fileSize = 0;
 
     // times
-    DWORD creationDate;
-    DWORD lastWriteDate;
-    DWORD lastAccessDate;
+    DWORD creationDate = 0;
+    DWORD lastWriteDate = 0;
+    DWORD lastAccessDate = 0;
 
-    bool readDirectories;
-    INT64 address;
-    DWORD magic;
-    FileSystem fileSystem;
+    bool readDirectories = false;
+    INT64 address = 0;
+    DWORD magic = 0;
+    FileSystem fileSystem = FileSystemSTFS;
     std::vector<FatxFileEntry> cachedFiles;
     std::vector<DWORD> clusterChain;
     std::string path;

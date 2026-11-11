@@ -24,18 +24,18 @@ class StfsIO;
 
 struct StfsFileEntry
 {
-    DWORD entryIndex;
+    DWORD entryIndex = 0;
     string name;
-    BYTE nameLen;
-    BYTE flags;
-    INT24 blocksForFile;
-    INT24 startingBlockNum;
-    WORD pathIndicator;
-    DWORD fileSize;
-    DWORD createdTimeStamp;
-    DWORD accessTimeStamp;
-    DWORD fileEntryAddress;
-        vector<INT24> blockChain;
+    BYTE nameLen = 0;
+    BYTE flags = 0;
+    INT24 blocksForFile = 0;
+    INT24 startingBlockNum = 0;
+    WORD pathIndicator = 0;
+    DWORD fileSize = 0;
+    DWORD createdTimeStamp = 0;
+    DWORD accessTimeStamp = 0;
+    DWORD fileEntryAddress = 0;
+    vector<INT24> blockChain;
 };
 
 struct StfsFileListing
