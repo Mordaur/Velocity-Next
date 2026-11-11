@@ -87,7 +87,9 @@ void ThemeCreationWizard::onFinished(int status)
         QString paramsFilePath = QDir::tempPath() + "/" + QUuid::createUuid().toString().replace("{",
                 "").replace("}", "").replace("-", "");
         QFile params(paramsFilePath);
-        params.open(QIODevice::Truncate | QIODevice::WriteOnly);
+        if (!params.open(QIODevice::Truncate | QIODevice::WriteOnly))
+            throw std::string("Could not create the temporary parameters file: " +
+                    paramsFilePath.toStdString());
 
         // Write the correct information to it
         QTextStream txtStream(&params);
