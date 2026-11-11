@@ -3,6 +3,27 @@
 
 #include <QDebug>
 
+#ifdef __linux__
+#include <cerrno>
+#include <filesystem>
+#include <unistd.h>
+
+static bool hasUnreadableBlockDevice()
+{
+    std::error_code ec;
+    for (const auto &entry : std::filesystem::directory_iterator("/dev", ec))
+    {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("sd", 0) != 0)
+            continue;
+
+        if (::access(entry.path().c_str(), R_OK | W_OK) != 0 && errno == EACCES)
+            return true;
+    }
+    return false;
+}
+#endif
+
 DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
         QList<QAction *> gameActions, QWidget *parent) :
     QDialog(parent), ui(new Ui::DeviceViewer), currentDrive(nullptr), parentEntry(nullptr),
@@ -354,6 +375,23 @@ void DeviceViewer::LoadDrives()
         if (loadedDrives.size() < 1)
         {
             statusBar->showMessage("No drives detected", 3000);
+
+#ifdef __linux__
+            if (geteuid() != 0 && hasUnreadableBlockDevice())
+            {
+                QMessageBox::warning(this, "Device Access Required",
+                        "No accessible Xbox 360 drive was found.\n\n"
+                        "If a drive is connected, Velocity needs permission to read raw block devices.\n\n"
+                        "Option 1 — add your user to the disk group:\n"
+                        "  sudo usermod -aG disk $USER\n"
+                        "Then log out and back in.\n\n"
+                        "Option 2 — install the provided udev rule:\n"
+                        "  sudo cp packaging/linux/99-velocity-xbox.rules /etc/udev/rules.d/\n"
+                        "  sudo udevadm control --reload-rules && sudo udevadm trigger\n\n"
+                        "Windows: accept the UAC prompt at launch.\n"
+                        "macOS: launch the app with sudo.");
+            }
+#endif
             return;
         }
 
