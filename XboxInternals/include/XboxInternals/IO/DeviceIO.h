@@ -34,6 +34,8 @@ public:
 
     void Flush();
 
+    bool IsReadOnly() const { return readOnly; }
+
 private:
     void loadDevice(std::wstring devicePath);
 
@@ -47,6 +49,7 @@ private:
     UINT64 pos;
     BYTE lastReadData[FAT_SECTOR_SIZE];
     UINT64 lastReadOffset;
+    bool readOnly;
 };
 
 #endif // DEVICEIO_H

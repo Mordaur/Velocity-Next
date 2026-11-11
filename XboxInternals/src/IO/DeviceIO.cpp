@@ -47,7 +47,7 @@ public:
 };
 
 DeviceIO::DeviceIO(std::string devicePath) :
-    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1)
+    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1), readOnly(false)
 {
     // convert it to a wstring
     std::wstring wsDevicePath;
@@ -58,7 +58,7 @@ DeviceIO::DeviceIO(std::string devicePath) :
 }
 
 DeviceIO::DeviceIO(std::wstring devicePath) :
-    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1)
+    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1), readOnly(false)
 {
     // load the device
     loadDevice(devicePath);
@@ -193,6 +193,9 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
 
 void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
 {
+    if (readOnly)
+        throw std::string("DeviceIO: Device was opened read-only; elevated access is required for writes.\n");
+
     UINT64 endingPos = pos + len;
     if ((pos & 0x1FF) == 0 && (len & 0x1FF) == 0)
     {
@@ -390,38 +393,67 @@ void DeviceIO::Close()
 
 void DeviceIO::loadDevice(std::wstring devicePath)
 {
+    readOnly = false;
+
 #ifdef _WIN32
     pos = 0;
     memset(&impl->offset, 0, sizeof(OVERLAPPED));
 
-    // Attempt to get a handle to the device
+    // Try read/write first; fall back to read-only for browsing without UAC.
     impl->deviceHandle = CreateFile(
-                devicePath.c_str(),// File name (device path)
-                GENERIC_READ | GENERIC_WRITE,		// Read/Write access
-                FILE_SHARE_READ | FILE_SHARE_WRITE,	// Read/Write share
-                NULL,								// Not usedC
-                OPEN_EXISTING,						// Open the existing device -- fails if it's fucked
-                FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH | FILE_ATTRIBUTE_DEVICE,	// Flags and attributes
-                NULL);								// Ignored
+                devicePath.c_str(),
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                NULL,
+                OPEN_EXISTING,
+                FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH | FILE_ATTRIBUTE_DEVICE,
+                NULL);
+
+    if (impl->deviceHandle == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED)
+    {
+        impl->deviceHandle = CreateFile(
+                    devicePath.c_str(),
+                    GENERIC_READ,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL,
+                    OPEN_EXISTING,
+                    FILE_FLAG_NO_BUFFERING | FILE_ATTRIBUTE_DEVICE,
+                    NULL);
+
+        if (impl->deviceHandle != INVALID_HANDLE_VALUE)
+            readOnly = true;
+    }
 
     if (impl->deviceHandle == INVALID_HANDLE_VALUE)
-        throw std::string("DeviceIO: Could not open HANDLE for device.\n");
+        throw std::string("DeviceIO: Could not open device handle (error " +
+                          std::to_string(GetLastError()) + ").\n");
 #else
 
     // need to convert this into a regular string, since open takes a char*
     std::string tempPath(devicePath.begin(), devicePath.end());
 
-    // Open the device
+    int firstErrno = 0;
     impl->device = open(tempPath.c_str(), O_RDWR);
     if (impl->device == -1)
-        throw std::string("DeviceIO: Error opening device.\n" + std::string(strerror(errno)));
+        firstErrno = errno;
+
+    if (impl->device == -1 && (firstErrno == EACCES || firstErrno == EROFS))
+    {
+        impl->device = open(tempPath.c_str(), O_RDONLY);
+        if (impl->device != -1)
+            readOnly = true;
+    }
+
+    if (impl->device == -1)
+        throw std::string("DeviceIO: Error opening device.\n" + std::string(strerror(firstErrno)));
 #endif
 }
 
 void DeviceIO::Flush()
 {
 #ifdef _WIN32
-    FlushFileBuffers(impl->deviceHandle);
+    if (!readOnly)
+        FlushFileBuffers(impl->deviceHandle);
 #endif
 }
 
