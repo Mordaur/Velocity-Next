@@ -385,11 +385,10 @@ void DeviceViewer::LoadDrives()
                         "Option 1 — add your user to the disk group:\n"
                         "  sudo usermod -aG disk $USER\n"
                         "Then log out and back in.\n\n"
-                        "Option 2 — install the provided udev rule:\n"
-                        "  sudo cp packaging/linux/99-velocity-xbox.rules /etc/udev/rules.d/\n"
-                        "  sudo udevadm control --reload-rules && sudo udevadm trigger\n\n"
-                        "Windows: accept the UAC prompt at launch.\n"
-                        "macOS: launch the app with sudo.");
+                        "Option 2 — run the app with sudo for a one-off session:\n"
+                        "  sudo ./VelocityNext\n\n"
+                        "Windows: browsing uses read-only access; writes need an elevated\n"
+                        "session. macOS: launch the app with sudo.");
             }
 #endif
             return;

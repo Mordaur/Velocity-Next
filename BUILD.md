@@ -314,23 +314,15 @@ If a drive is not detected, run as administrator. Windows does not allow a runni
 
 On Linux, raw block devices are normally `root:disk` with mode `0660`.
 
-**Option 1: udev `uaccess` rule (recommended for desktops)**
+**Option 1: Run with sudo** (for testing or one-off use)
 ```bash
-sudo cp packaging/linux/99-velocity-xbox.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+sudo ./out/build/linux-release/VelocityNext/VelocityNext
 ```
-This grants the active logged-in user access to USB-attached disks. It does not grant access to all users or to internal SATA disks.
 
-**Option 2: Add user to the disk group**
+**Option 2: Add user to the disk group** (for regular use; deploy via local or central group policy)
 ```bash
 sudo usermod -a -G disk $USER
 # Log out and log back in
-```
-
-**Option 3: Run with sudo** (for testing)
-```bash
-sudo ./out/build/linux-release/VelocityNext/VelocityNext
 ```
 
 **Note**: Xbox 360 drives connected via USB should appear as `/dev/sd*` devices (e.g., `/dev/sdb`).

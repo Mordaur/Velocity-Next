@@ -1,9 +1,0 @@
-# Xbox 360 USB drives: grant the active local session access without root.
-# Install once:
-#   sudo cp 99-velocity-xbox.rules /etc/udev/rules.d/
-#   sudo udevadm control --reload-rules
-#   sudo udevadm trigger
-#
-# This uses systemd-logind's uaccess ACL. Users on non-systemd systems should
-# join the "disk" group instead.
-SUBSYSTEM=="block", KERNEL=="sd*", ENV{ID_BUS}=="usb", ENV{DEVTYPE}=="disk", TAG+="uaccess"

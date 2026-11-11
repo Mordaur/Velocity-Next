@@ -24,7 +24,7 @@ On **Windows**, Velocity starts without elevation. Browsing uses read-only raw a
 
 - If Xbox 360 drives are not detected, **right-click** `VelocityNext.exe` → **"Run as administrator"**
 - Or create an administrator shortcut: executable → **Create shortcut** → shortcut **Properties** → **Advanced** → **Run as administrator**
-- On **Linux**, install the udev rule or join the `disk` group; `sudo` also works for testing
+- On **Linux**, run with `sudo` or add your user to the `disk` group
 - On **macOS**, run with `sudo` for now
 
 See [BUILD.md](BUILD.md#running-velocity) for Linux/macOS requirements and more details.
