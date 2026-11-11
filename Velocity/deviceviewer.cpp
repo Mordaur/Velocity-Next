@@ -311,6 +311,10 @@ void DeviceViewer::showContextMenu(QPoint point)
 
         QMessageBox::warning(this, "Problem", "The operation failed.\n\n" + QString::fromStdString(error));
     }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
+    }
 }
 
 void DeviceViewer::InjectFiles(QList<void*> files, QString rootPath)
@@ -398,6 +402,10 @@ void DeviceViewer::LoadDrives()
                     {
                         // Not a FATX device; try the next candidate.
                     }
+                    catch (const std::exception &exception)
+                    {
+                        QtHelpers::ShowUnexpectedError(this, exception);
+                    }
                     catch (...)
                     {
                     }
@@ -483,6 +491,10 @@ void DeviceViewer::LoadDrives()
         QMessageBox::critical(this, "Problem Loading",
                 "The drive failed to load.\n\n" + QString::fromStdString(error));
     }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
+    }
 }
 
 void DeviceViewer::SetWidgetsEnabled(bool enabled)
@@ -555,6 +567,10 @@ void DeviceViewer::on_treeWidget_doubleClicked(const QModelIndex &index)
     {
         QMessageBox::warning(this, "Problem Loading",
                 "The folder failed to load.\n\n" + QString::fromStdString(error));
+    }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
     }
 }
 
@@ -662,6 +678,10 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
     {
         QMessageBox::warning(this, "Problem Loading",
                 "The folder failed to load.\n\n" + QString::fromStdString(error));
+    }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
     }
 }
 
@@ -992,6 +1012,10 @@ void DeviceViewer::on_txtDriveName_editingFinished()
         ui->txtDriveName->setText(previousName);
         QMessageBox::warning(this, "Problem Renaming",
                 "The drive could not be renamed.\n\n" + QString::fromStdString(error));
+    }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
     }
 }
 

@@ -18,6 +18,9 @@
 #include <QCheckBox>
 #include <QProgressBar>
 #include <QMdiArea>
+#include <QMessageBox>
+
+#include <exception>
 
 #include <XboxInternals/Stfs/XContentHeader.h>
 #include <QStandardPaths>
@@ -53,6 +56,11 @@ public:
     static void ParseHexStringBuffer(QString bytes, BYTE *outBuffer, int len);
 
     static QString DefaultLocation();
+
+    // Report an exception that escaped C++ code into a UI handler. Backend
+    // code throws std::string, but containers throw std::exception types
+    // (std::out_of_range and friends) that a std::string handler misses.
+    static void ShowUnexpectedError(QWidget *parent, const std::exception &error);
 
     static bool VerifyHexString(QString str);
 

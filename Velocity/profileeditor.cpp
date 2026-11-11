@@ -848,6 +848,10 @@ void ProfileEditor::on_gamesList_itemSelectionChanged()
         QMessageBox::critical(this, "Error",
                 "An error occurred while loading a game.\n\n" + QString::fromStdString(error));
     }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
+    }
 }
 
 void ProfileEditor::loadGameInfo(int index)

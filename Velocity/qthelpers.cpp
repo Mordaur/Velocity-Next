@@ -46,6 +46,12 @@ void QtHelpers::ParseHexStringBuffer(QString bytes, BYTE *outBuffer, int len)
     }
 }
 
+void QtHelpers::ShowUnexpectedError(QWidget *parent, const std::exception &error)
+{
+    QMessageBox::critical(parent, "Unexpected Error",
+            "The operation failed unexpectedly.\n\n" + QString::fromUtf8(error.what()));
+}
+
 QString QtHelpers::DefaultLocation()
 {
 #if QT_VERSION >= 0x050000

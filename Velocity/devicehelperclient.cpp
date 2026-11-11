@@ -310,6 +310,13 @@ bool HelperClient::connectToEndpoint(QString *error)
         closeSocket();
         return false;
     }
+    catch (const std::exception &exception)
+    {
+        if (error)
+            *error = QString::fromUtf8(exception.what());
+        closeSocket();
+        return false;
+    }
 }
 
 void HelperClient::closeSocket()

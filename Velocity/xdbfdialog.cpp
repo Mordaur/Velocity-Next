@@ -254,6 +254,10 @@ void XdbfDialog::showContextMenu(QPoint p)
                     "An error occurred while cleaning the Gpd.\n\n" + QString::fromStdString(error));
             return;
         }
+        catch (const std::exception &exception)
+        {
+            QtHelpers::ShowUnexpectedError(this, exception);
+        }
         // reload the listing
         ui->treeWidget->clear();
         loadEntries();

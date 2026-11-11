@@ -44,6 +44,10 @@ GameAdderDialog::GameAdderDialog(StfsPackage *package, QWidget *parent, bool dis
         close();
         return;
     }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
+    }
 
     // Generate and clean the PEC temporary path
     pecTempPath = QDir::cleanPath(tempDir.path() + "/" + QUuid::createUuid().toString().remove('{').remove('}').remove('-'));
@@ -708,6 +712,10 @@ void GameAdderDialog::on_pushButton_2_clicked() {
     catch (const std::string &error) {
         QMessageBox::critical(this, "GPD Creation Error", "Error creating gamePlayedCount setting entry:\n" + QString::fromStdString(error));
         return;  // Exit the function if an error occurs
+    }
+    catch (const std::exception &exception)
+    {
+        QtHelpers::ShowUnexpectedError(this, exception);
     }
 
     // Temporary test hook: if settings.network/forceDownload is true (default true), always download
