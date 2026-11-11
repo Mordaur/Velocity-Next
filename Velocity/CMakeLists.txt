@@ -63,6 +63,8 @@ set(SOURCES
   isosectordialog.cpp
   xexdialog.cpp
   xuizdialog.cpp
+  fatxdevicenotifier.cpp
+  profileselectiondialog.cpp
   svodvolumedescriptordialog.cpp
   stfsvolumedescriptordialog.cpp
   themecreationwizard.cpp
@@ -113,6 +115,7 @@ set(UI_FORMS
   isosectordialog.ui
   xexdialog.ui
   xuizdialog.ui
+  profileselectiondialog.ui
   stfsvolumedescriptordialog.ui
   multiprogressdialog.ui
   ytgrdialog.ui

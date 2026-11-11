@@ -19,6 +19,9 @@
 #include <QProgressBar>
 #include <QMdiArea>
 #include <QStandardPaths>
+#include <QStringList>
+
+#include <vector>
 
 // other
 #include <XboxInternals/TypeDefinitions.h>
@@ -60,6 +63,8 @@ public:
     static bool ParseVersionString(QString version, Version *out);
 
     static QString ExecutingDirectory();
+
+    static QStringList StdStringArrayToQStringList(std::vector<std::string> strings);
 
     static void GenAdjustWidgetAppearanceToOS(QWidget *rootWidget);
 

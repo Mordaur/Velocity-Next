@@ -428,4 +428,12 @@ void QtHelpers::ClearErrorStyle(QWidget *widget)
     widget->setStyleSheet("");
 }
 
+QStringList QtHelpers::StdStringArrayToQStringList(std::vector<std::string> strings)
+{
+    QStringList list;
+    for (const auto &value : strings)
+        list.push_back(QString::fromStdString(value));
+    return list;
+}
+
 
