@@ -2,6 +2,7 @@
 
 #include <XboxInternals/TypeDefinitions.h>
 #include "../AvatarAsset/AvatarAssetDefinitions.h"
+#include <ctime>
 #include <iostream>
 #include <vector>
 
@@ -56,17 +57,17 @@ struct SyncList
 {
     vector<SyncEntry> synced;
     vector<SyncEntry> toSync;
-    bool lengthChanged;
+    bool lengthChanged = false;
 
-    XdbfEntry entry;
+    XdbfEntry entry{};
 };
 
 struct SyncData
 {
-    UINT64 nextSyncID, lastSyncID;
-    struct tm *lastSyncedTime;
+    UINT64 nextSyncID = 0, lastSyncID = 0;
+    time_t lastSyncedTime = 0;
 
-    XdbfEntry entry;
+    XdbfEntry entry{};
 };
 
 struct XdbfEntryGroup

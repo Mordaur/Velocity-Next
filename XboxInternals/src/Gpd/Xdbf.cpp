@@ -221,7 +221,7 @@ SyncData Xdbf::readSyncData(XdbfEntry entry)
     data.lastSyncID = io->ReadUInt64();
 
     WINFILETIME time = { io->ReadDword(), io->ReadDword() };
-    data.lastSyncedTime = (tm*)XdbfHelpers::FILETIMEtoTimeT(time);
+    data.lastSyncedTime = XdbfHelpers::FILETIMEtoTimeT(time);
 
     io->SetPosition(pos);
 
@@ -237,7 +237,7 @@ void Xdbf::WriteSyncData(SyncData *data)
     io->Write(data->lastSyncID);
 
     // Write the last time synced
-    WINFILETIME lastSynced = XdbfHelpers::TimeTtoFILETIME((time_t)data->lastSyncedTime);
+    WINFILETIME lastSynced = XdbfHelpers::TimeTtoFILETIME(data->lastSyncedTime);
     io->Write(lastSynced.dwHighDateTime);
     io->Write(lastSynced.dwLowDateTime);
 }
@@ -251,7 +251,7 @@ SyncList Xdbf::readSyncList(XdbfEntry entry)
     // preserve io position
     DWORD pos = (DWORD)io->GetPosition();
 
-    SyncList toReturn;
+    SyncList toReturn{};
     toReturn.entry = entry;
 
     // seek to the beginning of the entry
@@ -759,7 +759,7 @@ void Xdbf::UpdateEntry(XdbfEntry *entry)
     {
         group->syncData.entry = CreateEntry(entry->type, (entry->type == AvatarAward) ? 2 : 0x200000000,
                 0x18);
-        group->syncData.lastSyncedTime = NULL;
+        group->syncData.lastSyncedTime = 0;
         group->syncData.lastSyncID = 0;
         group->syncData.nextSyncID = 1;
     }
