@@ -143,12 +143,16 @@ void FatxDrive::ExtractSecurityBlob(string path)
     io->SetPosition(0x2000);
 
     // allocate memory for the data
-    const size_t bufferSize = static_cast<size_t>(securityBlob.msLogoSize + 0x204);
-    std::vector<BYTE> buffer(bufferSize);
+    const UINT64 blobSize = static_cast<UINT64>(securityBlob.msLogoSize) + 0x204;
+    if (blobSize > 0xFFFFFFFFULL)
+        throw std::string("FATX: Security blob size overflow.\n");
+
+    const DWORD blobSize32 = static_cast<DWORD>(blobSize);
+    std::vector<BYTE> buffer(static_cast<size_t>(blobSize));
 
     // read in the data
-    io->ReadBytes(buffer.data(), securityBlob.msLogoSize + 0x204);
-    outFile.WriteBytes(buffer.data(), securityBlob.msLogoSize + 0x204);
+    io->ReadBytes(buffer.data(), blobSize32);
+    outFile.WriteBytes(buffer.data(), blobSize32);
     outFile.Flush();
 
     outFile.Close();
@@ -162,20 +166,24 @@ void FatxDrive::ReplaceSecurityBlob(std::string path)
     // open the security blob
     FileIO inFile(path);
 
+    const UINT64 blobSize = static_cast<UINT64>(securityBlob.msLogoSize) + 0x204;
+    if (blobSize > 0xFFFFFFFFULL)
+        throw std::string("FATX: Security blob size overflow.\n");
+
     // verify the file size
-    if (inFile.Length() != (securityBlob.msLogoSize + 0x204))
+    if (inFile.Length() != blobSize)
         throw std::string("FATX: Invalid security blob, size mismatch.\n");
 
     // seek to the beginning of the security blob
     io->SetPosition(0x2000);
 
     // allocate memory for the data
-    const size_t bufferSize = static_cast<size_t>(securityBlob.msLogoSize + 0x204);
-    std::vector<BYTE> buffer(bufferSize);
+    const DWORD blobSize32 = static_cast<DWORD>(blobSize);
+    std::vector<BYTE> buffer(static_cast<size_t>(blobSize));
     inFile.SetPosition(0);
-    inFile.ReadBytes(buffer.data(), securityBlob.msLogoSize + 0x204);
+    inFile.ReadBytes(buffer.data(), blobSize32);
 
-    io->WriteBytes(buffer.data(), securityBlob.msLogoSize + 0x204);
+    io->WriteBytes(buffer.data(), blobSize32);
     io->Flush();
 
     inFile.Close();
