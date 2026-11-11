@@ -47,7 +47,7 @@ public:
 };
 
 DeviceIO::DeviceIO(std::string devicePath) :
-    impl(std::make_unique<Impl>()), lastReadOffset(-1)
+    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1)
 {
     // convert it to a wstring
     std::wstring wsDevicePath;
@@ -58,7 +58,7 @@ DeviceIO::DeviceIO(std::string devicePath) :
 }
 
 DeviceIO::DeviceIO(std::wstring devicePath) :
-    impl(std::make_unique<Impl>()), lastReadOffset(-1)
+    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1)
 {
     // load the device
     loadDevice(devicePath);
