@@ -16,6 +16,9 @@ public:
     Ytgr(FileIO *io);
     ~Ytgr();
 
+    Ytgr(const Ytgr &) = delete;
+    Ytgr &operator=(const Ytgr &) = delete;
+
     DWORD magic;
     Version XSignerMinimumVersion;
     DWORD structSize;

@@ -25,6 +25,9 @@ public:
     Account(std::string path, bool decrypt = true, ConsoleType type = Retail);
     ~Account(void);
 
+    Account(const Account &) = delete;
+    Account &operator=(const Account &) = delete;
+
     // Description: returns true if the player has a passcode, false otherwise
     bool IsPasscodeEnabled();
 
