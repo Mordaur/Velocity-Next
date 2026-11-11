@@ -168,12 +168,21 @@ void IsoDialog::loadIsoContents(const QString& path) {
     sectorToolButton_->setEnabled(true);
 
     const auto& info = iso_->info();
-    QString xgdVersion = QString::fromStdString(iso_->GetXGDVersion());
-    QString sizeStr = formatSize(info.imageSize);
-    setWindowTitle(tr("Xbox 360 ISO Browser - %1 (%2) - %3")
-                   .arg(QFileInfo(path).fileName())
-                   .arg(xgdVersion)
-                   .arg(sizeStr));
+    const QString fileName = QFileInfo(path).fileName();
+    const QString xgdVersion = QString::fromStdString(iso_->GetXGDVersion());
+    const QString sizeStr = formatSize(info.imageSize);
+    const QString titleName = QString::fromStdWString(iso_->GetTitleName());
+
+    if (titleName.isEmpty())
+    {
+        setWindowTitle(tr("Xbox 360 ISO Browser - %1 (%2) - %3")
+                       .arg(fileName, xgdVersion, sizeStr));
+    }
+    else
+    {
+        setWindowTitle(tr("Xbox 360 ISO Browser - %1 [%2] (%3) - %4")
+                       .arg(fileName, titleName, xgdVersion, sizeStr));
+    }
     
     if (statusBar_) {
         statusBar_->showMessage(tr("ISO parsed successfully"), 5000);
