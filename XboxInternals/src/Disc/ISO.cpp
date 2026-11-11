@@ -26,8 +26,8 @@ struct IsoImage::Impl {
     std::unique_ptr<BaseIO> io;
 };
 
-IsoImage::IsoImage() : impl_(new Impl()), didReadFileListing(false), gdfxHeaderAddress(0), 
-                       titleName(L""), xgdVersion("") {}
+IsoImage::IsoImage() : impl_(new Impl()), didReadFileListing(false), gdfxHeader{},
+                       gdfxHeaderAddress(0), titleName(L""), xgdVersion("") {}
 
 IsoImage::~IsoImage() {
     close();
@@ -331,7 +331,7 @@ std::vector<IsoEntry> IsoImage::listEntries() const {
     std::function<void(const std::vector<GdfxFileEntry>&, const std::string&)> convertEntries;
     convertEntries = [&](const std::vector<GdfxFileEntry>& gdfxList, const std::string& parentPath) {
         for (const auto& gdfx : gdfxList) {
-            IsoEntry legacy;
+            IsoEntry legacy{};
             legacy.name = gdfx.name;
             legacy.path = parentPath.empty() ? gdfx.name : parentPath + "/" + gdfx.name;
             legacy.type = (gdfx.attributes & GdfxDirectory) ? IsoEntryType::Directory : IsoEntryType::File;

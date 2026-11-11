@@ -1,5 +1,32 @@
 #include <XboxInternals/Account/Account.h>
 
+#include <cstdlib>
+
+namespace
+{
+    // Create a unique file for the intermediate (de)crypted account payload.
+    std::string GenerateTempAccountPath()
+    {
+#ifdef _WIN32
+        char *temp = _tempnam(NULL, NULL);
+        if (!temp)
+            throw std::string("Account: Failed to generate temporary file name.\n");
+
+        std::string path(temp);
+        free(temp);
+        return path;
+#else
+        char path[] = "/tmp/velocity_account_XXXXXX";
+        const int fd = mkstemp(path);
+        if (fd == -1)
+            throw std::string("Account: Failed to generate temporary file name.\n");
+
+        close(fd);
+        return std::string(path);
+#endif
+    }
+}
+
 Account::Account(std::string path, bool decrypt, ConsoleType type) : ioPassedIn(false),
     decrypt(decrypt), path(path), type(type)
 {
@@ -243,23 +270,10 @@ void Account::decryptAccount(std::string encryptedPath, std::string *outPath, Co
 
 
     // Write the payload
-#ifdef _WIN32
-    // Opening a file using the path returned by tmpnam() may result in a "permission denied" error on Windows.
-    // Not sure why it happens but tweaking the manifest/UAC properties makes a difference.
-    char *outPath_c = _tempnam(NULL, NULL);
-    if (!outPath_c)
-        throw string("Account: Failed to generate temporary file name.\n");
-    *outPath = string(outPath_c);
-    free(outPath_c);
-    outPath_c = NULL;
-#else
-    char outPath_c[] = "/tmp/velocity_account_XXXXXX";
-    int fd = mkstemp(outPath_c);
-    if (fd == -1)
-        throw string("Account: Failed to generate temporary file name.\n");
-    close(fd);
-    *outPath = string(outPath_c);
-#endif
+    if (outPath == nullptr)
+        throw std::string("Account: decryptAccount requires an output path.\n");
+
+    *outPath = GenerateTempAccountPath();
 
     FileIO decrypted(*outPath, true);
     decrypted.Write(payload, 0x17C);
@@ -295,26 +309,13 @@ void Account::encryptAccount(std::string decryptedPath, ConsoleType type, std::s
     hmacSha1->update(decryptedData, 0x184);
     hmacSha1->final(hmacHash);
 
-    // begin writing the payload
-    if (outPath == NULL)
+    // Where to write the encrypted account. A caller that passes no destination
+    // gets a temporary file; the previous code dereferenced the null pointer.
+    std::string generatedPath;
+    if (outPath == nullptr)
     {
-#ifdef _WIN32
-        // Opening a file using the path returned by tmpnam() may result in a "permission denied" error on Windows.
-        // Not sure why it happens but tweaking the manifest/UAC properties makes a difference.
-        char *outPath_c = _tempnam(NULL, NULL);
-        if (!outPath_c)
-            throw string("Account: Failed to generate temporary file name.\n");
-        *outPath = string(outPath_c);
-        free(outPath_c);
-        outPath_c = NULL;
-#else
-        char outPath_c[] = "/tmp/velocity_account_XXXXXX";
-        int fd = mkstemp(outPath_c);
-        if (fd == -1)
-            throw string("Account: Failed to generate temporary file name.\n");
-        close(fd);
-        *outPath = string(outPath_c);
-#endif
+        generatedPath = GenerateTempAccountPath();
+        outPath = &generatedPath;
     }
 
     decIo.Close();
