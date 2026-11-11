@@ -1,5 +1,6 @@
 #include <XboxInternals/IO/DeviceIO.h>
 
+#include <cerrno>
 #include <memory>
 #include <string.h>
 
@@ -32,6 +33,44 @@
 #define SECTOR_SIZE DKIOCGETBLOCKSIZE
 #endif
 
+namespace
+{
+    DeviceErrorCode mapPosixError(int error)
+    {
+        switch (error)
+        {
+        case EACCES:
+        case EPERM:
+            return DeviceErrorCode::PermissionDenied;
+        case ENOENT:
+            return DeviceErrorCode::NotFound;
+        case EBUSY:
+            return DeviceErrorCode::Busy;
+        default:
+            return DeviceErrorCode::IoError;
+        }
+    }
+
+#ifdef _WIN32
+    DeviceErrorCode mapWindowsError(DWORD error)
+    {
+        switch (error)
+        {
+        case ERROR_ACCESS_DENIED:
+            return DeviceErrorCode::PermissionDenied;
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+            return DeviceErrorCode::NotFound;
+        case ERROR_BUSY:
+        case ERROR_SHARING_VIOLATION:
+            return DeviceErrorCode::Busy;
+        default:
+            return DeviceErrorCode::IoError;
+        }
+    }
+#endif
+}
+
 class DeviceIO::Impl
 {
 public:
@@ -46,22 +85,28 @@ public:
 #endif
 };
 
-DeviceIO::DeviceIO(std::string devicePath) :
+DeviceIO::DeviceIO(std::string devicePath, DeviceErrorCode *error) :
     impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1), readOnly(false)
 {
+    if (error)
+        *error = DeviceErrorCode::None;
+
     // convert it to a wstring
     std::wstring wsDevicePath;
     wsDevicePath.assign(devicePath.begin(), devicePath.end());
 
     // load the device
-    loadDevice(wsDevicePath);
+    loadDevice(wsDevicePath, error);
 }
 
-DeviceIO::DeviceIO(std::wstring devicePath) :
+DeviceIO::DeviceIO(std::wstring devicePath, DeviceErrorCode *error) :
     impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1), readOnly(false)
 {
+    if (error)
+        *error = DeviceErrorCode::None;
+
     // load the device
-    loadDevice(devicePath);
+    loadDevice(devicePath, error);
 }
 
 DeviceIO::~DeviceIO()
@@ -391,7 +436,7 @@ void DeviceIO::Close()
 #endif
 }
 
-void DeviceIO::loadDevice(std::wstring devicePath)
+void DeviceIO::loadDevice(std::wstring devicePath, DeviceErrorCode *error)
 {
     readOnly = false;
 
@@ -425,8 +470,13 @@ void DeviceIO::loadDevice(std::wstring devicePath)
     }
 
     if (impl->deviceHandle == INVALID_HANDLE_VALUE)
+    {
+        const DWORD lastError = GetLastError();
+        if (error)
+            *error = mapWindowsError(lastError);
         throw std::string("DeviceIO: Could not open device handle (error " +
-                          std::to_string(GetLastError()) + ").\n");
+                          std::to_string(lastError) + ").\n");
+    }
 #else
 
     // need to convert this into a regular string, since open takes a char*
@@ -445,7 +495,11 @@ void DeviceIO::loadDevice(std::wstring devicePath)
     }
 
     if (impl->device == -1)
+    {
+        if (error)
+            *error = mapPosixError(firstErrno);
         throw std::string("DeviceIO: Error opening device.\n" + std::string(strerror(firstErrno)));
+    }
 #endif
 }
 

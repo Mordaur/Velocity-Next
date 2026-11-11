@@ -24,18 +24,22 @@
     #endif
 #endif
 
-std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives()
+std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives(
+        std::vector<DeviceDiagnostic> *diagnostics)
 {
     std::vector<std::wstring> logicalDrivePaths = getLogicalDrives();
     std::vector<std::unique_ptr<FatxDrive>> drives;
 
-    auto devices = getPhysicalDisks();
+    auto physicalDiskPaths = getPhysicalDiskPaths();
 
-    for (auto &device : devices)
+    for (const auto &path : physicalDiskPaths)
     {
+        DeviceErrorCode errorCode = DeviceErrorCode::None;
         try
         {
-            if (device && device->Length() > HddOffsets::Data)
+            auto device = std::make_unique<DeviceIO>(path, &errorCode);
+
+            if (device->Length() > HddOffsets::Data)
             {
                 device->SetPosition(HddOffsets::Data);
                 if (device->ReadDword() == FATX_MAGIC)
@@ -44,8 +48,25 @@ std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives()
                 }
             }
         }
+        catch (const std::string &error)
+        {
+            if (diagnostics)
+            {
+                diagnostics->push_back(DeviceDiagnostic{
+                        path,
+                        errorCode == DeviceErrorCode::None ? DeviceErrorCode::IoError : errorCode,
+                        error});
+            }
+        }
         catch (...)
         {
+            if (diagnostics)
+            {
+                diagnostics->push_back(DeviceDiagnostic{
+                        path,
+                        errorCode == DeviceErrorCode::None ? DeviceErrorCode::IoError : errorCode,
+                        "unknown device error"});
+            }
         }
     }
 
@@ -132,64 +153,41 @@ std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives()
     return drives;
 }
 
-std::vector<std::unique_ptr<DeviceIO>> FatxDriveDetection::getPhysicalDisks()
+std::vector<std::wstring> FatxDriveDetection::getPhysicalDiskPaths()
 {
-    std::vector<std::unique_ptr<DeviceIO>> physicalDiskPaths;
-    std::wstringstream ss;
+    std::vector<std::wstring> physicalDiskPaths;
 
 #ifdef _WIN32
     for (int i = 0; i < 16; i++)
     {
+        std::wstringstream ss;
         ss << L"\\\\.\\PHYSICALDRIVE" << i;
-
-        HANDLE drive = CreateFile(ss.str().c_str(), GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-        if (drive != INVALID_HANDLE_VALUE)
-        {
-            CloseHandle(drive);
-
-            physicalDiskPaths.push_back(std::make_unique<DeviceIO>(ss.str()));
-        }
-
-        ss.str(std::wstring());
+        physicalDiskPaths.push_back(ss.str());
     }
 #else
-    DIR *dir = NULL;
-    dirent *ent = NULL;
-    dir = opendir("/dev/");
+    DIR *dir = opendir("/dev/");
     if (dir != NULL)
     {
-        // search for valid drives
-        while ((ent = readdir(dir)) != NULL)
+        while (dirent *ent = readdir(dir))
         {
+            const std::string name = ent->d_name;
 #ifdef __APPLE__
-            // the disks start with 'disk'
-            if (std::string(ent->d_name).substr(0, 4) == "disk")
-#elif __linux
-            // the disks start with 'sd'
-            if (std::string(ent->d_name).substr(0, 2) == "sd")
-#endif
+            const bool wholeDisk = name.rfind("disk", 0) == 0 && name.find('s', 4) == std::string::npos;
+            if (wholeDisk)
             {
-                std::ostringstream ss;
-#ifdef __APPLE__
-                ss << "/dev/r";
-#elif __linux
-                ss << "/dev/";
-#endif
-                ss << ent->d_name;
-                std::string diskPath = ss.str();
-
-                int device;
-                if ((device = open(diskPath.c_str(), O_RDWR)) > 0)
-                {
-                    close(device);
-
-                    physicalDiskPaths.push_back(std::make_unique<DeviceIO>(diskPath));
-                }
+                physicalDiskPaths.push_back(L"/dev/r" + std::wstring(name.begin(), name.end()));
             }
+#elif __linux
+            const bool wholeDisk = name.rfind("sd", 0) == 0 &&
+                    name.find_first_of("0123456789") == std::string::npos;
+            if (wholeDisk)
+            {
+                physicalDiskPaths.push_back(L"/dev/" + std::wstring(name.begin(), name.end()));
+            }
+#endif
         }
-    }
-    if (dir)
         closedir(dir);
+    }
 #endif
 
     return physicalDiskPaths;

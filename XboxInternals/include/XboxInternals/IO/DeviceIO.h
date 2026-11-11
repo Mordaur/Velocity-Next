@@ -9,6 +9,7 @@
 #include <memory>
 
 #include <XboxInternals/IO/BaseIO.h>
+#include <XboxInternals/IO/DeviceError.h>
 #include "../Fatx/FatxHelpers.h"
 #include <XboxInternals/Export.h>
 
@@ -16,8 +17,8 @@ class XBOXINTERNALS_EXPORT DeviceIO : public BaseIO
 {
 public:
     // Platform-agnostic constructors
-    DeviceIO(std::string devicePath);
-    DeviceIO(std::wstring devicePath);
+    DeviceIO(std::string devicePath, DeviceErrorCode *error = nullptr);
+    DeviceIO(std::wstring devicePath, DeviceErrorCode *error = nullptr);
     virtual ~DeviceIO();
 
     void ReadBytes(BYTE *outBuffer, DWORD len);
@@ -37,7 +38,7 @@ public:
     bool IsReadOnly() const { return readOnly; }
 
 private:
-    void loadDevice(std::wstring devicePath);
+    void loadDevice(std::wstring devicePath, DeviceErrorCode *error);
 
     UINT64 realPosition();
 

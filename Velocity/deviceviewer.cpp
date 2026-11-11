@@ -3,26 +3,7 @@
 
 #include <QDebug>
 
-#ifdef __linux__
-#include <cerrno>
-#include <filesystem>
-#include <unistd.h>
 
-static bool hasUnreadableBlockDevice()
-{
-    std::error_code ec;
-    for (const auto &entry : std::filesystem::directory_iterator("/dev", ec))
-    {
-        const std::string name = entry.path().filename().string();
-        if (name.rfind("sd", 0) != 0)
-            continue;
-
-        if (::access(entry.path().c_str(), R_OK | W_OK) != 0 && errno == EACCES)
-            return true;
-    }
-    return false;
-}
-#endif
 
 DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
         QList<QAction *> gameActions, QWidget *parent) :
@@ -371,26 +352,35 @@ void DeviceViewer::LoadDrives()
 
     try
     {
-        loadedDrives = FatxDriveDetection::GetAllFatxDrives();
+        std::vector<DeviceDiagnostic> diagnostics;
+        loadedDrives = FatxDriveDetection::GetAllFatxDrives(&diagnostics);
+
         if (loadedDrives.size() < 1)
         {
             statusBar->showMessage("No drives detected", 3000);
 
-#ifdef __linux__
-            if (geteuid() != 0 && hasUnreadableBlockDevice())
+            bool permissionDenied = false;
+            QString deniedPath;
+            for (const auto &diagnostic : diagnostics)
+            {
+                if (diagnostic.code == DeviceErrorCode::PermissionDenied)
+                {
+                    permissionDenied = true;
+                    deniedPath = QString::fromStdWString(diagnostic.path);
+                    break;
+                }
+            }
+
+            if (permissionDenied)
             {
                 QMessageBox::warning(this, "Device Access Required",
-                        "No accessible Xbox 360 drive was found.\n\n"
-                        "If a drive is connected, Velocity needs permission to read raw block devices.\n\n"
-                        "Option 1 — add your user to the disk group:\n"
-                        "  sudo usermod -aG disk $USER\n"
-                        "Then log out and back in.\n\n"
-                        "Option 2 — run the app with sudo for a one-off session:\n"
-                        "  sudo ./VelocityNext\n\n"
-                        "Windows: browsing uses read-only access; writes need an elevated\n"
-                        "session. macOS: launch the app with sudo.");
+                        "Raw device access was denied" +
+                        (deniedPath.isEmpty() ? QString(".") : " for " + deniedPath + ".") +
+                        "\n\n"
+                        "Linux: run with sudo or add your user to the disk group.\n"
+                        "Windows: browsing may work read-only; writes need elevation or the helper.\n"
+                        "macOS: run with sudo.");
             }
-#endif
             return;
         }
 
