@@ -191,8 +191,11 @@ void GpdUploader::sendRequest(QString filePath, QString awardFilePath, QString g
 
         // open the award file (if there is one)
         QFile awardFile(awardFilePath);
-        if (awardFilePath != "")
-            awardFile.open(QIODevice::ReadWrite);
+        if (awardFilePath != "" && !awardFile.open(QIODevice::ReadWrite))
+        {
+            qDebug() << titleID << " Error: could not open award file" << awardFilePath;
+            return;
+        }
 
         // initialize boundary
         QString boundary = "-----------------------------7d935033608e2";

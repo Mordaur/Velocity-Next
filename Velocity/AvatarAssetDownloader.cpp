@@ -1,5 +1,7 @@
 #include "AvatarAssetDownloader.h"
 
+#include <QDebug>
+
 AvatarAssetDownloader::AvatarAssetDownloader(QString titleID, QString guid, QObject *parent) :
     QObject(parent), titleID(titleID), guid(guid), v1TempPath(QString("")), v2TempPath(QString("")),
     v1Done(false), v2Done(false)
@@ -72,17 +74,26 @@ void AvatarAssetDownloader::onRequestFinished(QNetworkReply *aReply)
 
     QString tempPath = QDir::tempPath() + "/" + QUuid::createUuid().toString().replace("{",
             "").replace("}", "").replace("-", "");
+
+    QFile assetFile(tempPath);
+    if (!assetFile.open(QFile::Truncate | QFile::WriteOnly))
+    {
+        // Leave the path empty so the caller does not try to inject a file that
+        // was never written.
+        qWarning() << "AvatarAssetDownloader: could not write" << tempPath;
+        tempPath.clear();
+    }
+    else
+    {
+        assetFile.write(aReply->readAll());
+        assetFile.flush();
+        assetFile.close();
+    }
+
     if (!v1Done)
         v1TempPath = tempPath;
     else
         v2TempPath = tempPath;
-
-    QFile v1File(tempPath);
-    v1File.open(QFile::Truncate | QFile::WriteOnly);
-    v1File.write(aReply->readAll());
-
-    v1File.flush();
-    v1File.close();
 
     v1Done = true;
 
