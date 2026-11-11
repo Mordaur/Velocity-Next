@@ -42,6 +42,7 @@
 #include "ytgrdialog.h"
 #include "deviceviewer.h"
 #include "isodialog.h"
+#include "xexdialog.h"
 
 // theme manager
 #include "thememanager.h"
@@ -57,6 +58,7 @@
 #include <XboxInternals/Disc/Svod.h>
 #include <XboxInternals/AvatarAsset/Ytgr.h>
 #include <XboxInternals/Disc/Svod.h>
+#include <XboxInternals/Xex/Xex.h>
 #include <XboxInternals/Xex/Xuiz.h>
 #include <XboxInternals/IO/DeviceIO.h>
 
@@ -142,6 +144,8 @@ private slots:
     void on_actionDevice_Viewer_triggered();
 
     void on_actionISO_triggered();
+
+    void on_actionXEX_triggered();
 
     void on_actionXUIZ_triggered();
 

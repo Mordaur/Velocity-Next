@@ -588,9 +588,20 @@ void MainWindow::LoadFiles(QList<QUrl> &filePaths)
 
                     break;
                 }
+                case 0x58455832:    // XEX2
+                {
+                    Xex *xex = new Xex(fileName);
+
+                    XexDialog *dialog = new XexDialog(xex, this);
+                    dialog->setAttribute(Qt::WA_DeleteOnClose);
+                    QtHelpers::AddSubWindow(ui->mdiArea, dialog);
+                    dialog->show();
+
+                    break;
+                }
                 default:
                     QMessageBox::warning(this, "Unknown File Format",
-                            "The following file is an unknown format. Velocity can only read STFS, SVOD, ISO, Xdbf, Ytgr, and STRB files.\n\n"
+                            "The following file is an unknown format. Velocity can only read STFS, SVOD, ISO, Xdbf, XEX, Ytgr, and STRB files.\n\n"
                             + QString::fromStdString(fileName));
                     break;
             }
@@ -999,6 +1010,35 @@ void MainWindow::on_actionYTGR_triggered()
         ui->statusBar->showMessage("");
         QMessageBox::critical(this, "Ytgr Error",
                 "An error has occurred while parsing a Ytgr header.\n\n" + QString::fromStdString(error));
+    }
+}
+
+void MainWindow::on_actionXEX_triggered()
+{
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Open Xbox 360 Executable"),
+            QtHelpers::DefaultLocation(),
+            "Xbox 360 Executable (*.xex);;All Files (*)");
+
+    if (fileName.isEmpty())
+        return;
+
+    try
+    {
+        Xex *xex = new Xex(fileName.toStdString());
+        XexDialog *dialog = new XexDialog(xex, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        QtHelpers::AddSubWindow(ui->mdiArea, dialog);
+        dialog->show();
+    }
+    catch (const std::string &error)
+    {
+        QMessageBox::critical(this, "XEX Error",
+                "An error has occurred while opening the XEX file.\n\n" + QString::fromStdString(error));
+    }
+    catch (const std::exception &error)
+    {
+        QMessageBox::critical(this, "XEX Error",
+                "An error has occurred while opening the XEX file.\n\n" + QString::fromStdString(error.what()));
     }
 }
 
