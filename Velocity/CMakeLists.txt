@@ -62,6 +62,7 @@ set(SOURCES
   isodialog.cpp
   isosectordialog.cpp
   xexdialog.cpp
+  xuizdialog.cpp
   svodvolumedescriptordialog.cpp
   stfsvolumedescriptordialog.cpp
   themecreationwizard.cpp
@@ -111,6 +112,7 @@ set(UI_FORMS
   svodvolumedescriptordialog.ui
   isosectordialog.ui
   xexdialog.ui
+  xuizdialog.ui
   stfsvolumedescriptordialog.ui
   multiprogressdialog.ui
   ytgrdialog.ui

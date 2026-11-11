@@ -1052,30 +1052,23 @@ void MainWindow::on_actionXUIZ_triggered()
 
     try
     {
-        Xuiz xuiz(filePath.toStdString());
-        std::vector<XuizFileEntry> files = xuiz.GetFiles();
-        
-        QString message = QString("XUIZ Package: %1\n\nContains %2 files:\n\n")
-            .arg(QFileInfo(filePath).fileName())
-            .arg(files.size());
-        
-        for (size_t i = 0; i < files.size() && i < 20; i++)
-        {
-            message += QString("  %1 (%2 bytes)\n")
-                .arg(QString::fromStdString(files[i].path))
-                .arg(files[i].size);
-        }
-        
-        if (files.size() > 20)
-            message += QString("\n  ... and %1 more files").arg(files.size() - 20);
-        
-        QMessageBox::information(this, "XUIZ Package Contents", message);
+        Xuiz *xuiz = new Xuiz(filePath.toStdString());
+        XuizDialog *dialog = new XuizDialog(ui->statusBar, xuiz, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        QtHelpers::AddSubWindow(ui->mdiArea, dialog);
+        dialog->show();
     }
-    catch (string error)
+    catch (const std::string &error)
     {
         ui->statusBar->showMessage("");
         QMessageBox::critical(this, "XUIZ Error",
                 "An error occurred while opening the XUIZ package.\n\n" + QString::fromStdString(error));
+    }
+    catch (const std::exception &error)
+    {
+        ui->statusBar->showMessage("");
+        QMessageBox::critical(this, "XUIZ Error",
+                "An error occurred while opening the XUIZ package.\n\n" + QString::fromStdString(error.what()));
     }
 }
 

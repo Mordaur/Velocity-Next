@@ -43,6 +43,7 @@
 #include "deviceviewer.h"
 #include "isodialog.h"
 #include "xexdialog.h"
+#include "xuizdialog.h"
 
 // theme manager
 #include "thememanager.h"
