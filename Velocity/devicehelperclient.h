@@ -34,14 +34,26 @@ public:
     void close(uint32_t handle);
 
 private:
+#if defined(_WIN32)
+    using NativeStream = void *;
+    static constexpr NativeStream kInvalidStream = nullptr;
+#else
+    using NativeStream = int;
+    static constexpr NativeStream kInvalidStream = -1;
+#endif
+
     QProcess process;
     QString endpoint;
-    int socketFd = -1;
+    NativeStream stream = kInvalidStream;
+#if defined(_WIN32)
+    void *helperProcess = nullptr;
+#endif
     uint32_t nextRequestId = 1;
 
     void sendFrame(uint16_t type, uint32_t requestId, const QByteArray &payload);
     QByteArray receiveFrame(uint16_t expectedType, uint32_t requestId);
     bool connectToEndpoint(QString *error);
+    bool isElevationPending() const;
     void closeSocket();
 };
 
@@ -58,7 +70,7 @@ public:
     void ReadBytes(BYTE *outBuffer, DWORD len) override;
     void WriteBytes(BYTE *buffer, DWORD len) override;
 
-    void Close() override;
+    void Close() noexcept override;
     void Flush() override;
 
 private:

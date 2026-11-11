@@ -1,9 +1,6 @@
 #include "deviceviewer.h"
 #include "ui_deviceviewer.h"
 
-#include <QDebug>
-#include <QPushButton>
-
 
 
 DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
@@ -361,79 +358,60 @@ void DeviceViewer::LoadDrives()
             statusBar->showMessage("No drives detected", 3000);
 
             bool permissionDenied = false;
-            QString deniedPath;
             for (const auto &diagnostic : diagnostics)
             {
                 if (diagnostic.code == DeviceErrorCode::PermissionDenied)
                 {
                     permissionDenied = true;
-                    deniedPath = QString::fromStdWString(diagnostic.path);
                     break;
                 }
             }
 
             if (permissionDenied)
             {
-                QMessageBox box(this);
-                box.setIcon(QMessageBox::Warning);
-                box.setWindowTitle("Device Access Required");
-                box.setText("Raw device access was denied" +
-                        (deniedPath.isEmpty() ? QString(".") : " for " + deniedPath + "."));
-                box.setInformativeText(
-                        "Linux: use the privileged helper, run with sudo, or add your user "
-                        "to the disk group.\n"
-                        "Windows: browsing may work read-only; writes need elevation or the helper.\n"
-                        "macOS: run with sudo.");
+                statusBar->showMessage("Requesting administrator access...", 0);
 
-                QPushButton *helperButton = box.addButton("Use Privileged Helper",
-                                                          QMessageBox::AcceptRole);
-                box.addButton(QMessageBox::Cancel);
-                box.exec();
+                auto client = std::make_shared<HelperClient>();
+                QString helperError;
 
-                if (box.clickedButton() == helperButton)
+                if (!client->start(&helperError))
                 {
-                    auto client = std::make_shared<HelperClient>();
-                    QString helperError;
-                    if (!client->start(&helperError))
-                    {
-                        QMessageBox::critical(this, "Privileged Helper",
-                                "Could not start the privileged helper.\n\n" + helperError);
-                        return;
-                    }
-
-                    for (const auto &path : FatxDriveDetection::GetPhysicalDiskPaths())
-                    {
-                        try
-                        {
-                            auto device = std::make_unique<HelperDeviceIO>(
-                                    client, client->openDevice(path, true));
-                            auto drive = std::make_unique<FatxDrive>(std::move(device), FatxHarddrive);
-
-                            if (!drive->GetPartitions().empty())
-                                loadedDrives.push_back(std::move(drive));
-                        }
-                        catch (const std::string &)
-                        {
-                            // Not a FATX device; try the next candidate.
-                        }
-                        catch (...)
-                        {
-                        }
-                    }
-
-                    if (loadedDrives.empty())
-                    {
-                        QMessageBox::critical(this, "Privileged Helper",
-                                "The helper started, but no accessible FATX drive was found.");
-                        return;
-                    }
-
-                    helperClient = client;
-                }
-                else
-                {
+                    statusBar->clearMessage();
+                    QMessageBox::critical(this, "Privileged Helper",
+                            "Could not obtain raw device access.\n\n" + helperError);
                     return;
                 }
+
+                for (const auto &path : FatxDriveDetection::GetPhysicalDiskPaths())
+                {
+                    try
+                    {
+                        const auto handle = client->openDevice(path, true);
+                        auto device = std::make_unique<HelperDeviceIO>(client, handle);
+                        auto drive = std::make_unique<FatxDrive>(std::move(device), FatxHarddrive);
+
+                        if (!drive->GetPartitions().empty())
+                            loadedDrives.push_back(std::move(drive));
+                    }
+                    catch (const std::string &)
+                    {
+                        // Not a FATX device; try the next candidate.
+                    }
+                    catch (...)
+                    {
+                    }
+                }
+
+                statusBar->clearMessage();
+
+                if (loadedDrives.empty())
+                {
+                    QMessageBox::critical(this, "Privileged Helper",
+                            "The helper started, but no accessible FATX drive was found.");
+                    return;
+                }
+
+                helperClient = client;
             }
             else
             {

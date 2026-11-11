@@ -72,8 +72,18 @@ namespace velocity::helper
     bool decode_header(const uint8_t *data, size_t length, Header &header);
     std::vector<uint8_t> encode_error(ErrorCode code, const std::string &message);
 
-    bool read_full(int fd, void *data, size_t length);
-    bool write_full(int fd, const void *data, size_t length);
+#if defined(_WIN32)
+    // Win32 HANDLE (named pipe or device handle).
+    using StreamHandle = void *;
+#else
+    // POSIX file descriptor.
+    using StreamHandle = int;
+#endif
+
+    // Blocking helpers used for IPC framing. They return false on a closed or
+    // broken stream and only succeed after the full buffer has been produced.
+    bool read_full(StreamHandle stream, void *data, size_t length);
+    bool write_full(StreamHandle stream, const void *data, size_t length);
 } // namespace velocity::helper
 
 #endif // VELOCITY_DEVICE_HELPER_PROTOCOL_H

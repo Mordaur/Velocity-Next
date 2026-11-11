@@ -1,22 +1,31 @@
 #include "devicehelperclient.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
-#include <QThread>
 #include <QUuid>
 
 #include <algorithm>
 #include <cstring>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "protocol.h"
 
-#ifndef _WIN32
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#else
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -27,41 +36,30 @@ namespace vh = velocity::helper;
 
 namespace
 {
-#ifndef _WIN32
-    bool writeAll(int fd, const void *data, size_t length)
+    QString helperBinaryName()
     {
-        const auto *bytes = static_cast<const uint8_t *>(data);
-        size_t offset = 0;
-        while (offset < length)
-        {
-            const ssize_t count = ::write(fd, bytes + offset, length - offset);
-            if (count < 0)
-            {
-                if (errno == EINTR)
-                    continue;
-                return false;
-            }
-            offset += static_cast<size_t>(count);
-        }
-        return true;
+#if defined(_WIN32)
+        return QStringLiteral("velocity-device-helper.exe");
+#else
+        return QStringLiteral("velocity-device-helper");
+#endif
     }
 
-    bool readAll(int fd, void *data, size_t length)
+#if defined(_WIN32)
+    QString windowsErrorText(unsigned long error)
     {
-        auto *bytes = static_cast<uint8_t *>(data);
-        size_t offset = 0;
-        while (offset < length)
-        {
-            const ssize_t count = ::read(fd, bytes + offset, length - offset);
-            if (count <= 0)
-            {
-                if (count < 0 && errno == EINTR)
-                    continue;
-                return false;
-            }
-            offset += static_cast<size_t>(count);
-        }
-        return true;
+        wchar_t *buffer = nullptr;
+        const unsigned long length = FormatMessageW(
+                FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+                        FORMAT_MESSAGE_IGNORE_INSERTS,
+                nullptr, error, 0, reinterpret_cast<wchar_t *>(&buffer), 0, nullptr);
+
+        QString text = length > 0 ? QString::fromWCharArray(buffer, static_cast<int>(length))
+                                  : QString("Windows error %1").arg(error);
+        if (buffer)
+            LocalFree(buffer);
+
+        return text.trimmed();
     }
 #endif
 }
@@ -75,68 +73,156 @@ HelperClient::~HelperClient()
 
 bool HelperClient::isRunning() const
 {
-    return socketFd >= 0;
+    return stream != kInvalidStream;
 }
 
 bool HelperClient::start(QString *error)
 {
-#ifdef _WIN32
-    if (error)
-        *error = "The Windows device helper transport is not implemented yet.";
-    return false;
-#else
     const QString helperPath =
-            QCoreApplication::applicationDirPath() + "/velocity-device-helper";
+            QCoreApplication::applicationDirPath() + "/" + helperBinaryName();
     if (!QFileInfo::exists(helperPath))
     {
         if (error)
-            *error = "velocity-device-helper was not found next to the executable.";
+            *error = helperBinaryName() + " was not found next to the executable.";
         return false;
     }
 
-    const QString pkexec = QStandardPaths::findExecutable("pkexec");
-    if (pkexec.isEmpty())
+#if defined(_WIN32)
+    endpoint = QString("velocity-device-helper-%1-%2")
+                       .arg(QCoreApplication::applicationPid())
+                       .arg(QUuid::createUuid().toString(QUuid::WithoutBraces).remove('-'));
+
+    const std::wstring helperWide =
+            QDir::toNativeSeparators(helperPath).toStdWString();
+    std::wstring parametersWide = QString("--endpoint " + endpoint).toStdWString();
+
+    SHELLEXECUTEINFOW info {};
+    info.cbSize = sizeof(info);
+    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+    info.lpVerb = L"runas";
+    info.lpFile = helperWide.c_str();
+    info.lpParameters = parametersWide.c_str();
+    info.nShow = SW_HIDE;
+
+    if (!ShellExecuteExW(&info) || info.hProcess == nullptr)
     {
+        const unsigned long code = GetLastError();
         if (error)
-            *error = "pkexec was not found; install polkit or run the app with sudo.";
+        {
+            *error = code == ERROR_CANCELLED
+                    ? QStringLiteral("Administrator access was not granted.")
+                    : QStringLiteral("Could not start the privileged helper: %1")
+                              .arg(windowsErrorText(code));
+        }
         return false;
     }
 
+    helperProcess = info.hProcess;
+#else
     endpoint = QString("/tmp/velocity-device-helper-%1-%2.sock")
             .arg(static_cast<qulonglong>(getuid()))
             .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
 
-    process.setProgram(pkexec);
-    process.setArguments({helperPath, "--endpoint", endpoint,
-                          "--uid", QString::number(getuid())});
+    if (geteuid() == 0)
+    {
+        process.setProgram(helperPath);
+        process.setArguments({"--endpoint", endpoint, "--uid", QString::number(getuid())});
+    }
+    else
+    {
+        constexpr bool kEnablePasswordlessSudo = true;
+
+        const QString sudo = QStandardPaths::findExecutable("sudo");
+        bool passwordlessSudo = false;
+
+        if (kEnablePasswordlessSudo && !sudo.isEmpty())
+        {
+            QProcess probe;
+            probe.start(sudo, {"-n", "true"});
+            if (probe.waitForFinished(2000) &&
+                probe.exitStatus() == QProcess::NormalExit &&
+                probe.exitCode() == 0)
+                passwordlessSudo = true;
+        }
+
+        if (passwordlessSudo)
+        {
+            process.setProgram(sudo);
+            process.setArguments({"-n", helperPath, "--endpoint", endpoint,
+                                  "--uid", QString::number(getuid())});
+        }
+        else
+        {
+            const QString pkexec = QStandardPaths::findExecutable("pkexec");
+            if (pkexec.isEmpty())
+            {
+                if (error)
+                    *error = "Neither passwordless sudo nor pkexec is available.";
+                return false;
+            }
+
+            process.setProgram(pkexec);
+            process.setArguments({helperPath, "--endpoint", endpoint,
+                                  "--uid", QString::number(getuid())});
+        }
+    }
     process.start();
 
     if (!process.waitForStarted(5000))
     {
         if (error)
-            *error = "Could not start pkexec: " + process.errorString();
+            *error = "Could not start the privileged helper: " + process.errorString();
         return false;
     }
+#endif
 
     QElapsedTimer timer;
     timer.start();
-    while (timer.elapsed() < 30000)
+    while (timer.elapsed() < 120000)
     {
         if (connectToEndpoint(error))
             return true;
 
-        if (process.state() == QProcess::NotRunning)
+        if (!isElevationPending())
             break;
-        QThread::msleep(50);
+
+        // Keep the GUI painting while the OS elevation prompt is open.
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     }
 
     if (error)
     {
+#if defined(_WIN32)
+        *error = "The privileged helper did not accept a connection.";
+#else
         const QString stderrText = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
-        *error = stderrText.isEmpty() ? "The privileged helper did not start." : stderrText;
+
+        // pkexec returns 126 when the authentication dialog is dismissed and
+        // 127 when authorization is not granted; both mean the user said no.
+        const bool notGranted = process.exitStatus() == QProcess::NormalExit &&
+                                (process.exitCode() == 126 || process.exitCode() == 127);
+
+        if (notGranted)
+            *error = "Administrator access was not granted.";
+        else
+            *error = stderrText.isEmpty() ? "The privileged helper did not start." : stderrText;
+#endif
     }
     stop();
     return false;
+}
+
+bool HelperClient::isElevationPending() const
+{
+#if defined(_WIN32)
+    if (!helperProcess)
+        return false;
+
+    // Keep retrying only while the helper process is still alive; a helper that
+    // exits without connecting must not stall the GUI for two minutes.
+    return WaitForSingleObject(static_cast<HANDLE>(helperProcess), 0) == WAIT_TIMEOUT;
+#else
+    return process.state() != QProcess::NotRunning;
 #endif
 }
 
@@ -144,8 +230,15 @@ void HelperClient::stop()
 {
     closeSocket();
 
-#ifdef _WIN32
-    return;
+#if defined(_WIN32)
+    if (helperProcess)
+    {
+        // The helper normally exits as soon as the pipe closes; this only
+        // reaps or kills a helper that never connected.
+        TerminateProcess(static_cast<HANDLE>(helperProcess), 0);
+        CloseHandle(static_cast<HANDLE>(helperProcess));
+        helperProcess = nullptr;
+    }
 #else
     if (process.state() != QProcess::NotRunning)
     {
@@ -160,13 +253,27 @@ void HelperClient::stop()
 
 bool HelperClient::connectToEndpoint(QString *error)
 {
-#ifdef _WIN32
-    (void)error;
-    return false;
+#if defined(_WIN32)
+    closeSocket();
+
+    const std::wstring pipePath = L"\\\\.\\pipe\\" + endpoint.toStdWString();
+    HANDLE pipe = CreateFileW(pipePath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                              OPEN_EXISTING, 0, nullptr);
+
+    if (pipe == INVALID_HANDLE_VALUE)
+    {
+        if (GetLastError() == ERROR_PIPE_BUSY)
+            WaitNamedPipeW(pipePath.c_str(), 250);
+        return false;
+    }
+
+    DWORD mode = PIPE_READMODE_BYTE;
+    SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr);
+    stream = pipe;
 #else
     closeSocket();
 
-    socketFd = socket(AF_UNIX, SOCK_STREAM, 0);
+    const int socketFd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (socketFd < 0)
         return false;
 
@@ -175,16 +282,19 @@ bool HelperClient::connectToEndpoint(QString *error)
     const QByteArray endpointBytes = endpoint.toLocal8Bit();
     if (endpointBytes.size() >= static_cast<int>(sizeof(address.sun_path)))
     {
-        closeSocket();
+        ::close(socketFd);
         return false;
     }
     std::strncpy(address.sun_path, endpointBytes.constData(), sizeof(address.sun_path) - 1);
 
     if (connect(socketFd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0)
     {
-        closeSocket();
+        ::close(socketFd);
         return false;
     }
+
+    stream = socketFd;
+#endif
 
     try
     {
@@ -200,24 +310,28 @@ bool HelperClient::connectToEndpoint(QString *error)
         closeSocket();
         return false;
     }
-#endif
 }
 
 void HelperClient::closeSocket()
 {
-#ifndef _WIN32
-    if (socketFd >= 0)
+#if defined(_WIN32)
+    if (stream != kInvalidStream)
     {
-        close(socketFd);
-        socketFd = -1;
+        CloseHandle(static_cast<HANDLE>(stream));
+        stream = kInvalidStream;
+    }
+#else
+    if (stream != kInvalidStream)
+    {
+        ::close(stream);
+        stream = kInvalidStream;
     }
 #endif
 }
 
 void HelperClient::sendFrame(uint16_t type, uint32_t requestId, const QByteArray &payload)
 {
-#ifndef _WIN32
-    if (socketFd < 0)
+    if (stream == kInvalidStream)
         throw std::string("helper: not connected");
 
     vh::Header header;
@@ -228,21 +342,15 @@ void HelperClient::sendFrame(uint16_t type, uint32_t requestId, const QByteArray
     header.payloadLength = static_cast<uint32_t>(payload.size());
 
     const auto encodedHeader = vh::encode_header(header);
-    if (!writeAll(socketFd, encodedHeader.data(), encodedHeader.size()) ||
-        (!payload.isEmpty() && !writeAll(socketFd, payload.constData(), payload.size())))
+    if (!vh::write_full(stream, encodedHeader.data(), encodedHeader.size()) ||
+        (!payload.isEmpty() && !vh::write_full(stream, payload.constData(), payload.size())))
         throw std::string("helper: write failed");
-#else
-    (void)type;
-    (void)requestId;
-    (void)payload;
-#endif
 }
 
 QByteArray HelperClient::receiveFrame(uint16_t expectedType, uint32_t requestId)
 {
-#ifndef _WIN32
     uint8_t headerBytes[vh::kHeaderSize];
-    if (!readAll(socketFd, headerBytes, sizeof(headerBytes)))
+    if (!vh::read_full(stream, headerBytes, sizeof(headerBytes)))
         throw std::string("helper: connection closed");
 
     vh::Header header;
@@ -250,7 +358,7 @@ QByteArray HelperClient::receiveFrame(uint16_t expectedType, uint32_t requestId)
         throw std::string("helper: invalid frame");
 
     std::vector<uint8_t> payload(header.payloadLength);
-    if (!payload.empty() && !readAll(socketFd, payload.data(), payload.size()))
+    if (!payload.empty() && !vh::read_full(stream, payload.data(), payload.size()))
         throw std::string("helper: truncated frame");
 
     if (header.requestId != requestId)
@@ -276,11 +384,6 @@ QByteArray HelperClient::receiveFrame(uint16_t expectedType, uint32_t requestId)
 
     return QByteArray(reinterpret_cast<const char *>(payload.data()),
                       static_cast<int>(payload.size()));
-#else
-    (void)expectedType;
-    (void)requestId;
-    return {};
-#endif
 }
 
 HelperDeviceHandle HelperClient::openDevice(const std::wstring &path, bool writable)
@@ -464,12 +567,20 @@ void HelperDeviceIO::WriteBytes(BYTE *buffer, DWORD len)
     position = offset;
 }
 
-void HelperDeviceIO::Close()
+void HelperDeviceIO::Close() noexcept
 {
     if (closed)
         return;
     closed = true;
-    client->close(device.handle);
+
+    try
+    {
+        client->close(device.handle);
+    }
+    catch (...)
+    {
+        // Closing is best-effort; a dropped helper must not terminate the GUI.
+    }
 }
 
 void HelperDeviceIO::Flush()

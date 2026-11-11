@@ -135,6 +135,7 @@ function(botan_generate TARGET_NAME MODULES)
             --cc-bin=${CMAKE_CXX_COMPILER}
             --cc=${BOTAN_COMPILER_ID}
             $<$<BOOL:${MINGW}>:--os=mingw>
+            --prefix=${CMAKE_CURRENT_BINARY_DIR}/botan-install
             --disable-shared
             --amalgamation
             --minimized-build

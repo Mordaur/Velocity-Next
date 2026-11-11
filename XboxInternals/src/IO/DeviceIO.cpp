@@ -12,7 +12,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include <WinIoCtl.h>
+#include <winioctl.h>
 #else
 #include <fcntl.h>
 #include <sys/types.h>

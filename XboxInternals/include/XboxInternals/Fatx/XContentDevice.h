@@ -7,10 +7,8 @@
 #include <ctype.h>
 #include <iomanip>
 
-#ifndef __WIN32
+#ifndef _WIN32
     #include <sys/stat.h>
-#else
-    #include <Shlwapi.h>
 #endif
 
 #include <XboxInternals/Stfs/StfsPackage.h>

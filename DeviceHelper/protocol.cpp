@@ -1,9 +1,15 @@
 #include "protocol.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 
-#ifndef _WIN32
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -142,8 +148,50 @@ namespace velocity::helper
         return out;
     }
 
-#ifndef _WIN32
-    bool read_full(int fd, void *data, size_t length)
+#if defined(_WIN32)
+    bool read_full(StreamHandle stream, void *data, size_t length)
+    {
+        auto *bytes = static_cast<uint8_t *>(data);
+        const HANDLE handle = static_cast<HANDLE>(stream);
+        size_t offset = 0;
+        while (offset < length)
+        {
+            const DWORD request = static_cast<DWORD>(
+                    std::min<size_t>(length - offset, kMaxPayload));
+            DWORD count = 0;
+            if (!ReadFile(handle, bytes + offset, request, &count, nullptr))
+            {
+                if (GetLastError() == ERROR_OPERATION_ABORTED)
+                    return false;
+                return false;
+            }
+            if (count == 0)
+                return false;
+            offset += count;
+        }
+        return true;
+    }
+
+    bool write_full(StreamHandle stream, const void *data, size_t length)
+    {
+        const auto *bytes = static_cast<const uint8_t *>(data);
+        const HANDLE handle = static_cast<HANDLE>(stream);
+        size_t offset = 0;
+        while (offset < length)
+        {
+            const DWORD request = static_cast<DWORD>(
+                    std::min<size_t>(length - offset, kMaxPayload));
+            DWORD count = 0;
+            if (!WriteFile(handle, bytes + offset, request, &count, nullptr))
+                return false;
+            if (count == 0)
+                return false;
+            offset += count;
+        }
+        return true;
+    }
+#else
+    bool read_full(StreamHandle fd, void *data, size_t length)
     {
         auto *bytes = static_cast<uint8_t *>(data);
         size_t offset = 0;
@@ -163,7 +211,7 @@ namespace velocity::helper
         return true;
     }
 
-    bool write_full(int fd, const void *data, size_t length)
+    bool write_full(StreamHandle fd, const void *data, size_t length)
     {
         const auto *bytes = static_cast<const uint8_t *>(data);
         size_t offset = 0;
@@ -179,16 +227,6 @@ namespace velocity::helper
             offset += static_cast<size_t>(count);
         }
         return true;
-    }
-#else
-    bool read_full(int, void *, size_t)
-    {
-        return false;
-    }
-
-    bool write_full(int, const void *, size_t)
-    {
-        return false;
     }
 #endif
 } // namespace velocity::helper
