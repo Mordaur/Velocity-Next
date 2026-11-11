@@ -164,12 +164,15 @@ target_include_directories(VelocityNext
 )
 
 # Common linking for all platforms - ALWAYS use our BotanAmalgamation
+# zipviewer.cpp uses qzipreader_p.h. Qt 6.10+ only exposes the private include
+# directories through the CorePrivate module, which is optional for older Qt.
+if(Qt6CorePrivate_FOUND AND TARGET Qt6::CorePrivate)
+  target_link_libraries(VelocityNext PRIVATE Qt6::CorePrivate)
+endif()
+
 target_link_libraries(VelocityNext
   PRIVATE
     Qt6::Core
-    # Qt 6.10+ stopped adding the private include dirs to Qt6::Core, and
-    # zipviewer.cpp uses qzipreader_p.h, so the private module is required.
-    Qt6::CorePrivate
     Qt6::Gui
     Qt6::Xml
     Qt6::Widgets  

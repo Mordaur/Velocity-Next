@@ -2,14 +2,15 @@
 
 ## Prerequisites
 
-- **Qt 6.10 or higher** (Components: Core, CorePrivate, Xml, Widgets, Network)
-  - Qt 6.10 and newer require the `CorePrivate` component explicitly; the
-    package browser uses `qzipreader_p.h`. Qt 6.8 and older do not ship the
-    component, which is why 6.10 is the minimum
-  - Private headers ship with Qt on Windows/macOS; on Linux they may be a
-    separate package (`qt6-base-private-dev` on Debian/Ubuntu,
-    `qt6-qtbase-private-devel` on Fedora, included in `qt6-base` on Arch)
-  - CI builds with Qt 6.10.3; development builds are tested with 6.12
+- **Qt 6.7.3 or higher** (Components: Core, Xml, Widgets, Network)
+  - The package browser uses `qzipreader_p.h`. Qt 6.10 stopped exporting the
+    private include directories from `Qt6::Core`, so CMake requests
+    `CorePrivate` when the installation provides it (Qt 6.10+) and falls back
+    to `Qt6::Core` include paths on older releases
+  - On Linux the private headers may be a separate package
+    (`qt6-base-private-dev` on Debian/Ubuntu, `qt6-qtbase-private-devel` on
+    Fedora, included in `qt6-base` on Arch)
+  - Verified by building against Qt 6.7.3, 6.8.3, 6.10.3 and 6.12.0
 - **CMake 3.20+**
 - **C++20 compiler**:
   - **Windows**: MinGW 13.1.0+ or MSVC 2022 (Visual Studio 17.0+)
@@ -79,8 +80,8 @@ The cryptography library is automatically handled:
 
 ### Qt Version Information
 
-- **Minimum Required**: Qt 6.10.0
-- **Tested Versions**: Qt 6.10.3 (CI) and Qt 6.12 (development)
+- **Minimum Required**: Qt 6.7.3
+- **Tested Versions**: 6.7.3, 6.8.3 (no CorePrivate), 6.10.3 (CI), 6.12 (development)
 - **Components Required**: Core, Xml, Widgets, Network
 
 ### Automatic Discovery

@@ -140,10 +140,10 @@ set(CMAKE_AUTOUIC ON)
 # ------------------------------
 # Qt Discovery
 # ------------------------------
-set(QT_MIN_VERSION "6.10.0")
+set(QT_MIN_VERSION "6.7.3")
 
 # Primary method: Use CMake's built-in Qt discovery
-find_package(Qt6 ${QT_MIN_VERSION} COMPONENTS Core CorePrivate Xml Widgets Network)
+find_package(Qt6 ${QT_MIN_VERSION} COMPONENTS Core Xml Widgets Network)
 
 if(NOT Qt6_FOUND)
     # Secondary method: Try qmake-based discovery
@@ -158,7 +158,7 @@ if(NOT Qt6_FOUND)
         if(QT_PREFIX AND EXISTS "${QT_PREFIX}")
             message(STATUS "Found Qt via qmake at: ${QT_PREFIX}")
             set(CMAKE_PREFIX_PATH ${QT_PREFIX} ${CMAKE_PREFIX_PATH})
-            find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core CorePrivate Xml Widgets Network)
+            find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core Xml Widgets Network)
         endif()
     endif()
 endif()
@@ -168,7 +168,7 @@ if(NOT Qt6_FOUND)
     if(DEFINED ENV{QT6_PREFIX_PATH})
         message(STATUS "Trying QT6_PREFIX_PATH environment variable: $ENV{QT6_PREFIX_PATH}")
         set(CMAKE_PREFIX_PATH $ENV{QT6_PREFIX_PATH} ${CMAKE_PREFIX_PATH})
-        find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core CorePrivate Xml Widgets Network)
+        find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Core Xml Widgets Network)
     endif()
 endif()
 
@@ -192,6 +192,16 @@ endif()
 message(STATUS "Found Qt6 ${Qt6Core_VERSION} at: ${Qt6Core_DIR}")
 
 # Find Qt6Concurrent separately (needed for isodialog.cpp)
+# Qt 6.10 stopped adding private include directories to Qt6::Core. Ask for the
+# private module when the installation ships it (Arch, official Qt 6.10+), and
+# fall back to the include directories Qt6::Core already provides on older Qt.
+find_package(Qt6 QUIET COMPONENTS CorePrivate)
+if(Qt6CorePrivate_FOUND AND TARGET Qt6::CorePrivate)
+  message(STATUS "Using Qt6::CorePrivate for private headers")
+else()
+  message(STATUS "Qt6::CorePrivate not available; relying on Qt6::Core include paths (Qt < 6.10)")
+endif()
+
 find_package(Qt6 COMPONENTS Concurrent REQUIRED)
 
 # Make cmake/ available
