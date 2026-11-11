@@ -11,6 +11,8 @@
 
 #include <XboxInternals/Fatx/FatxDriveDetection.h>
 
+#include "fatxmetatypes.h"
+
 class FatxDeviceNotifier : public QThread
 {
     Q_OBJECT

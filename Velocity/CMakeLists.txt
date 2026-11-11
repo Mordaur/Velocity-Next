@@ -65,6 +65,7 @@ set(SOURCES
   xuizdialog.cpp
   fatxdevicenotifier.cpp
   profileselectiondialog.cpp
+  devicecontentviewer.cpp
   svodvolumedescriptordialog.cpp
   stfsvolumedescriptordialog.cpp
   themecreationwizard.cpp
@@ -116,6 +117,7 @@ set(UI_FORMS
   xexdialog.ui
   xuizdialog.ui
   profileselectiondialog.ui
+  devicecontentviewer.ui
   stfsvolumedescriptordialog.ui
   multiprogressdialog.ui
   ytgrdialog.ui

@@ -117,6 +117,7 @@
        <normaloff>:/Images/hdd.png</normaloff>:/Images/hdd.png</iconset>
      </property>
      <addaction name="actionDevice_Viewer"/>
+     <addaction name="actionDevice_Content_Viewer"/>
      <addaction name="actionFATX_File_Path"/>
     </widget>
     <addaction name="menuDevice_Tools"/>
@@ -394,6 +395,14 @@
   <action name="actionDevice_Viewer">
    <property name="text">
     <string>Raw Device Viewer</string>
+   </property>
+  </action>
+  <action name="actionDevice_Content_Viewer">
+   <property name="text">
+    <string>Device Content Viewer</string>
+   </property>
+   <property name="statusTip">
+    <string>Browse profiles, saves, games, DLC, updates, and shared content</string>
    </property>
   </action>
   <action name="actionISO">

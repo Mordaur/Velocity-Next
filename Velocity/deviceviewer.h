@@ -35,12 +35,9 @@
 // widgets
 #include "nightcharts.h"
 #include "dragdroptreewidget.h"
+#include "fatxmetatypes.h"
 
 #include <memory>
-
-Q_DECLARE_METATYPE(FatxFileEntry*)
-Q_DECLARE_METATYPE(FatxDrive*)
-Q_DECLARE_METATYPE(Partition*)
 
 namespace Ui
 {

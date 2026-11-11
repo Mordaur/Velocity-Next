@@ -252,6 +252,17 @@ void MainWindow::on_actionDevice_Viewer_triggered()
     viewer->LoadDrives();
 }
 
+void MainWindow::on_actionDevice_Content_Viewer_triggered()
+{
+    if (DeviceContentViewer::OPEN)
+        return;
+
+    auto *dialog = new DeviceContentViewer(ui->statusBar, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    QtHelpers::AddSubWindow(ui->mdiArea, dialog);
+    dialog->show();
+}
+
 void MainWindow::on_actionISO_triggered()
 {
     QString fileName = QFileDialog::getOpenFileName(this, tr("Open Xbox 360 ISO"),

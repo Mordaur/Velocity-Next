@@ -41,6 +41,7 @@
 #include "svoddialog.h"
 #include "ytgrdialog.h"
 #include "deviceviewer.h"
+#include "devicecontentviewer.h"
 #include "isodialog.h"
 #include "xexdialog.h"
 #include "xuizdialog.h"
@@ -143,6 +144,8 @@ private slots:
     void on_actionYTGR_triggered();
 
     void on_actionDevice_Viewer_triggered();
+
+    void on_actionDevice_Content_Viewer_triggered();
 
     void on_actionISO_triggered();
 
