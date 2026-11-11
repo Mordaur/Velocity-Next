@@ -97,7 +97,7 @@ if(NOT BUILD_XBOXINTERNALS_SHARED AND NOT BUILD_XBOXINTERNALS_STATIC)
 endif()
 
 # Botan version control
-set(BOTAN_VERSION "3.9.0" CACHE STRING "Botan version to fetch/use")
+set(BOTAN_VERSION "3.14.1" CACHE STRING "Botan version to fetch/use")
 
 # ====================================================================
 # BOTAN DEPENDENCY MANAGEMENT

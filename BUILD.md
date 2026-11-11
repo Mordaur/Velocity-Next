@@ -179,7 +179,7 @@ cmake --preset windows-mingw-release -DBUILD_XBOXINTERNALS_STATIC=ON
 
 ```bash
 # Test with different Botan version (if needed)
-cmake --preset windows-mingw-release -DBOTAN_VERSION=3.10.0
+cmake --preset windows-mingw-release -DBOTAN_VERSION=3.14.1
 ```
 
 ## Platform-Specific Notes

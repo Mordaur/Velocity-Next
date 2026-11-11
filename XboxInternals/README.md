@@ -102,7 +102,7 @@ int main() {
 
 ### Embedded Dependencies
 
-- **Botan 3.9.0** (BSD-2-Clause) - Cryptography library, statically embedded
+- **Botan 3.14.1** (BSD-2-Clause) - Cryptography library, statically embedded
   - See [LICENSE-Botan.txt](../LICENSE-Botan.txt) for license terms
   - No separate installation needed
 
