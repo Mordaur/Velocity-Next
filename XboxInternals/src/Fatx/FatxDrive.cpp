@@ -3,6 +3,7 @@
 
 #include <XboxInternals/Fatx/FatxDrive.h>
 
+#include <unordered_set>
 #include <vector>
 
 #ifdef _WIN32
@@ -22,6 +23,7 @@
     #include <sys/stat.h>
     #include <unistd.h>
 #endif
+
 
 FatxDrive::FatxDrive(std::string drivePath, FatxDriveType type)  : type(type)
 {
@@ -518,11 +520,29 @@ void FatxDrive::ReadClusterChain(FatxFileEntry *entry)
     DWORD availableCluster = (clusterSizeIs2) ? FAT_CLUSTER16_AVAILABLE : FAT_CLUSTER_AVAILABLE;
     INT64 clusterMapAddress = entry->partition->address + 0x1000;
 
+    // Clusters are numbered from 1 up to the partition's cluster count. A chain
+    // can never be longer than that, and it must never revisit a cluster: a
+    // corrupt or cross-linked chain would otherwise loop forever while growing
+    // clusterChain until the process runs out of memory.
+    const DWORD maxCluster = entry->partition->clusterCount;
+    const size_t maxChainLength = static_cast<size_t>(maxCluster) + 1;
+
+    std::unordered_set<DWORD> visited;
+
     // start with the starting cluster
     DWORD previousCluster = entry->startingCluster;
 
     while (previousCluster != lastCluster && previousCluster != availableCluster)
     {
+        if (previousCluster == 0 || previousCluster > maxCluster)
+            throw std::string("FATX: Cluster chain references a cluster outside the partition.\n");
+
+        if (entry->clusterChain.size() >= maxChainLength)
+            throw std::string("FATX: Cluster chain is longer than the partition.\n");
+
+        if (!visited.insert(previousCluster).second)
+            throw std::string("FATX: Cluster chain contains a loop.\n");
+
         // add it to the cluster chain
         entry->clusterChain.push_back(previousCluster);
 
