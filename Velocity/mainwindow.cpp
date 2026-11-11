@@ -316,7 +316,7 @@ void MainWindow::updateThemeActions()
 
 void MainWindow::on_actionView_Wiki_triggered()
 {
-    QDesktopServices::openUrl(QUrl("https://github.com/Pandoriaantje/Velocity-Next/wiki"));
+    QDesktopServices::openUrl(QUrl("https://github.com/Mordaur/Velocity-Next/wiki"));
 }
 
 void MainWindow::PluginFinished()

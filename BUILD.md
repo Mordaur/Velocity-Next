@@ -15,7 +15,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/Pandoriaantje/Velocity-Next
+git clone https://github.com/Mordaur/Velocity-Next
 cd Velocity-Next
 
 # Configure (choose one preset)
@@ -52,7 +52,7 @@ cmake --build --preset [chosen-preset]
 
 ### Downloading Pre-built Releases
 
-Visit the [Releases page](https://github.com/Pandoriaantje/Velocity-Next/releases) for official builds.
+Visit the [Releases page](https://github.com/Mordaur/Velocity-Next/releases) for official builds.
 
 ## Botan Dependency
 

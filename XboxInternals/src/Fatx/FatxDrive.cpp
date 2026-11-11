@@ -795,7 +795,7 @@ FatxDrive::~FatxDrive()
         io->Close();
 }
 
-bool FatxDrive::operator==(FatxDrive &other) const
+bool FatxDrive::operator==(const FatxDrive &other) const
 {
     if (type != other.type)
         return false;

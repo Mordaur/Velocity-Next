@@ -170,6 +170,6 @@ For detailed usage, see the [Velocity application](../Velocity/) which uses this
 
 ## Contributing
 
-XboxInternals is part of the [Velocity-Next](https://github.com/Pandoriaantje/Velocity-Next) project.
+XboxInternals is part of the [Velocity-Next](https://github.com/Mordaur/Velocity-Next) project.
 
 For issues, feature requests, or contributions, please visit the main repository.

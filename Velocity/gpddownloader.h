@@ -65,7 +65,7 @@ private:
     bool validateGpdFile(const QString &filePath, QString &errorMsg);
 
     // Static base URL for GPD files
-    static inline const QString BASE_GITHUB_URL = "https://raw.githubusercontent.com/Pandoriaantje/xbox360-gpd-files/main";
+    static inline const QString BASE_GITHUB_URL = "https://raw.githubusercontent.com/Mordaur/xbox360-gpd-files/main";
     
     // Retry configuration
     static constexpr int MAX_RETRY_ATTEMPTS = 5;

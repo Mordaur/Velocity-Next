@@ -40,7 +40,7 @@ GitHubCommitsDialog::GitHubCommitsDialog(QWidget *parent) :
             SLOT(onCommitsReply(QNetworkReply*)));
     
     // Create request with timeout
-    QNetworkRequest request(QUrl("https://api.github.com/repos/Pandoriaantje/Velocity-Next/branches"));
+    QNetworkRequest request(QUrl("https://api.github.com/repos/Mordaur/Velocity-Next/branches"));
     request.setTransferTimeout(10000); // 10 second timeout
     branchesManager->get(request);
 }

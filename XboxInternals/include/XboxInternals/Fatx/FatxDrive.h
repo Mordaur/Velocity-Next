@@ -33,7 +33,9 @@ public:
     ~FatxDrive();
 
     // compared by their model numbers
-    bool operator==(FatxDrive& other)const;
+    // const reference so C++20 does not treat `a == b` and `b == a` as
+    // equally viable reversed candidates.
+    bool operator==(const FatxDrive &other) const;
 
     // get the drives partitions
     std::vector<Partition*> GetPartitions();

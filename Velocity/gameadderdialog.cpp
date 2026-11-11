@@ -797,7 +797,7 @@ void GameAdderDialog::getListing() {
     ui->treeWidgetAllGames->clear();
     ui->tabWidget->setEnabled(false);
 
-    QString url = "https://raw.githubusercontent.com/Pandoriaantje/xbox360-gpd-files/main/gameadder.json";
+    QString url = "https://raw.githubusercontent.com/Mordaur/xbox360-gpd-files/main/gameadder.json";
     QNetworkRequest request((QUrl(url)));
 
     QNetworkReply *reply = manager->get(request);
