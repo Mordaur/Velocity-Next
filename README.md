@@ -16,15 +16,16 @@ Velocity-Next
 
 Original Velocity was developed mainly by Stevie Hetelekides (Hetelek) and Adam Spindler (Experiment5X), with contributions from [many others](https://github.com/hetelek/Velocity/graphs/contributors). Velocity-Next continues their work with gratitude and respect for the foundation they built.
 
-## Important: Administrator Privileges Required (Windows)
+## Raw Device Access
 
-On **Windows**, Velocity requires **Administrator privileges** to access Xbox 360 drives:
+On **Windows**, Velocity starts without elevation. Browsing uses read-only raw access where Windows permits it; writing to a device (copy/delete/resign) requires running as administrator.
 
 ## Running Velocity-Next
 
-- **Right-click** `VelocityNext.exe` → Select **"Run as administrator"**
-- This is necessary for detecting and browsing Xbox 360 hard drives and USB devices
-- Without Administrator rights, drives will **not be detected** in the Device Viewer
+- If Xbox 360 drives are not detected, **right-click** `VelocityNext.exe` → **"Run as administrator"**
+- Or create an administrator shortcut: executable → **Create shortcut** → shortcut **Properties** → **Advanced** → **Run as administrator**
+- On **Linux**, install the udev rule or join the `disk` group; `sudo` also works for testing
+- On **macOS**, run with `sudo` for now
 
 See [BUILD.md](BUILD.md#running-velocity) for Linux/macOS requirements and more details.
 

@@ -294,47 +294,43 @@ Build outputs are organized in:
 
 ## Running Velocity
 
-### Windows - Administrator Privileges Required
+### Windows - Raw Device Access
 
-**Important**: On Windows, Velocity requires **Administrator privileges** to access physical drives (Xbox 360 hard drives and USB devices).
+Velocity starts normally (as invoker). Browsing uses read-only raw access where Windows permits it. Writing to a device requires Administrator privileges.
 
-**To run Velocity with the necessary permissions:**
+**To get write access:**
 
 1. Navigate to the VelocityNext executable:
    - Release: `out/build/windows-mingw-release/VelocityNext/VelocityNext.exe`
    - Debug: `out/build/windows-mingw-debug/VelocityNext/VelocityNext.exe`
 
-2. **Right-click** on `VelocityNext.exe` → Select **"Run as administrator"**
+2. **Right-click** `VelocityNext.exe` → **"Run as administrator"**
 
-**Why Administrator access is needed:**
-- Windows requires elevated privileges to open raw physical disk devices (`\\.\PHYSICALDRIVE#`)
-- This is necessary for the Device Viewer to detect and access Xbox 360 drives connected via USB (using SATA-to-USB adapters, etc.)
-- Without Administrator rights, Xbox 360 drives will **not be detected** in the Device Viewer
+You can also create an administrator shortcut: right-click the executable → **Create shortcut** → shortcut **Properties** → **Advanced** → **Run as administrator**.
 
-**Alternative - Create Administrator Shortcut:**
-1. Right-click `VelocityNext.exe` → **"Create shortcut"**
-2. Right-click the shortcut → **"Properties"**
-3. Click **"Advanced..."** button
-4. Check **"Run as administrator"**
-5. Click **OK** → **OK**
-
-Now you can use this shortcut to always launch Velocity with proper permissions.
+If a drive is not detected, run as administrator. Windows does not allow a running process to gain administrator rights mid-session; a separate elevated helper process is the least-privilege long-term design.
 
 ### Linux
 
-On Linux, access to raw block devices requires root privileges or membership in the `disk` group.
+On Linux, raw block devices are normally `root:disk` with mode `0660`.
 
-**Option 1: Run with sudo** (recommended for testing)
+**Option 1: udev `uaccess` rule (recommended for desktops)**
 ```bash
-sudo ./out/build/linux-release/VelocityNext/VelocityNext
+sudo cp packaging/linux/99-velocity-xbox.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+This grants the active logged-in user access to USB-attached disks. It does not grant access to all users or to internal SATA disks.
+
+**Option 2: Add user to the disk group**
+```bash
+sudo usermod -a -G disk $USER
+# Log out and log back in
 ```
 
-**Option 2: Add user to disk group** (for regular use)
+**Option 3: Run with sudo** (for testing)
 ```bash
-# Add your user to the disk group
-sudo usermod -a -G disk $USER
-
-# Log out and log back in for changes to take effect
+sudo ./out/build/linux-release/VelocityNext/VelocityNext
 ```
 
 **Note**: Xbox 360 drives connected via USB should appear as `/dev/sd*` devices (e.g., `/dev/sdb`).
