@@ -102,7 +102,11 @@ void XdbfDialog::showContextMenu(QPoint p)
                         break;
                     }
 
-                Entry e = indexToEntry(index);
+                const std::optional<Entry> mapped = indexToEntry(index);
+                if (!mapped)
+                    continue;
+
+                const Entry &e = *mapped;
                 XdbfEntry xentry;
 
                 // get the xdbf entry
@@ -151,7 +155,16 @@ void XdbfDialog::showContextMenu(QPoint p)
 
         try
         {
-            Entry e = indexToEntry(ui->treeWidget->currentIndex().row());
+            const std::optional<Entry> mapped =
+                    indexToEntry(ui->treeWidget->currentIndex().row());
+            if (!mapped)
+            {
+                QMessageBox::warning(this, "Replace Entry",
+                        "This row does not map to an entry in the GPD.");
+                return;
+            }
+
+            const Entry &e = *mapped;
             XdbfEntry xentry;
 
             // get the xdbf entry
@@ -259,7 +272,7 @@ XdbfDialog::~XdbfDialog()
     delete ui;
 }
 
-Entry XdbfDialog::indexToEntry(DWORD index)
+std::optional<Entry> XdbfDialog::indexToEntry(DWORD index)
 {
     Entry toReturn;
 
@@ -294,13 +307,27 @@ Entry XdbfDialog::indexToEntry(DWORD index)
         toReturn.index = index - (count - gpd->xdbf->avatarAwards.entries.size());
         toReturn.type = AvatarAward;
     }
+    else
+    {
+        // The row does not map onto any backend entry (stale tree, header row,
+        // or an invalid index), so do not hand callers a default-constructed
+        // entry that they would index vectors with.
+        return std::nullopt;
+    }
 
     return toReturn;
 }
 
 void XdbfDialog::on_treeWidget_doubleClicked(const QModelIndex &index)
 {
-    Entry e = indexToEntry(index.row());
+    const std::optional<Entry> mapped = indexToEntry(index.row());
+    if (!mapped)
+    {
+        statusBar->showMessage("Cannot view this type of entry", 3000);
+        return;
+    }
+
+    const Entry &e = *mapped;
     switch (e.type)
     {
         case String:

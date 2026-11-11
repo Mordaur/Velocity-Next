@@ -17,6 +17,8 @@
 // xbox360
 #include <XboxInternals/Gpd/Xdbf.h>
 #include <XboxInternals/Gpd/XdbfDefinitions.h>
+#include <optional>
+
 #include <XboxInternals/Gpd/XdbfHelpers.h>
 #include <XboxInternals/Gpd/GpdBase.h>
 #include <XboxInternals/IO/FileIO.h>
@@ -32,8 +34,8 @@ class XdbfDialog;
 
 struct Entry
 {
-    EntryType type;
-    DWORD index;
+    EntryType type = Undefined;
+    DWORD index = 0;
 };
 
 class XdbfDialog : public QDialog
@@ -58,7 +60,7 @@ private:
 
     void addEntriesToTable(vector<XdbfEntry> entries, QString type);
 
-    Entry indexToEntry(DWORD index);
+    std::optional<Entry> indexToEntry(DWORD index);
 
     void loadEntries();
 };
