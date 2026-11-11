@@ -153,13 +153,12 @@ string BaseIO::ReadString(int len, char nullTerminator, bool forceInclude0, int 
     }
     else
     {
-        std::vector<char> strVec;
-        strVec.reserve(len + 1);
-        char* str = strVec.data();
-        str[len] = 0;
+        toReturn.resize(static_cast<size_t>(len));
+        ReadBytes(reinterpret_cast<BYTE*>(toReturn.data()), static_cast<DWORD>(len));
 
-        ReadBytes((BYTE*)str, len);
-        toReturn = string(str);
+        const size_t terminator = toReturn.find('\0');
+        if (terminator != std::string::npos)
+            toReturn.resize(terminator);
     }
 
     return toReturn;
@@ -249,19 +248,25 @@ void BaseIO::Write(string s, int forceLen, bool nullTerminating, BYTE nullTermin
 
 void BaseIO::Write(wstring ws, bool nullTerminating)
 {
-    if (byteOrder == LittleEndian)
-        WriteBytes((BYTE*)ws.c_str(), (ws.length() + nullTerminating) * 2);
-    else
+    for (wchar_t c : ws)
     {
-        WORD curChar;
-        for (DWORD i = 0; i < ws.length(); i++)
+        UINT32 codepoint = static_cast<UINT32>(c);
+
+        if (sizeof(wchar_t) == 2 || codepoint <= 0xFFFF)
         {
-            curChar = ws.at(i);
-            Write(curChar);
+            Write(static_cast<WORD>(codepoint));
         }
-        if (nullTerminating)
-            Write((WORD)0);
+        else
+        {
+            // Encode supplementary characters as a UTF-16 surrogate pair.
+            codepoint -= 0x10000;
+            Write(static_cast<WORD>(0xD800 + (codepoint >> 10)));
+            Write(static_cast<WORD>(0xDC00 + (codepoint & 0x3FF)));
+        }
     }
+
+    if (nullTerminating)
+        Write(static_cast<WORD>(0));
 }
 
 void BaseIO::Write(BYTE *buffer, DWORD len)
