@@ -151,6 +151,13 @@ else()
     if(WIN32)
         set_target_properties(VelocityNext PROPERTIES WIN32_EXECUTABLE TRUE)
         target_sources(VelocityNext PRIVATE velocity.rc)
+
+        # velocity.rc embeds our own manifest (asInvoker + supportedOS). The
+        # MSVC linker would add a second, generated manifest and CVTRES fails
+        # with "CVT1100: duplicate resource. type:MANIFEST".
+        if(MSVC)
+            target_link_options(VelocityNext PRIVATE "/MANIFEST:NO")
+        endif()
     endif()
 endif()
 
