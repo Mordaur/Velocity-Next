@@ -1,6 +1,7 @@
 #include "XboxInternals/Disc/ISO.h"
 #include "XboxInternals/IO/FileIO.h"
 #include "XboxInternals/IO/IsoIO.h"
+#include "XboxInternals/Stfs/StfsPackage.h"
 #include <fstream>
 #include <vector>
 #include <system_error>
@@ -233,23 +234,32 @@ DWORD IsoImage::GetFileMagic(GdfxFileEntry *entry) {
 std::wstring IsoImage::GetTitleName() {
     if (!titleName.empty())
         return titleName;
-    
-    for (size_t i = 0; i < root.size(); i++) {
-        GdfxFileEntry &entry = root[i];
-        
+
+    for (auto &entry : root) {
         switch (entry.magic) {
-        case 0x434F4E20:
-        case 0x4C495645:
-        case 0x50495253:
+        case 0x434F4E20: // CON
+        case 0x4C495645: // LIVE
+        case 0x50495253: // PIRS
             try {
-                break;
+                std::unique_ptr<IsoIO> io(GetIO(&entry));
+                StfsPackage package(io.get());
+
+                if (!package.metaData->titleName.empty()) {
+                    titleName = package.metaData->titleName;
+                    return titleName;
+                }
             }
-            catch (...) {
-                break;
+            catch (const std::string &) {
+                // Not every STFS-like file in the root is a readable package.
             }
+            catch (const std::exception &) {
+            }
+            break;
+        default:
+            break;
         }
     }
-    
+
     return titleName;
 }
 
