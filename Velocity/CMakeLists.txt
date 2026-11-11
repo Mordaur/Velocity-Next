@@ -189,6 +189,17 @@ target_compile_features(VelocityNext PUBLIC cxx_std_20)
 # Organize in IDE (Visual Studio solution explorer)
 set_target_properties(VelocityNext PROPERTIES FOLDER "Applications")
 
+# Post-build: keep the device helper next to the GUI for portable deployment.
+if(TARGET velocity-device-helper)
+    add_dependencies(VelocityNext velocity-device-helper)
+    add_custom_command(TARGET VelocityNext POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:velocity-device-helper>
+            $<TARGET_FILE_DIR:VelocityNext>
+        COMMENT "Copying velocity-device-helper to Velocity output directory"
+    )
+endif()
+
 # Post-build: Copy XboxInternals DLL to Velocity output directory (only when building shared library)
 if(BUILD_XBOXINTERNALS_SHARED)
     add_custom_command(TARGET VelocityNext POST_BUILD

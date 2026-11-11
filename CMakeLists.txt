@@ -442,5 +442,6 @@ message(STATUS "")
 # ------------------------------
 # Subdirectories
 # ------------------------------
+add_subdirectory(DeviceHelper)
 add_subdirectory(XboxInternals)
 add_subdirectory(Velocity VelocityNext)
