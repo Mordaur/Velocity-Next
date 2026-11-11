@@ -7,6 +7,7 @@
 #define FAT_SECTOR_SIZE 0x200
 
 #include <memory>
+#include <vector>
 
 #include <XboxInternals/IO/BaseIO.h>
 #include <XboxInternals/IO/DeviceError.h>
@@ -42,14 +43,20 @@ private:
 
     UINT64 realPosition();
 
+    // The device's logical sector size, which is not always 512 (4Kn media).
+    // Raw block I/O and FILE_FLAG_NO_BUFFERING require aligned transfers, so
+    // reads and writes are bounced through a sector-aligned buffer.
+    UINT64 DownToSector(UINT64 address) const;
+    size_t RoundUpToSector(size_t length) const;
+    void ReadRaw(BYTE *buffer, DWORD length);
+    void WriteRaw(const BYTE *buffer, DWORD length);
+
     class Impl;
     std::unique_ptr<Impl> impl;
 
     std::string yolo;
 
     UINT64 pos;
-    BYTE lastReadData[FAT_SECTOR_SIZE];
-    UINT64 lastReadOffset;
     bool readOnly;
 };
 

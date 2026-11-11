@@ -1,8 +1,10 @@
 #include <XboxInternals/IO/DeviceIO.h>
 
+#include <algorithm>
 #include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
-#include <string.h>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -83,10 +85,14 @@ public:
     int device;
     INT64 offset;
 #endif
+
+    DWORD sectorSize = FAT_SECTOR_SIZE;
+    BYTE *bounce = nullptr;
+    size_t bounceCapacity = 0;
 };
 
 DeviceIO::DeviceIO(std::string devicePath, DeviceErrorCode *error) :
-    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1), readOnly(false)
+    impl(std::make_unique<Impl>()), pos(0), readOnly(false)
 {
     if (error)
         *error = DeviceErrorCode::None;
@@ -100,7 +106,7 @@ DeviceIO::DeviceIO(std::string devicePath, DeviceErrorCode *error) :
 }
 
 DeviceIO::DeviceIO(std::wstring devicePath, DeviceErrorCode *error) :
-    impl(std::make_unique<Impl>()), pos(0), lastReadData{}, lastReadOffset(-1), readOnly(false)
+    impl(std::make_unique<Impl>()), pos(0), readOnly(false)
 {
     if (error)
         *error = DeviceErrorCode::None;
@@ -114,126 +120,108 @@ DeviceIO::~DeviceIO()
     Close();
 }
 
+namespace
+{
+    constexpr size_t kBounceTarget = 0x40000; // 256 KiB per physical transfer
+
+    BYTE *AllocateAligned(size_t size, size_t alignment)
+    {
+#ifdef _WIN32
+        return static_cast<BYTE *>(_aligned_malloc(size, alignment));
+#else
+        void *aligned = nullptr;
+        if (posix_memalign(&aligned, alignment, size) != 0)
+            return nullptr;
+        return static_cast<BYTE *>(aligned);
+#endif
+    }
+
+    void FreeAligned(BYTE *buffer)
+    {
+#ifdef _WIN32
+        _aligned_free(buffer);
+#else
+        free(buffer);
+#endif
+    }
+}
+
+UINT64 DeviceIO::DownToSector(UINT64 address) const
+{
+    return address - (address % impl->sectorSize);
+}
+
+size_t DeviceIO::RoundUpToSector(size_t length) const
+{
+    const size_t sector = impl->sectorSize;
+    return ((length + sector - 1) / sector) * sector;
+}
+
+void DeviceIO::ReadRaw(BYTE *buffer, DWORD length)
+{
+#ifdef _WIN32
+    if (!ReadFile(impl->deviceHandle, buffer, length, nullptr, &impl->offset))
+        throw std::string("DeviceIO: Error reading from device, may be disconnected.\n");
+#else
+    size_t done = 0;
+    while (done < length)
+    {
+        const ssize_t count = read(impl->device, buffer + done, length - done);
+        if (count <= 0)
+            throw std::string("DeviceIO: Error reading from device.\n");
+        done += static_cast<size_t>(count);
+    }
+#endif
+}
+
+void DeviceIO::WriteRaw(const BYTE *buffer, DWORD length)
+{
+#ifdef _WIN32
+    if (!WriteFile(impl->deviceHandle, buffer, length, nullptr, &impl->offset))
+        throw std::string("DeviceIO: Error writing to the device, may be disconnected.\n");
+#else
+    size_t done = 0;
+    while (done < length)
+    {
+        const ssize_t count = write(impl->device, buffer + done, length - done);
+        if (count <= 0)
+            throw std::string("DeviceIO: Error writing to device.\n");
+        done += static_cast<size_t>(count);
+    }
+#endif
+}
+
 void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
 {
-    UINT64 endingPos = pos + len;
-    if ((pos & 0x1FF) == 0 && (len & 0x1FF) == 0)
-    {
-#ifdef _WIN32
-        bool success = ReadFile(
-                    impl->deviceHandle,   // Device to read from
-                    outBuffer,            // Output buffer
-                    len,                  // Length to read
-                    NULL,                 // Pointer to the number of bytes read
-                    &impl->offset);       // OVERLAPPED structure containing the offset to read from
-
-        if (!success)
-            throw std::string("DeviceIO: Error reading from device, may be disconnected.\n");
-#else
-        ssize_t bytesRead = read(impl->device, outBuffer, len);
-        if (bytesRead < 0)
-            throw std::string("DeviceIO: Error reading from device.\n");
-#endif
-
-        SetPosition(endingPos);
-
-        return;
-    }
-
-    UINT64 originalPos = pos;
-    SetPosition(DOWN_TO_NEAREST_SECTOR(pos));
-
-    if (lastReadOffset != pos)
-    {
-#ifdef _WIN32
-        bool success = ReadFile(
-                    impl->deviceHandle,   // Device to read from
-                    lastReadData,         // Output buffer
-                    FAT_SECTOR_SIZE,                // Length to read
-                    NULL,                 // Pointer to the number of bytes read
-                    &impl->offset);       // OVERLAPPED structure containing the offset to read from
-
-        if (!success)
-            throw std::string("DeviceIO: Error reading from device, may be disconnected.\n");
-#else
-        ssize_t bytesRead = read(impl->device, lastReadData, FAT_SECTOR_SIZE);
-        if (bytesRead < 0)
-            throw std::string("DeviceIO: Error reading from device.\n");
-#endif
-
-        lastReadOffset = pos;
-    }
-
-    // copy over the data requested
-    WORD bytesLeftInSector = FAT_SECTOR_SIZE - (originalPos & 0x1FF);
-    WORD neededBytes = (len > bytesLeftInSector) ? bytesLeftInSector : len;
-    memcpy(outBuffer, lastReadData + (originalPos & 0x1FF), neededBytes);
-
-    len -= neededBytes;
-    outBuffer += neededBytes;
-
     if (len == 0)
-    {
-        SetPosition(endingPos);
         return;
+
+    const UINT64 requestStart = pos;
+    const UINT64 requestEnd = pos + len;
+    UINT64 cursor = DownToSector(requestStart);
+    UINT64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
+
+    while (remaining > 0)
+    {
+        const size_t chunk = static_cast<size_t>(std::min<UINT64>(remaining, impl->bounceCapacity));
+        SetPosition(cursor);
+        ReadRaw(impl->bounce, static_cast<DWORD>(chunk));
+
+        const UINT64 chunkEnd = cursor + chunk;
+        const UINT64 copyStart = std::max<UINT64>(cursor, requestStart);
+        const UINT64 copyEnd = std::min<UINT64>(chunkEnd, requestEnd);
+        if (copyEnd > copyStart)
+        {
+            std::memcpy(outBuffer + (copyStart - requestStart),
+                        impl->bounce + (copyStart - cursor),
+                        static_cast<size_t>(copyEnd - copyStart));
+        }
+
+        cursor = chunkEnd;
+        remaining -= chunk;
     }
 
-    // seek to the next sector
-    SetPosition(pos + FAT_SECTOR_SIZE); // 0x200
-
-    INT64 downTo = DOWN_TO_NEAREST_SECTOR(len);
-
-    // read the consecutive sectors
-#ifdef _WIN32
-    bool success = ReadFile(
-                impl->deviceHandle,                 // Device to read from
-                outBuffer,                          // Output buffer
-                downTo,                             // Length to read
-                NULL,                               // Pointer to the number of bytes read
-                &impl->offset);                     // OVERLAPPED structure containing the offset to read from
-
-    if (!success)
-        throw std::string("DeviceIO: Error reading from device, may be disconnected.\n");
-#else
-    ssize_t bytesRead = read(impl->device, outBuffer, downTo);
-    if (bytesRead < 0)
-        throw std::string("DeviceIO: Error reading from device.\n");
-#endif
-
-    // update all our values
-    SetPosition(DOWN_TO_NEAREST_SECTOR(endingPos));
-    outBuffer += downTo;
-    len &= 0x1FF;
-
-    if (len == 0)
-    {
-        SetPosition(endingPos);
-        return;
-    }
-
-    // read the stragglers
-#ifdef _WIN32
-    success = ReadFile(
-            impl->deviceHandle,                 // Device to read from
-            lastReadData,                       // Output buffer
-            FAT_SECTOR_SIZE,                              // Length to read
-            NULL,                               // Pointer to the number of bytes read
-            &impl->offset);                     // OVERLAPPED structure containing the offset to read from
-
-    if (!success)
-        throw std::string("DeviceIO: Error reading from device, may be disconnected.\n");
-#else
-    ssize_t lastBytesRead = read(impl->device, lastReadData, FAT_SECTOR_SIZE);
-    if (lastBytesRead < 0)
-        throw std::string("DeviceIO: Error reading from device.\n");
-#endif
-
-    lastReadOffset = pos;
-
-    // copy over the requested data
-    memcpy(outBuffer, lastReadData, len);
-
-    SetPosition(endingPos);
+    SetPosition(requestEnd);
 }
 
 void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
@@ -241,106 +229,50 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
     if (readOnly)
         throw std::string("DeviceIO: Device was opened read-only; elevated access is required for writes.\n");
 
-    UINT64 endingPos = pos + len;
-    if ((pos & 0x1FF) == 0 && (len & 0x1FF) == 0)
-    {
-#ifdef _WIN32
-        bool success = WriteFile(
-                    impl->deviceHandle,     // Device to read from
-                    buffer,                 // Output buffer
-                    len,                    // Length to read
-                    NULL,                   // Pointer to the number of bytes read
-                    &impl->offset);         // OVERLAPPED structure containing the offset to read from
-
-        if (!success)
-            throw std::string("DeviceIO: Error writing to the device, may be disconnected.\n");
-#else
-        ssize_t bytesWritten = write(impl->device, buffer, len);
-        if (bytesWritten < 0)
-            throw std::string("DeviceIO: Error writing to device.\n");
-#endif
-
-        SetPosition(endingPos);
-
-        return;
-    }
-
-    // nothing to do
     if (len == 0)
         return;
 
-    // We can't Write beyond the end of the stream
-    if (pos + len > Length())
+    const UINT64 requestStart = pos;
+    const UINT64 requestEnd = pos + len;
+
+    if (requestEnd > Length())
         throw std::string("DeviceIO: Cannot Write beyond the end of the stream.\n");
 
+    UINT64 cursor = DownToSector(requestStart);
+    UINT64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
 
-    UINT64 originalPos = pos;
-    UINT64 currentSector = DOWN_TO_NEAREST_SECTOR(pos);
-
-    // Write the bytes up to the next sector
-    SetPosition(currentSector);
-    ReadBytes(lastReadData, FAT_SECTOR_SIZE);
-    lastReadOffset = currentSector;
-    WORD bytesLeftInSector = FAT_SECTOR_SIZE - (originalPos - currentSector);
-    WORD bytesToWrite = (len >= bytesLeftInSector) ? bytesLeftInSector : len;
-    memcpy(lastReadData + (originalPos - currentSector), buffer, bytesToWrite);
-
-    // Write the actual data
-    SetPosition(currentSector);
-#ifdef _WIN32
-    DWORD bytesWritten;
-
-    WriteFile(
-        impl->deviceHandle,   // Device to read from
-        lastReadData,         // Data to Write
-        FAT_SECTOR_SIZE,                // Amount of data to Write
-        &bytesWritten,        // Pointer to number of bytes written
-        &impl->offset);       // OVERLAPPED structure containing the offset to Write from
-#else
-    ssize_t bytesWritten = write(impl->device, lastReadData, FAT_SECTOR_SIZE);
-    if (bytesWritten < 0)
-        throw std::string("DeviceIO: Error writing to device.\n");
-#endif
-
-    // update the values
-    buffer += bytesToWrite;
-    currentSector += FAT_SECTOR_SIZE;
-    len -= bytesToWrite;
-
-    // Write the rest of the data
-    while (len > 0)
+    while (remaining > 0)
     {
-        SetPosition(currentSector);
-        lastReadOffset = DOWN_TO_NEAREST_SECTOR(pos);
-        ReadBytes(lastReadData, FAT_SECTOR_SIZE);
-        bytesToWrite = (len >= FAT_SECTOR_SIZE) ? FAT_SECTOR_SIZE : len;
-        memcpy(lastReadData, buffer, bytesToWrite);
+        const size_t chunk = static_cast<size_t>(std::min<UINT64>(remaining, impl->bounceCapacity));
+        const UINT64 chunkEnd = cursor + chunk;
+        const UINT64 copyStart = std::max<UINT64>(cursor, requestStart);
+        const UINT64 copyEnd = std::min<UINT64>(chunkEnd, requestEnd);
 
-        // go to the top of the sector
-        SetPosition(currentSector);
+        // Only skip the read when the caller's data covers the whole transfer
+        // and it happens to be sector aligned.
+        const bool coversChunk = chunkEnd <= requestEnd && cursor >= requestStart;
 
-        // update values
-        buffer += bytesToWrite;
-        currentSector += FAT_SECTOR_SIZE;
-        len -= bytesToWrite;
+        SetPosition(cursor);
+        if (!coversChunk)
+            ReadRaw(impl->bounce, static_cast<DWORD>(chunk));
 
-#ifdef _WIN32
-        WriteFile(
-            impl->deviceHandle,   // Device to read from
-            lastReadData,         // Data to Write
-            FAT_SECTOR_SIZE,                // Amount of data to Write
-            &bytesWritten,        // Pointer to number of bytes written
-            &impl->offset);       // OVERLAPPED structure containing the offset to Write from
-#else
-        ssize_t bytesWritten = write(impl->device, buffer, FAT_SECTOR_SIZE);
-        if (bytesWritten < 0)
-            throw std::string("DeviceIO: Error writing to device.\n");
-#endif
+        if (copyEnd > copyStart)
+        {
+            std::memcpy(impl->bounce + (copyStart - cursor),
+                        buffer + (copyStart - requestStart),
+                        static_cast<size_t>(copyEnd - copyStart));
+        }
+
+        SetPosition(cursor);
+        WriteRaw(impl->bounce, static_cast<DWORD>(chunk));
+
+        cursor = chunkEnd;
+        remaining -= chunk;
     }
 
-    // set the position
-    SetPosition(endingPos);
+    SetPosition(requestEnd);
 }
+
 
 UINT64 DeviceIO::Length()
 {
@@ -386,7 +318,7 @@ void DeviceIO::SetPosition(UINT64 address, std::ios_base::seekdir dir)
         throw std::string("DeviceIO: Unsupported seek direction\n");
 
     pos = address;
-    address = DOWN_TO_NEAREST_SECTOR(address); // Round the position down to the nearest sector offset
+    address = DownToSector(address); // Round the position down to the nearest sector offset
 
 #ifdef _WIN32
     impl->offset.Offset = (DWORD)address;
@@ -423,6 +355,13 @@ UINT64 DeviceIO::GetPosition()
 
 void DeviceIO::Close()
 {
+    if (impl && impl->bounce != nullptr)
+    {
+        FreeAligned(impl->bounce);
+        impl->bounce = nullptr;
+        impl->bounceCapacity = 0;
+    }
+
 #if defined _WIN32
     if (impl && impl->deviceHandle != INVALID_HANDLE_VALUE) {
         CloseHandle(impl->deviceHandle);
@@ -501,6 +440,29 @@ void DeviceIO::loadDevice(std::wstring devicePath, DeviceErrorCode *error)
         throw std::string("DeviceIO: Error opening device.\n" + std::string(strerror(firstErrno)));
     }
 #endif
+
+    // Logical sector size: 4Kn media needs 4096-byte aligned transfers, and both
+    // FILE_FLAG_NO_BUFFERING and raw block I/O reject anything else.
+#ifdef _WIN32
+    DISK_GEOMETRY geometry {};
+    DWORD geometryBytes = 0;
+    if (DeviceIoControl(impl->deviceHandle, IOCTL_DISK_GET_DRIVE_GEOMETRY, nullptr, 0,
+                        &geometry, sizeof(geometry), &geometryBytes, nullptr) &&
+        geometry.BytesPerSector != 0)
+    {
+        impl->sectorSize = geometry.BytesPerSector;
+    }
+#else
+    int logicalSectorSize = 0;
+    if (ioctl(impl->device, SECTOR_SIZE, &logicalSectorSize) == 0 && logicalSectorSize > 0)
+        impl->sectorSize = static_cast<DWORD>(logicalSectorSize);
+#endif
+
+    const size_t capacity = RoundUpToSector(kBounceTarget);
+    impl->bounce = AllocateAligned(capacity, impl->sectorSize);
+    if (impl->bounce == nullptr)
+        throw std::string("DeviceIO: Could not allocate the aligned I/O buffer.\n");
+    impl->bounceCapacity = capacity;
 }
 
 void DeviceIO::Flush()
