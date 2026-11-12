@@ -152,6 +152,18 @@ Note: This feature is temporarily disabled while the upload system is being fina
        </property>
       </widget>
      </item>
+     <item>
+      <widget class="QCheckBox" name="checkBoxUnity">
+       <property name="text">
+        <string>Look up unknown game titles on XboxUnity (online).</string>
+       </property>
+       <property name="toolTip">
+        <string>When a title ID cannot be identified from the device itself, query xboxunity.net for the game name and cover.
+
+Local package data always takes precedence; this is only a fallback and is off by default.</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>

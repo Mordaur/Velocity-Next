@@ -73,6 +73,7 @@ set(SOURCES
   themecreationwizard.cpp
   textdialog.cpp
   thememanager.cpp
+  titlenameservice.cpp
   titleidfinder.cpp
   titleidfinderdialog.cpp
   transferflagsdialog.cpp

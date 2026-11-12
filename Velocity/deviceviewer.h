@@ -103,6 +103,9 @@ private:
     // Real title name from the first package in a title-ID folder (cached);
     // empty when it cannot be determined.
     QString ResolveTitleName(FatxFileEntry *entry);
+    QString ResolveGpdTitle(FatxFileEntry *entry);
+    void RefreshTreeNames();
+    void ApplyTitleIcon(const QString &titleId, const QPixmap &icon);
     QString DisplayName(FatxFileEntry *entry);
     bool eventFilter(QObject *watched, QEvent *event) override;
     void LoadFolderTree(QTreeWidgetItem *item);

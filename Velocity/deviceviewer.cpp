@@ -1,9 +1,16 @@
 #include "deviceviewer.h"
 #include "ui_deviceviewer.h"
 
+#include <QDir>
+
+#include <functional>
+#include <QRegularExpression>
 #include <QSettings>
+#include <QUuid>
+#include <QFile>
 
 #include "contentnames.h"
+#include "titlenameservice.h"
 
 #include <XboxInternals/Stfs/StfsPackage.h>
 
@@ -42,6 +49,11 @@ DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
     // Ctrl+Click on the Name column toggles friendly folder names, matching
     // GODspeed's Title/Name switch.
     ui->treeWidget->header()->installEventFilter(this);
+
+    connect(&TitleNameService::instance(), &TitleNameService::resolved, this,
+            [this](const QString &, const QString &) { RefreshTreeNames(); });
+    connect(&TitleNameService::instance(), &TitleNameService::iconResolved, this,
+            [this](const QString &titleId, const QPixmap &icon) { ApplyTitleIcon(titleId, icon); });
 
     progressBar = new QProgressBar(this);
     progressBar->setMaximumHeight(statusBar->height() - 5);
@@ -610,6 +622,43 @@ FatxFileEntry* DeviceViewer::GetFatxFileEntry(QTreeWidgetItem *item)
     return currentParent;
 }
 
+void DeviceViewer::RefreshTreeNames()
+{
+    std::function<void(QTreeWidgetItem *)> visit = [&](QTreeWidgetItem *item) {
+        for (int i = 0; i < item->childCount(); ++i)
+            visit(item->child(i));
+
+        auto *entry = item->data(0, Qt::UserRole).value<FatxFileEntry *>();
+        if (entry != nullptr)
+            item->setText(0, DisplayName(entry));
+    };
+
+    for (int i = 0; i < ui->treeWidget->topLevelItemCount(); ++i)
+        visit(ui->treeWidget->topLevelItem(i));
+}
+
+void DeviceViewer::ApplyTitleIcon(const QString &titleId, const QPixmap &icon)
+{
+    std::function<void(QTreeWidgetItem *)> visit = [&](QTreeWidgetItem *item) {
+        for (int i = 0; i < item->childCount(); ++i)
+            visit(item->child(i));
+
+        auto *entry = item->data(0, Qt::UserRole).value<FatxFileEntry *>();
+        if (entry == nullptr)
+            return;
+        if ((entry->fileAttributes & FatxDirectory) == 0)
+            return;
+        if (QString::fromStdString(entry->name).compare(titleId, Qt::CaseInsensitive) != 0)
+            return;
+
+        item->setIcon(0, QIcon(icon.scaled(50, 50, Qt::KeepAspectRatio,
+                                           Qt::SmoothTransformation)));
+    };
+
+    for (int i = 0; i < ui->treeWidget->topLevelItemCount(); ++i)
+        visit(ui->treeWidget->topLevelItem(i));
+}
+
 void DeviceViewer::ToggleFriendlyNames()
 {
     friendlyNames = !friendlyNames;
@@ -651,31 +700,45 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
 
     if (drive != nullptr)
     {
+        // GODspeed looks for the game in the title folder first, then rewrites a
+        // profile path to the shared Content\0000000000000000 folder so titles
+        // whose install lives elsewhere on the drive still get named.
+        QStringList bases;
+        const QString path = QString::fromStdString(entry->path);
+        bases << path;
+
+        static const QRegularExpression profilePath("Content[\\\\/]E0000[0-9A-Fa-f]{11}",
+                                                    QRegularExpression::CaseInsensitiveOption);
+        if (profilePath.match(path).hasMatch())
+        {
+            QString shared = path;
+            // Regex replacement needs a doubled backslash for a literal one.
+            shared.replace(profilePath, "Content\\\\0000000000000000");
+            bases << shared;
+        }
+
+        // 5841xxxx titles (XBLA / Games on Demand) use 000D0000; retail titles
+        // use 00007000. 00080000 covers the remaining content layout.
+        QStringList typeDirs;
+        typeDirs << (titleId.startsWith("5841") ? "000D0000" : "00007000") << "00080000";
+        if (!typeDirs.contains("000D0000"))
+            typeDirs << "000D0000";
+
         try
         {
-            // Only content types that describe the title itself may name it.
-            // Saved games (00000001) and DLC (00000002) carry the save slot or
-            // the DLC name, which is why profiles with save-only titles used to
-            // show entries like "Steve" or "GAME-autosave".
-            static const char *const preferred[] = {"000D0000", // Arcade / Games on Demand
-                                                    "0007000",  // Games on Demand
-                                                    "0004000",  // Installed game
-                                                    "0005000",  // Xbox Original
-                                                    "000E0000"}; // XNA / Indie
-            drive->GetChildFileEntries(entry);
-
-            for (const char *typeName : preferred)
+            for (const QString &base : bases)
             {
-                for (FatxFileEntry &child : entry->cachedFiles)
+                for (const QString &typeDir : typeDirs)
                 {
-                    if (!(child.fileAttributes & FatxDirectory))
-                        continue;
-                    if (QString::fromStdString(child.name).toUpper() !=
-                        QString::fromLatin1(typeName))
+                    const std::string dirPath =
+                            (base + titleId + "\\" + typeDir).toStdString();
+
+                    FatxFileEntry *dir = drive->GetFileEntry(dirPath);
+                    if (dir == nullptr)
                         continue;
 
-                    drive->GetChildFileEntries(&child);
-                    for (FatxFileEntry &package : child.cachedFiles)
+                    drive->GetChildFileEntries(dir);
+                    for (FatxFileEntry &package : dir->cachedFiles)
                     {
                         if (package.fileAttributes & FatxDirectory)
                             continue;
@@ -683,17 +746,18 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
                         FatxIO io = drive->GetFatxIO(&package);
                         StfsPackage stfs(&io);
 
-                        // Defend against mismatched folders: the package's own
-                        // title ID has to agree with the folder name.
+                        // The package's own title ID has to agree with the folder.
                         const QString packageTitle =
                                 QString::number(stfs.metaData->titleID, 16).toUpper()
                                         .rightJustified(8, '0');
-                        if (packageTitle == titleId)
-                            resolved = QString::fromStdWString(stfs.metaData->displayName);
+                        if (packageTitle == titleId && !stfs.metaData->titleName.empty())
+                            resolved = QString::fromStdWString(stfs.metaData->titleName);
 
                         stfs.Close();
                         io.Close();
-                        break;
+
+                        if (!resolved.isEmpty())
+                            break;
                     }
 
                     if (!resolved.isEmpty())
@@ -717,13 +781,94 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
     return resolved;
 }
 
+QString DeviceViewer::ResolveGpdTitle(FatxFileEntry *entry)
+{
+    // GODspeed uses the first string in a <TitleID>.gpd as the game name.
+    static QHash<QString, QString> cache;
+
+    const QString key = QString::fromStdString(entry->path + entry->name).toUpper();
+    if (cache.contains(key))
+        return cache.value(key);
+
+    QString resolved;
+    FatxDrive *drive = entry->partition != nullptr ? entry->partition->drive : nullptr;
+
+    if (drive != nullptr)
+    {
+        QString tempPath;
+        try
+        {
+            FatxIO io = drive->GetFatxIO(entry);
+            const UINT64 size = io.Length();
+
+            if (size > 0 && size <= 0x4000000)
+            {
+                std::vector<BYTE> buffer(static_cast<size_t>(size));
+                io.SetPosition(0);
+                io.ReadBytes(buffer.data(), static_cast<DWORD>(size));
+
+                tempPath = QDir::tempPath() + "/velocity-" +
+                        QUuid::createUuid().toString(QUuid::WithoutBraces) + ".gpd";
+
+                QFile file(tempPath);
+                if (file.open(QIODevice::WriteOnly))
+                {
+                    file.write(reinterpret_cast<const char *>(buffer.data()),
+                               static_cast<qint64>(size));
+                    file.close();
+
+                    GpdBase gpd(tempPath.toStdString());
+                    for (const StringEntry &string : gpd.strings)
+                    {
+                        if (!string.ws.empty())
+                        {
+                            resolved = QString::fromStdWString(string.ws);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            io.Close();
+        }
+        catch (...)
+        {
+        }
+
+        if (!tempPath.isEmpty())
+            QFile::remove(tempPath);
+    }
+
+    if (!resolved.isEmpty())
+        cache.insert(key, resolved);
+
+    return resolved;
+}
+
 QString DeviceViewer::DisplayName(FatxFileEntry *entry)
 {
     const bool isDirectory = (entry->fileAttributes & FatxDirectory) != 0;
 
     if (friendlyNames && isDirectory && ContentNames::IsTitleId(entry->name))
     {
-        const QString title = ResolveTitleName(entry);
+        const QString titleId = QString::fromStdString(entry->name).toUpper();
+
+        QString title = ResolveTitleName(entry);
+        if (title.isEmpty())
+            title = TitleNameService::instance().cached(titleId);
+
+        // Optional online fallback; no-op unless enabled in Preferences.
+        if (title.isEmpty())
+            TitleNameService::instance().request(titleId);
+
+        if (!title.isEmpty())
+            return title + " (" + QString::fromStdString(entry->name) + ")";
+    }
+
+    // <TitleID>.gpd files carry the game name in their first string.
+    if (friendlyNames && !isDirectory && ContentNames::IsTitleIdFile(entry->name))
+    {
+        const QString title = ResolveGpdTitle(entry);
         if (!title.isEmpty())
             return title + " (" + QString::fromStdString(entry->name) + ")";
     }

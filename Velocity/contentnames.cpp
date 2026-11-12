@@ -112,6 +112,18 @@ bool ContentNames::IsTitleId(const std::string &name)
     return isTitleIdShape(upper);
 }
 
+bool ContentNames::IsTitleIdFile(const std::string &name)
+{
+    std::string upper(name);
+    for (char &character : upper)
+        character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+
+    if (upper.size() != 12 || upper.compare(8, 4, ".GPD") != 0)
+        return false;
+
+    return isTitleIdShape(upper.substr(0, 8));
+}
+
 QString ContentNames::Recognize(const std::string &name, bool isDirectory)
 {
     std::string upper(name);

@@ -22,6 +22,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) :
     ui->comboBox_2->setCurrentIndex(settings->value("ProfileDropAction").toInt());
     ui->lineEdit->setText(settings->value("PluginPath").toString());
     ui->checkBox->setChecked(settings->value("AnonData").toBool());
+    ui->checkBoxUnity->setChecked(settings->value("UseUnity", false).toBool());
 }
 
 PreferencesDialog::~PreferencesDialog()
@@ -36,6 +37,7 @@ void PreferencesDialog::on_pushButton_clicked()
     settings->setValue("ProfileDropAction", ui->comboBox_2->currentIndex());
     settings->setValue("PluginPath", ui->lineEdit->text());
     settings->setValue("AnonData", ui->checkBox->checkState());
+    settings->setValue("UseUnity", ui->checkBoxUnity->isChecked());
 
     close();
 }
