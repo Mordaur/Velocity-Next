@@ -35,12 +35,21 @@ device access.
 
 Original Velocity was developed mainly by Stevie Hetelekides (Hetelek) and Adam Spindler (Experiment5X), with contributions from [many others](https://github.com/hetelek/Velocity/graphs/contributors). Velocity-Next continues their work with gratitude and respect for the foundation they built.
 
-The friendly-name layer in the device browser follows the approach of
-[GODspeed](https://github.com/Nemiroff/godspeed) (Nemiroff): recognise the
-content-type folders locally, resolve a title from the game's own package, and
-fall back to an opt-in [XboxUnity](http://xboxunity.net) lookup with a local
-cache. No GODspeed code was copied; the behaviour and the title-ID rules were
-re-derived from its `TitleRecognizer`.
+### Adapted mechanisms
+
+**Device-browser name resolution — adapted from GODspeed.** The friendly-name
+layer is an independent re-implementation of the mechanism used by
+[GODspeed](https://github.com/Nemiroff/godspeed) (Nemiroff) in
+[`TitleRecognizer`](https://github.com/Nemiroff/godspeed/blob/master/Neurotoxin.Godspeed/Neurotoxin.Godspeed.Shell/ContentProviders/TitleRecognizer.cs):
+
+1. recognise system and content-type folders locally from their names,
+2. resolve a game's name from its own package metadata (`titleName`), including
+   the shared `/Content/0000000000000000` copy,
+3. fall back to an opt-in [XboxUnity](http://xboxunity.net) lookup, cached on disk.
+
+GODspeed publishes no licence and no source code from it is included, linked or
+copied here. The behaviour, recognition order and title-ID rules were re-derived
+from that implementation and written from scratch for our C++20/Qt stack.
 
 ## Raw Device Access
 
