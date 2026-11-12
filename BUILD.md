@@ -352,9 +352,11 @@ sudo usermod -a -G disk $USER
 
 On macOS, raw disk devices (`/dev/rdisk*`) can only be opened by root.
 
-There is **no elevation helper on macOS yet** — `velocity-device-helper` can be
-built but the GUI has no way to start it (it relies on `pkexec`/UAC elsewhere).
-Run the application itself with `sudo`:
+macOS has **experimental** helper support: when a probe is denied, Velocity asks
+the system to run `velocity-device-helper` with administrator privileges
+(`osascript … with administrator privileges`). This path has not been verified on
+real hardware. If the prompt does not appear, or the drive is still missing, run
+the application itself with `sudo`:
 
 ```bash
 sudo ./out/build/macos-release/VelocityNext.app/Contents/MacOS/VelocityNext

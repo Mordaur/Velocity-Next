@@ -14,6 +14,9 @@ Velocity-Next
 - **Optional XboxUnity lookup**: titles that cannot be identified from the drive
   can be named (and given covers) from the online database — off by default in
   Preferences
+- **Experimental macOS elevation**: the device helper is started through macOS's
+  administrator prompt instead of requiring the whole app to run under `sudo`
+  (unverified on real hardware — please report)
 - **XEX and SVOD open from the device tree**, not only from packages and ISOs
 - **XUIZ, STRB, ZIP and text viewers** (CJK encodings) in the package browser
 - **Hardened FATX**: corrupt cluster chains, zero-length files and non-512-byte
@@ -32,6 +35,13 @@ device access.
 
 Original Velocity was developed mainly by Stevie Hetelekides (Hetelek) and Adam Spindler (Experiment5X), with contributions from [many others](https://github.com/hetelek/Velocity/graphs/contributors). Velocity-Next continues their work with gratitude and respect for the foundation they built.
 
+The friendly-name layer in the device browser follows the approach of
+[GODspeed](https://github.com/Nemiroff/godspeed) (Nemiroff): recognise the
+content-type folders locally, resolve a title from the game's own package, and
+fall back to an opt-in [XboxUnity](http://xboxunity.net) lookup with a local
+cache. No GODspeed code was copied; the behaviour and the title-ID rules were
+re-derived from its `TitleRecognizer`.
+
 ## Raw Device Access
 
 Velocity always starts unprivileged. Reading a raw disk usually needs
@@ -45,7 +55,10 @@ only the device I/O:
 - **Linux** — the helper starts through `pkexec`, or through passwordless `sudo`
   when available. Adding your user to the `disk` group also lets the app read
   devices directly.
-- **macOS** — there is no elevation helper yet; run the app with `sudo`.
+- **macOS** — **experimental and untested**: the helper is started through
+  `osascript … with administrator privileges`, so macOS shows its usual
+  administrator prompt. If that does not work on your machine, run the app with
+  `sudo` instead and please report it.
 
 Declining the prompt is not an error: the app reports that administrator access
 was not granted and simply leaves the device list empty.
