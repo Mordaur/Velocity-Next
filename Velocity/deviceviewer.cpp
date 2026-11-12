@@ -653,10 +653,15 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
     {
         try
         {
-            // Content lives in a type folder (000D0000 for a game, 00000001 for a
-            // save); the first package in it carries the display name.
-            static const char *const preferred[] = {"000D0000", "00000001", "00000002",
-                                                    "000B0000", "00040000"};
+            // Only content types that describe the title itself may name it.
+            // Saved games (00000001) and DLC (00000002) carry the save slot or
+            // the DLC name, which is why profiles with save-only titles used to
+            // show entries like "Steve" or "GAME-autosave".
+            static const char *const preferred[] = {"000D0000", // Arcade / Games on Demand
+                                                    "0007000",  // Games on Demand
+                                                    "0004000",  // Installed game
+                                                    "0005000",  // Xbox Original
+                                                    "000E0000"}; // XNA / Indie
             drive->GetChildFileEntries(entry);
 
             for (const char *typeName : preferred)
@@ -677,7 +682,15 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
 
                         FatxIO io = drive->GetFatxIO(&package);
                         StfsPackage stfs(&io);
-                        resolved = QString::fromStdWString(stfs.metaData->displayName);
+
+                        // Defend against mismatched folders: the package's own
+                        // title ID has to agree with the folder name.
+                        const QString packageTitle =
+                                QString::number(stfs.metaData->titleID, 16).toUpper()
+                                        .rightJustified(8, '0');
+                        if (packageTitle == titleId)
+                            resolved = QString::fromStdWString(stfs.metaData->displayName);
+
                         stfs.Close();
                         io.Close();
                         break;
