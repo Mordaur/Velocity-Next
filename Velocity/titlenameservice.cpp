@@ -1,5 +1,7 @@
 #include "titlenameservice.h"
 
+#include "contentnames.h"
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -66,6 +68,11 @@ void TitleNameService::loadCache()
     const QJsonObject root = document.object();
     for (auto it = root.begin(); it != root.end(); ++it)
     {
+        // Ignore anything that is not a title ID; an earlier version asked for
+        // system folders such as FFFE07D1, which must never be looked up.
+        if (!ContentNames::IsTitleId(it.key().toStdString()))
+            continue;
+
         const QJsonObject entry = it.value().toObject();
         Entry cached;
         cached.name = entry.value("name").toString();

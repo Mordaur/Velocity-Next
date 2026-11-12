@@ -24,8 +24,14 @@ namespace
 
     bool isTitleIdShape(const std::string &upper)
     {
-        // content-type folders are small values and therefore start with '0'
-        return upper.size() == 8 && isHex(upper) && upper[0] != '0';
+        // Matches GODspeed's game pattern [1-9A-E][0-9A-F]{7}: content-type
+        // folders start with '0' and F-prefixed IDs are system data
+        // (FFFE07D1 is the profile area, not a title).
+        if (upper.size() != 8 || !isHex(upper))
+            return false;
+
+        const char first = upper[0];
+        return first >= '1' && first <= '9' ? true : (first >= 'A' && first <= 'E');
     }
 
     bool isContentTypeShape(const std::string &upper)
