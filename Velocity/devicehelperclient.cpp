@@ -45,6 +45,25 @@ namespace
 #endif
     }
 
+#if defined(__APPLE__)
+    // Wrap a value for /bin/sh single-quoted quoting.
+    QString shellQuote(const QString &value)
+    {
+        QString quoted = value;
+        quoted.replace("'", "'\\''");
+        return "'" + quoted + "'";
+    }
+
+    // Escape a string for embedding inside an AppleScript double-quoted literal.
+    QString appleScriptString(const QString &value)
+    {
+        QString escaped = value;
+        escaped.replace("\\", "\\\\");
+        escaped.replace("\"", "\\\"");
+        return escaped;
+    }
+#endif
+
 #if defined(_WIN32)
     QString windowsErrorText(unsigned long error)
     {
@@ -151,6 +170,33 @@ bool HelperClient::start(QString *error)
             process.setArguments({"-n", helperPath, "--endpoint", endpoint,
                                   "--uid", QString::number(getuid())});
         }
+#if defined(__APPLE__)
+        else
+        {
+            // macOS has neither pkexec nor UAC. Ask the system to run the helper
+            // with administrator privileges; the command is backgrounded because
+            // the helper keeps running until the GUI disconnects.
+            const QString osascript = QStandardPaths::findExecutable("osascript");
+            if (osascript.isEmpty())
+            {
+                if (error)
+                    *error = "osascript was not found; run Velocity with sudo.";
+                return false;
+            }
+
+            const QString command = QString("%1 --endpoint %2 --uid %3")
+                                            .arg(shellQuote(helperPath),
+                                                 shellQuote(endpoint),
+                                                 QString::number(getuid()));
+            const QString script =
+                    QString("do shell script \"%1 >/dev/null 2>&1 &\" "
+                            "with administrator privileges")
+                            .arg(appleScriptString(command));
+
+            process.setProgram(osascript);
+            process.setArguments({"-e", script});
+        }
+#else
         else
         {
             const QString pkexec = QStandardPaths::findExecutable("pkexec");
@@ -165,6 +211,7 @@ bool HelperClient::start(QString *error)
             process.setArguments({helperPath, "--endpoint", endpoint,
                                   "--uid", QString::number(getuid())});
         }
+#endif
     }
     process.start();
 
@@ -202,10 +249,15 @@ bool HelperClient::start(QString *error)
         const bool notGranted = process.exitStatus() == QProcess::NormalExit &&
                                 (process.exitCode() == 126 || process.exitCode() == 127);
 
-        if (notGranted)
+        if (notGranted || stderrText.contains("User canceled", Qt::CaseInsensitive) ||
+            stderrText.contains("User cancelled", Qt::CaseInsensitive))
+        {
             *error = "Administrator access was not granted.";
+        }
         else
+        {
             *error = stderrText.isEmpty() ? "The privileged helper did not start." : stderrText;
+        }
 #endif
     }
     stop();
