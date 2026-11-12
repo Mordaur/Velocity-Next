@@ -63,6 +63,13 @@ private:
     void OpenContent(bool updateButton);
     void UpdateDevicePanel();
     void UpdateUI();
+
+    // Remove a leaf and any parents that become empty after a delete.
+    void CleanupEmptyItems(QTreeWidgetItem *leafItem);
+
+    // Validate the given files and inject them into the device, remapping the
+    // profile of saved games when necessary.
+    void CopyFilesToDevice(XContentDevice *device, const QStringList &files);
 };
 
 #endif // DEVICECONTENTVIEWER_H

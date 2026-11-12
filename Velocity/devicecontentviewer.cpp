@@ -12,9 +12,13 @@
 #include <XboxInternals/Gpd/GpdBase.h>
 #include <XboxInternals/Stfs/StfsPackage.h>
 
+#include "multiprogressdialog.h"
 #include "packageviewer.h"
+#include "profileselectiondialog.h"
 #include "qthelpers.h"
 #include "svoddialog.h"
+
+#include <cstring>
 
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 
@@ -370,13 +374,237 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
     if (!item)
         return;
 
-    QMenu contextMenu(this);
-    QAction *open = contextMenu.addAction("View Package");
-    open->setEnabled(item->data(0, Qt::UserRole).value<IXContentHeader*>() != nullptr);
+    const QList<QTreeWidgetItem *> selected = ui->treeWidget->selectedItems();
 
-    QAction *selected = contextMenu.exec(ui->treeWidget->mapToGlobal(pos));
-    if (selected == open)
+    // Everything selected must have a device path to be extractable.
+    bool canExtract = !selected.isEmpty();
+    for (QTreeWidgetItem *cur : selected)
+        if (cur->data(1, Qt::UserRole).toString().isEmpty())
+            canExtract = false;
+
+    QMenu contextMenu(this);
+    QAction *extract = nullptr;
+    QAction *remove = nullptr;
+
+    if (canExtract)
+    {
+        extract = contextMenu.addAction(QPixmap(":/Images/extract.png"), "Copy Selected to Local Disk");
+        remove = contextMenu.addAction(QPixmap(":/Images/delete.png"), "Delete Selected Items");
+    }
+
+    QAction *copyHere = contextMenu.addAction(QPixmap(":/Images/add.png"), "Copy File(s) Here");
+    contextMenu.addSeparator();
+    QAction *viewPackage = contextMenu.addAction("View Package");
+    viewPackage->setEnabled(item->data(0, Qt::UserRole).value<IXContentHeader *>() != nullptr);
+
+    QAction *chosen = contextMenu.exec(ui->treeWidget->mapToGlobal(pos));
+    if (chosen == nullptr)
+        return;
+
+    if (chosen == viewPackage)
+    {
         OpenContent(false);
+    }
+    else if (chosen == extract)
+    {
+        const QString saveDir = QFileDialog::getExistingDirectory(this,
+                "Choose a place to extract the files to...", QtHelpers::DefaultLocation());
+        if (saveDir.isEmpty())
+            return;
+
+        QList<void *> filesToExtract;
+        QStringList paths;
+
+        for (QTreeWidgetItem *curItem : selected)
+        {
+            const QString path = curItem->data(1, Qt::UserRole).toString();
+            filesToExtract.push_back(new std::string(path.toStdString()));
+            paths.push_back(path);
+
+            // SVOD content is split across several data files.
+            auto *content = curItem->data(0, Qt::UserRole).value<IXContentHeader *>();
+            if (content != nullptr && content->metaData->fileSystem == FileSystemSVOD)
+            {
+                const QStringList contentFilePaths =
+                        curItem->data(4, Qt::UserRole).toStringList();
+                for (const QString &contentFilePath : contentFilePaths)
+                {
+                    filesToExtract.push_back(new std::string(contentFilePath.toStdString()));
+                    paths.push_back(contentFilePath);
+                }
+            }
+        }
+
+        // MultiProgressDialog strips one root from every path; use the deepest
+        // directory shared by the selection so the layout is preserved.
+        QString rootPath;
+        if (!paths.isEmpty())
+        {
+            rootPath = paths.first();
+            rootPath = rootPath.left(rootPath.lastIndexOf('\\') + 1);
+            for (const QString &path : paths)
+            {
+                while (!rootPath.isEmpty() && !path.startsWith(rootPath))
+                    rootPath = rootPath.left(rootPath.lastIndexOf('\\', rootPath.size() - 2) + 1);
+            }
+        }
+
+        auto *dialog = new MultiProgressDialog(OpExtract, FileSystemFATX,
+                currentDevice, saveDir, filesToExtract, this, rootPath);
+        dialog->setModal(true);
+        dialog->show();
+        dialog->start();
+
+        for (void *file : filesToExtract)
+            delete static_cast<std::string *>(file);
+    }
+    else if (chosen == remove)
+    {
+        const QList<QTreeWidgetItem *> toRemove = selected;
+
+        try
+        {
+            for (QTreeWidgetItem *curItem : toRemove)
+            {
+                auto *package = curItem->data(0, Qt::UserRole).value<IXContentHeader *>();
+                const std::string path = curItem->data(1, Qt::UserRole).toString().toStdString();
+
+                currentDevice->DeleteFile(package, path);
+                CleanupEmptyItems(curItem);
+            }
+        }
+        catch (const std::string &error)
+        {
+            QMessageBox::critical(this, "Error",
+                    "An error occurred while deleting files.\n\n" +
+                            QString::fromStdString(error));
+        }
+    }
+    else if (chosen == copyHere)
+    {
+        const QStringList files = QFileDialog::getOpenFileNames(this, "",
+                QtHelpers::DefaultLocation());
+        if (!files.isEmpty())
+            CopyFilesToDevice(currentDevice, files);
+    }
+}
+
+void DeviceContentViewer::CleanupEmptyItems(QTreeWidgetItem *leafItem)
+{
+    QTreeWidgetItem *parent = leafItem->parent();
+    delete leafItem;
+
+    // Categories and profiles disappear once they have no content left.
+    while (parent != nullptr && parent->parent() != nullptr && parent->childCount() == 0)
+    {
+        QTreeWidgetItem *next = parent->parent();
+        delete parent;
+        parent = next;
+    }
+}
+
+void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStringList &files)
+{
+    if (device == nullptr)
+        return;
+
+    QList<IXContentHeader *> contentFiles;
+
+    try
+    {
+        for (const QString &filePath : files)
+        {
+            const FileSystem fileSystem = IXContentHeader::GetFileSystem(filePath.toStdString());
+            IXContentHeader *content = fileSystem == FileSystemSTFS
+                    ? static_cast<IXContentHeader *>(new StfsPackage(filePath.toStdString()))
+                    : static_cast<IXContentHeader *>(new SVOD(filePath.toStdString()));
+            contentFiles.push_back(content);
+
+            const UINT64 required = static_cast<UINT64>(QFileInfo(filePath).size()) +
+                    content->metaData->dataFileCombinedSize;
+            if (device->GetFreeMemory() < required)
+            {
+                QMessageBox::critical(this, "Out of Space",
+                        "Copying halted. There is not enough free space on the device for " +
+                                QString::fromStdWString(content->metaData->displayName) + ".");
+                qDeleteAll(contentFiles);
+                return;
+            }
+        }
+    }
+    catch (const std::string &)
+    {
+        QMessageBox::critical(this, "Invalid XContent",
+                "Copying halted. One or more of the files are not valid Xbox 360 content.");
+        qDeleteAll(contentFiles);
+        return;
+    }
+
+    // Saved games carry the profile they belong to; remap it when that profile
+    // is not on this device.
+    if (device->profiles)
+    {
+        for (IXContentHeader *content : contentFiles)
+        {
+            if (content->metaData->contentType != SavedGame)
+                continue;
+
+            UINT64 contentProfileID = 0;
+            std::memcpy(&contentProfileID, content->metaData->profileID, sizeof(contentProfileID));
+
+            bool found = false;
+            for (auto &profile : *device->profiles)
+            {
+                if (profile.GetFileSize() == 0)
+                    continue;
+
+                UINT64 profileID = 0;
+                std::memcpy(&profileID, profile.GetProfileID(), sizeof(profileID));
+                if (profileID == contentProfileID)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                ProfileSelectionDialog dialog(device->profiles.get(),
+                        QString::fromStdWString(content->metaData->displayName), this);
+                dialog.exec();
+
+                if (dialog.HasSelectedProfile())
+                {
+                    XContentDeviceProfile profile = dialog.GetSelectedProfile();
+                    std::memcpy(content->metaData->profileID, profile.GetProfileID(), 8);
+                    content->metaData->FixHeaderHash();
+
+                    const std::string kvPath = QtHelpers::GetKVPath(
+                            content->metaData->certificate.ownerConsoleType, this);
+                    content->metaData->ResignHeader(kvPath);
+                    content->metaData->WriteMetaData();
+                }
+            }
+        }
+    }
+
+    qDeleteAll(contentFiles);
+
+    QList<void *> filesToInject;
+    for (const QString &file : files)
+        filesToInject.push_back(new std::string(file.toStdString()));
+
+    auto *dialog = new MultiProgressDialog(OpInject, FileSystemFATX, device, "",
+            filesToInject, this);
+    dialog->setModal(true);
+    dialog->show();
+    dialog->start();
+
+    for (void *file : filesToInject)
+        delete static_cast<std::string *>(file);
+
+    ui->treeWidget->clear();
+    LoadDevicesp();
 }
 
 void DeviceContentViewer::onNewDevicesDetected(QList<FatxDrive*> newDrives)
