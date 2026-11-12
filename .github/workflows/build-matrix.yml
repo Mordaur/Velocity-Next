@@ -221,8 +221,9 @@ jobs:
         run: |
           mkdir -p release-macos
           cp -r out/build/macos-release/VelocityNext/VelocityNext.app release-macos/
-          cp out/build/macos-release/VelocityNext/velocity-device-helper \
-             release-macos/VelocityNext.app/Contents/MacOS/
+          # CMake's post-build step already copies the helper into the bundle
+          # (the target directory is Contents/MacOS on macOS); just verify it.
+          test -f release-macos/VelocityNext.app/Contents/MacOS/velocity-device-helper
           macdeployqt release-macos/VelocityNext.app -dmg
           mv release-macos/VelocityNext.dmg release-macos/Velocity-Next.dmg
       
