@@ -9,6 +9,8 @@ Velocity-Next
   or right-clicking — UAC on Windows, polkit/sudo on Linux
 - **Typed device diagnostics**: permission, not-found and busy failures are
   reported instead of a bare "no drives detected"
+- **Friendly folder names**: the device browser can show `DOOM II (584109B6)` instead
+  of raw IDs, toggled by Ctrl+Click on the Name column (raw mode stays available)
 - **XEX and SVOD open from the device tree**, not only from packages and ISOs
 - **XUIZ, STRB, ZIP and text viewers** (CJK encodings) in the package browser
 - **Hardened FATX**: corrupt cluster chains, zero-length files and non-512-byte

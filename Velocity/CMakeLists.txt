@@ -24,6 +24,7 @@ set(SOURCES
   boxartretriever.cpp
   certificatedialog.cpp
   clustertooldialog.cpp
+  contentnames.cpp
   creationwizard.cpp
   deviceviewer.cpp
   dragdroptreewidget.cpp

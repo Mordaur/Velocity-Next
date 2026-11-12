@@ -91,6 +91,7 @@ private:
     QTreeWidgetItem *currentDriveItem;
     QString previousName;
     bool drivesLoaded;
+    bool friendlyNames;
     // Guards against re-entering a folder load from the event loop that
     // GetChildFileEntries pumps: a nested load would clear the tree the outer
     // loop is still iterating and interleave reads on the same drive.
@@ -98,6 +99,12 @@ private:
     std::shared_ptr<HelperClient> helperClient;
 
     void LoadFolderAll(FatxFileEntry *folder);
+    void ToggleFriendlyNames();
+    // Real title name from the first package in a title-ID folder (cached);
+    // empty when it cannot be determined.
+    QString ResolveTitleName(FatxFileEntry *entry);
+    QString DisplayName(FatxFileEntry *entry);
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void LoadFolderTree(QTreeWidgetItem *item);
     void LoadPartitions();
     void GetSubFilesFATX(FatxFileEntry *parent, QList<void*> &entries);

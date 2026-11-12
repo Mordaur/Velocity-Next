@@ -1,12 +1,19 @@
 #include "deviceviewer.h"
 #include "ui_deviceviewer.h"
 
+#include <QSettings>
+
+#include "contentnames.h"
+
+#include <XboxInternals/Stfs/StfsPackage.h>
+
 
 
 DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
         QList<QAction *> gameActions, QWidget *parent) :
     QDialog(parent), ui(new Ui::DeviceViewer), currentDrive(nullptr), parentEntry(nullptr),
     gpdActions(gpdActions), gameActions(gameActions), statusBar(statusBar), drivesLoaded(false),
+    friendlyNames(QSettings("Exetelek", "Velocity").value("FriendlyNames", false).toBool()),
     loadingFolder(false)
 {
     ui->setupUi(this);
@@ -31,6 +38,10 @@ DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
             SLOT(onDragEntered(QDragEnterEvent*)));
     connect(ui->treeWidget, SIGNAL(dragLeft(QDragLeaveEvent*)), this,
             SLOT(onDragLeft(QDragLeaveEvent*)));
+
+    // Ctrl+Click on the Name column toggles friendly folder names, matching
+    // GODspeed's Title/Name switch.
+    ui->treeWidget->header()->installEventFilter(this);
 
     progressBar = new QProgressBar(this);
     progressBar->setMaximumHeight(statusBar->height() - 5);
@@ -141,11 +152,22 @@ void DeviceViewer::showContextMenu(QPoint point)
     }
 
     contextMenu.addSeparator();
+
+    QAction *friendly = contextMenu.addAction("Friendly Folder Names");
+    friendly->setCheckable(true);
+    friendly->setChecked(friendlyNames);
+
     contextMenu.addAction(QPixmap(":/Images/refresh.png"), "Refresh");
 
     QAction *selectedItem = contextMenu.exec(globalPos);
-    if(selectedItem == nullptr)
+    if (selectedItem == nullptr)
         return;
+
+    if (selectedItem == friendly)
+    {
+        ToggleFriendlyNames();
+        return;
+    }
 
     try
     {
@@ -185,7 +207,7 @@ void DeviceViewer::showContextMenu(QPoint point)
                     Qt::UserRole).toString(), this);
             dialog.exec();
 
-            items.at(0)->setText(0, QString::fromStdString(entry->name));
+            items.at(0)->setText(0, DisplayName(entry));
         }
         else if (selectedItem->text() == "Copy File(s) Here")
         {
@@ -264,7 +286,7 @@ void DeviceViewer::showContextMenu(QPoint point)
                     entryItem->setIcon(0, QIcon(":/Images/FolderFileIcon.png"));
 
                     // setup the text
-                    entryItem->setText(0, QString::fromStdString(entry->name));
+                    entryItem->setText(0, DisplayName(entry));
 
                     MSTime createdtime = DWORDToMSTime(entry->creationDate);
 
@@ -588,6 +610,114 @@ FatxFileEntry* DeviceViewer::GetFatxFileEntry(QTreeWidgetItem *item)
     return currentParent;
 }
 
+void DeviceViewer::ToggleFriendlyNames()
+{
+    friendlyNames = !friendlyNames;
+
+    QSettings("Exetelek", "Velocity").setValue("FriendlyNames", friendlyNames);
+
+    // Rebuild the current listing so the new mode applies immediately.
+    if (parentEntry != nullptr)
+        LoadFolderAll(parentEntry);
+}
+
+bool DeviceViewer::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->treeWidget->header() && event->type() == QEvent::MouseButtonRelease)
+    {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton &&
+            mouseEvent->modifiers().testFlag(Qt::ControlModifier))
+        {
+            ToggleFriendlyNames();
+            return true;
+        }
+    }
+
+    return QDialog::eventFilter(watched, event);
+}
+
+QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
+{
+    // Reading a package header is expensive, so results are cached per title ID.
+    static QHash<QString, QString> cache;
+
+    const QString titleId = QString::fromStdString(entry->name).toUpper();
+    if (cache.contains(titleId))
+        return cache.value(titleId);
+
+    QString resolved;
+    FatxDrive *drive = entry->partition != nullptr ? entry->partition->drive : nullptr;
+
+    if (drive != nullptr)
+    {
+        try
+        {
+            // Content lives in a type folder (000D0000 for a game, 00000001 for a
+            // save); the first package in it carries the display name.
+            static const char *const preferred[] = {"000D0000", "00000001", "00000002",
+                                                    "000B0000", "00040000"};
+            drive->GetChildFileEntries(entry);
+
+            for (const char *typeName : preferred)
+            {
+                for (FatxFileEntry &child : entry->cachedFiles)
+                {
+                    if (!(child.fileAttributes & FatxDirectory))
+                        continue;
+                    if (QString::fromStdString(child.name).toUpper() !=
+                        QString::fromLatin1(typeName))
+                        continue;
+
+                    drive->GetChildFileEntries(&child);
+                    for (FatxFileEntry &package : child.cachedFiles)
+                    {
+                        if (package.fileAttributes & FatxDirectory)
+                            continue;
+
+                        FatxIO io = drive->GetFatxIO(&package);
+                        StfsPackage stfs(&io);
+                        resolved = QString::fromStdWString(stfs.metaData->displayName);
+                        stfs.Close();
+                        io.Close();
+                        break;
+                    }
+
+                    if (!resolved.isEmpty())
+                        break;
+                }
+
+                if (!resolved.isEmpty())
+                    break;
+            }
+        }
+        catch (...)
+        {
+            // Unreadable or foreign content: fall back to the generic label.
+        }
+    }
+
+    // Only cache successes so a missing/removed package can be retried later.
+    if (!resolved.isEmpty())
+        cache.insert(titleId, resolved);
+
+    return resolved;
+}
+
+QString DeviceViewer::DisplayName(FatxFileEntry *entry)
+{
+    const bool isDirectory = (entry->fileAttributes & FatxDirectory) != 0;
+
+    if (friendlyNames && isDirectory && ContentNames::IsTitleId(entry->name))
+    {
+        const QString title = ResolveTitleName(entry);
+        if (!title.isEmpty())
+            return title + " (" + QString::fromStdString(entry->name) + ")";
+    }
+
+    return ContentNames::Display(entry->name, isDirectory, friendlyNames);
+}
+
 void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
 {
     if (loadingFolder)
@@ -654,7 +784,7 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
             }
 
             // setup the text
-            entryItem->setText(0, QString::fromStdString(entry->name));
+            entryItem->setText(0, DisplayName(entry));
 
             MSTime createdtime = DWORDToMSTime(entry->creationDate);
 
@@ -715,7 +845,7 @@ void DeviceViewer::LoadFolderTree(QTreeWidgetItem *item)
 
             QTreeWidgetItem *subFolder = new QTreeWidgetItem(item);
             subFolder->setIcon(0, QIcon(":/Images/FolderFileIcon.png"));
-            subFolder->setText(0, QString::fromStdString(entry->name));
+            subFolder->setText(0, DisplayName(entry));
 
             subFolder->setData(0, Qt::UserRole, QVariant::fromValue(entry));
             subFolder->setData(4, Qt::UserRole, QVariant(item->data(4, Qt::UserRole).toInt() + 1));
