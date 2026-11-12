@@ -104,6 +104,8 @@ private:
     // empty when it cannot be determined.
     QString ResolveTitleName(FatxFileEntry *entry);
     QString ResolveGpdTitle(FatxFileEntry *entry);
+    QString ResolveDataFileName(FatxFileEntry *entry);
+    void ApplyLocalIcon(QTreeWidgetItem *item, FatxFileEntry *entry);
     void RefreshTreeNames();
     void ApplyTitleIcon(const QString &titleId, const QPixmap &icon);
     QString DisplayName(FatxFileEntry *entry);

@@ -4,6 +4,13 @@
 #include <QDir>
 
 #include <functional>
+
+namespace
+{
+    // Local covers discovered while resolving names, keyed by title ID or file path.
+    QHash<QString, QByteArray> g_titleThumbnails;
+    QHash<QString, QByteArray> g_dataThumbnails;
+}
 #include <QRegularExpression>
 #include <QSettings>
 #include <QUuid>
@@ -622,6 +629,35 @@ FatxFileEntry* DeviceViewer::GetFatxFileEntry(QTreeWidgetItem *item)
     return currentParent;
 }
 
+void DeviceViewer::ApplyLocalIcon(QTreeWidgetItem *item, FatxFileEntry *entry)
+{
+    if (!friendlyNames || item == nullptr || entry == nullptr)
+        return;
+
+    const bool isDirectory = (entry->fileAttributes & FatxDirectory) != 0;
+    QByteArray thumbnail;
+
+    if (isDirectory && ContentNames::IsTitleId(entry->name))
+    {
+        thumbnail = g_titleThumbnails.value(QString::fromStdString(entry->name).toUpper());
+    }
+    else if (!isDirectory && ContentNames::IsDataFile(entry->name))
+    {
+        thumbnail = g_dataThumbnails.value(
+                QString::fromStdString(entry->path + entry->name).toUpper());
+    }
+
+    if (thumbnail.isEmpty())
+        return;
+
+    QPixmap pixmap;
+    if (pixmap.loadFromData(thumbnail))
+    {
+        item->setIcon(0, QIcon(pixmap.scaled(50, 50, Qt::KeepAspectRatio,
+                                             Qt::SmoothTransformation)));
+    }
+}
+
 void DeviceViewer::RefreshTreeNames()
 {
     std::function<void(QTreeWidgetItem *)> visit = [&](QTreeWidgetItem *item) {
@@ -630,7 +666,10 @@ void DeviceViewer::RefreshTreeNames()
 
         auto *entry = item->data(0, Qt::UserRole).value<FatxFileEntry *>();
         if (entry != nullptr)
+        {
             item->setText(0, DisplayName(entry));
+            ApplyLocalIcon(item, entry);
+        }
     };
 
     for (int i = 0; i < ui->treeWidget->topLevelItemCount(); ++i)
@@ -751,7 +790,17 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
                                 QString::number(stfs.metaData->titleID, 16).toUpper()
                                         .rightJustified(8, '0');
                         if (packageTitle == titleId && !stfs.metaData->titleName.empty())
+                        {
                             resolved = QString::fromStdWString(stfs.metaData->titleName);
+
+                            if (!stfs.metaData->thumbnailImage.empty())
+                            {
+                                g_titleThumbnails.insert(titleId,
+                                        QByteArray(reinterpret_cast<const char *>(
+                                                stfs.metaData->thumbnailImage.data()),
+                                                   static_cast<int>(stfs.metaData->thumbnailImage.size())));
+                            }
+                        }
 
                         stfs.Close();
                         io.Close();
@@ -777,6 +826,52 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
     // Only cache successes so a missing/removed package can be retried later.
     if (!resolved.isEmpty())
         cache.insert(titleId, resolved);
+
+    return resolved;
+}
+
+QString DeviceViewer::ResolveDataFileName(FatxFileEntry *entry)
+{
+    // GODspeed shows a data file's display name plus the title-update build.
+    static QHash<QString, QString> cache;
+
+    const QString key = QString::fromStdString(entry->path + entry->name).toUpper();
+    if (cache.contains(key))
+        return cache.value(key);
+
+    QString resolved;
+    FatxDrive *drive = entry->partition != nullptr ? entry->partition->drive : nullptr;
+
+    if (drive != nullptr)
+    {
+        try
+        {
+            FatxIO io = drive->GetFatxIO(entry);
+            StfsPackage stfs(&io);
+
+            resolved = QString::fromStdWString(stfs.metaData->displayName);
+            if (stfs.metaData->installerType == TitleUpdate)
+                resolved += QString(" (TU%1)").arg(stfs.metaData->installerVersion.build);
+
+            if (!stfs.metaData->thumbnailImage.empty())
+            {
+                g_dataThumbnails.insert(key,
+                        QByteArray(reinterpret_cast<const char *>(
+                                stfs.metaData->thumbnailImage.data()),
+                                   static_cast<int>(stfs.metaData->thumbnailImage.size())));
+            }
+
+            stfs.Close();
+            io.Close();
+        }
+        catch (...)
+        {
+            resolved.clear();
+        }
+    }
+
+    if (!resolved.isEmpty())
+        cache.insert(key, resolved);
 
     return resolved;
 }
@@ -873,6 +968,14 @@ QString DeviceViewer::DisplayName(FatxFileEntry *entry)
             return title + " (" + QString::fromStdString(entry->name) + ")";
     }
 
+    // Title updates and other data files carry their own name.
+    if (friendlyNames && !isDirectory && ContentNames::IsDataFile(entry->name))
+    {
+        const QString name = ResolveDataFileName(entry);
+        if (!name.isEmpty())
+            return name + " (" + QString::fromStdString(entry->name) + ")";
+    }
+
     return ContentNames::Display(entry->name, isDirectory, friendlyNames);
 }
 
@@ -941,8 +1044,9 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
                 entryItem->setText(1, QString::fromStdString(ByteSizeToString(entry->fileSize)));
             }
 
-            // setup the text
+            // setup the text (this resolves the title, so icons come after)
             entryItem->setText(0, DisplayName(entry));
+            ApplyLocalIcon(entryItem, entry);
 
             MSTime createdtime = DWORDToMSTime(entry->creationDate);
 
@@ -1004,6 +1108,7 @@ void DeviceViewer::LoadFolderTree(QTreeWidgetItem *item)
             QTreeWidgetItem *subFolder = new QTreeWidgetItem(item);
             subFolder->setIcon(0, QIcon(":/Images/FolderFileIcon.png"));
             subFolder->setText(0, DisplayName(entry));
+            ApplyLocalIcon(subFolder, entry);
 
             subFolder->setData(0, Qt::UserRole, QVariant::fromValue(entry));
             subFolder->setData(4, Qt::UserRole, QVariant(item->data(4, Qt::UserRole).toInt() + 1));

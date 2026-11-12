@@ -130,6 +130,18 @@ bool ContentNames::IsTitleIdFile(const std::string &name)
     return isTitleIdShape(upper.substr(0, 8));
 }
 
+bool ContentNames::IsDataFile(const std::string &name)
+{
+    std::string upper(name);
+    for (char &character : upper)
+        character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+
+    if (upper.rfind("TU", 0) == 0 && upper.size() > 2)
+        return true;
+
+    return upper.size() >= 4 && isHex(upper);
+}
+
 QString ContentNames::Recognize(const std::string &name, bool isDirectory)
 {
     std::string upper(name);

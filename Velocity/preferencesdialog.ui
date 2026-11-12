@@ -153,6 +153,33 @@ Note: This feature is temporarily disabled while the upload system is being fina
       </widget>
      </item>
      <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_unityDays">
+       <item>
+        <widget class="QLabel" name="labelUnityDays">
+         <property name="text">
+          <string>Keep online lookup results for</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSpinBox" name="spinBoxUnityDays">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>365</number>
+         </property>
+         <property name="value">
+          <number>30</number>
+         </property>
+         <property name="suffix">
+          <string> days</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
       <widget class="QCheckBox" name="checkBoxUnity">
        <property name="text">
         <string>Look up unknown game titles on XboxUnity (online).</string>

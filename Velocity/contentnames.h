@@ -19,6 +19,9 @@ namespace ContentNames
     // True for "<8 hex digits>.gpd" file names.
     bool IsTitleIdFile(const std::string &name);
 
+    // True for title-update / data files (TU..., or a plain hex name).
+    bool IsDataFile(const std::string &name);
+
     // Label for a name, e.g. "584109B6" -> "Unknown Game", "000D0000" ->
     // "Arcade Game", "FFFE07D1" -> "Profiles". Returns an empty string when the
     // name has no known meaning.

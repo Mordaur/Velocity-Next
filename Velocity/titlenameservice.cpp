@@ -17,7 +17,7 @@
 
 namespace
 {
-    constexpr qint64 kExpirySeconds = 30 * 24 * 60 * 60; // 30 days, as GODspeed's default
+    constexpr qint64 kDefaultExpiryDays = 30; // GODspeed's default
     constexpr const char *kTitleListUrl =
             "http://xboxunity.net/Resources/Lib/TitleList.php?search=%1&category=0";
     constexpr const char *kIconUrl = "http://xboxunity.net/Resources/Lib/Icon.php?tid=%1";
@@ -25,6 +25,14 @@ namespace
     bool useUnityEnabled()
     {
         return QSettings("Exetelek", "Velocity").value("UseUnity", false).toBool();
+    }
+
+    qint64 expirySeconds()
+    {
+        const int days = QSettings("Exetelek", "Velocity")
+                                 .value("UnityCacheDays", kDefaultExpiryDays)
+                                 .toInt();
+        return static_cast<qint64>(days > 0 ? days : kDefaultExpiryDays) * 24 * 60 * 60;
     }
 
     QString cacheFilePath()
@@ -111,7 +119,7 @@ QString TitleNameService::cached(const QString &titleId) const
     if (it == cache.constEnd())
         return {};
 
-    if (QDateTime::currentSecsSinceEpoch() - it.value().timestamp > kExpirySeconds)
+    if (QDateTime::currentSecsSinceEpoch() - it.value().timestamp > expirySeconds())
         return {};
 
     return it.value().name;

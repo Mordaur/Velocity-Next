@@ -23,6 +23,7 @@ PreferencesDialog::PreferencesDialog(QWidget *parent) :
     ui->lineEdit->setText(settings->value("PluginPath").toString());
     ui->checkBox->setChecked(settings->value("AnonData").toBool());
     ui->checkBoxUnity->setChecked(settings->value("UseUnity", false).toBool());
+    ui->spinBoxUnityDays->setValue(settings->value("UnityCacheDays", 30).toInt());
 }
 
 PreferencesDialog::~PreferencesDialog()
@@ -38,6 +39,7 @@ void PreferencesDialog::on_pushButton_clicked()
     settings->setValue("PluginPath", ui->lineEdit->text());
     settings->setValue("AnonData", ui->checkBox->checkState());
     settings->setValue("UseUnity", ui->checkBoxUnity->isChecked());
+    settings->setValue("UnityCacheDays", ui->spinBoxUnityDays->value());
 
     close();
 }
