@@ -119,7 +119,9 @@ void ExtractionWorker::run()
                     try
                     {
                         QString temp = QString::fromStdString(entry->path);
-                        QString dirPath = QDir::toNativeSeparators(dialog_->outDir + temp.replace(dialog_->rootPath, ""));
+                        // FATX paths use '\\', which is not a separator outside Windows
+                        QString dirPath = QDir::toNativeSeparators(dialog_->outDir +
+                                temp.replace(dialog_->rootPath, "").replace('\\', '/'));
                         QDir saveDir(dirPath);
 
                         if (!saveDir.exists())
@@ -393,7 +395,9 @@ void MultiProgressDialog::operateOnNextFile()
                     {
                         // make all the directories needed
                         QString temp = QString::fromStdString(entry->path);
-                        QString dirPath = QDir::toNativeSeparators(outDir + temp.replace(rootPath, ""));
+                        // FATX paths use '\\', which is not a separator outside Windows
+                        QString dirPath = QDir::toNativeSeparators(outDir +
+                                temp.replace(rootPath, "").replace('\\', '/'));
                         QDir saveDir(dirPath);
 
                         if (!saveDir.exists())
