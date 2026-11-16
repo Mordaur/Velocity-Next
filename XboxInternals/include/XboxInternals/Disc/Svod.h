@@ -29,13 +29,15 @@ public:
     void WriteFileEntry(GdfxFileEntry *entry);
     DWORD GetSectorCount();
 
+    // Reads the GDFX file listing into root; does nothing if it was already read.
+    void GetFileListing();
+
     std::vector<GdfxFileEntry> root;
 
 private:
     void ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, int size, std::string path);
     GdfxFileEntry GetFileEntry(std::string path, std::vector<GdfxFileEntry> *listing);
     void HashBlock(BYTE *block, BYTE *outHash);
-    void GetFileListing();
     std::string GetContentName();
 
     std::string contentDirectory;
