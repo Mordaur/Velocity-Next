@@ -89,6 +89,14 @@ public:
     DWORD sectorSize = FAT_SECTOR_SIZE;
     BYTE *bounce = nullptr;
     size_t bounceCapacity = 0;
+
+    // Small-read cache. Raw devices (/dev/rdisk* on macOS, FILE_FLAG_NO_BUFFERING
+    // on Windows) bypass the OS cache, so without this every ReadDword while
+    // parsing FAT chains, dirents and STFS headers is a separate physical transfer.
+    BYTE *cache = nullptr;
+    UINT64 cacheStart = 0;
+    size_t cacheValid = 0;
+    UINT64 deviceLength = 0;
 };
 
 DeviceIO::DeviceIO(std::string devicePath, DeviceErrorCode *error) :
@@ -123,6 +131,7 @@ DeviceIO::~DeviceIO()
 namespace
 {
     constexpr size_t kBounceTarget = 0x40000; // 256 KiB per physical transfer
+    constexpr size_t kCacheWindow = 0x10000;  // 64 KiB aligned read-cache window
 
     BYTE *AllocateAligned(size_t size, size_t alignment)
     {
@@ -198,6 +207,38 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
 
     const UINT64 requestStart = pos;
     const UINT64 requestEnd = pos + len;
+
+    // Serve small reads that fit inside one aligned window from the cache.
+    if (impl->cache != nullptr && len <= kCacheWindow)
+    {
+        const UINT64 windowStart = requestStart - (requestStart % kCacheWindow);
+        if (requestEnd <= windowStart + kCacheWindow)
+        {
+            const bool hit = impl->cacheValid != 0 && impl->cacheStart == windowStart &&
+                    requestEnd <= windowStart + impl->cacheValid;
+            if (!hit)
+            {
+                size_t windowLength = kCacheWindow;
+                if (impl->deviceLength != 0 && windowStart + windowLength > impl->deviceLength)
+                    windowLength = RoundUpToSector(
+                            static_cast<size_t>(impl->deviceLength - windowStart));
+
+                impl->cacheValid = 0;
+                SetPosition(windowStart);
+                ReadRaw(impl->cache, static_cast<DWORD>(windowLength));
+                impl->cacheStart = windowStart;
+                impl->cacheValid = windowLength;
+            }
+
+            if (requestEnd <= impl->cacheStart + impl->cacheValid)
+            {
+                std::memcpy(outBuffer, impl->cache + (requestStart - windowStart), len);
+                SetPosition(requestEnd);
+                return;
+            }
+        }
+    }
+
     UINT64 cursor = DownToSector(requestStart);
     UINT64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
 
@@ -231,6 +272,9 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
 
     if (len == 0)
         return;
+
+    // Writes go straight to the device; drop the read cache so it never serves stale data.
+    impl->cacheValid = 0;
 
     const UINT64 requestStart = pos;
     const UINT64 requestEnd = pos + len;
@@ -362,6 +406,13 @@ void DeviceIO::Close()
         impl->bounceCapacity = 0;
     }
 
+    if (impl && impl->cache != nullptr)
+    {
+        FreeAligned(impl->cache);
+        impl->cache = nullptr;
+        impl->cacheValid = 0;
+    }
+
 #if defined _WIN32
     if (impl && impl->deviceHandle != INVALID_HANDLE_VALUE) {
         CloseHandle(impl->deviceHandle);
@@ -463,6 +514,13 @@ void DeviceIO::loadDevice(std::wstring devicePath, DeviceErrorCode *error)
     if (impl->bounce == nullptr)
         throw std::string("DeviceIO: Could not allocate the aligned I/O buffer.\n");
     impl->bounceCapacity = capacity;
+
+    // The cache is an optimisation; carry on uncached if it cannot be allocated
+    // or the sector size does not divide the window.
+    impl->cacheValid = 0;
+    impl->deviceLength = Length();
+    if (kCacheWindow % impl->sectorSize == 0)
+        impl->cache = AllocateAligned(kCacheWindow, impl->sectorSize);
 }
 
 void DeviceIO::Flush()
