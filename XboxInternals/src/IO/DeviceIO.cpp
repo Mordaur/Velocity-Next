@@ -208,6 +208,13 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
     const UINT64 requestStart = pos;
     const UINT64 requestEnd = pos + len;
 
+    // A read cannot return a short buffer, so a request that extends past the
+    // device is an error - the same rule WriteBytes already applies. Without
+    // this, Linux rejects the lseek, leaves the offset unmoved, and the read
+    // silently returns bytes from the previous position.
+    if (impl->deviceLength != 0 && requestEnd > impl->deviceLength)
+        throw std::string("DeviceIO: Cannot Read beyond the end of the stream.\n");
+
     // Serve small reads that fit inside one aligned window from the cache.
     if (impl->cache != nullptr && len <= kCacheWindow)
     {
