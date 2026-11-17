@@ -319,8 +319,12 @@ void DeviceContentViewer::OpenContent(bool updateButton)
             if (updateButton)
                 ui->btnViewPackage->setText("Viewing package...");
 
+            // the device loads SVODs without their file listing; read it on demand
+            svod->GetFileListing();
+
             QApplication::processEvents();
-            SvodDialog viewer(svod, statusBar, this);
+            // the SVOD is owned by the device listing, so the dialog must not delete it
+            SvodDialog viewer(svod, statusBar, this, false);
             viewer.exec();
         }
     }
