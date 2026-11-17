@@ -21,8 +21,9 @@ constexpr uint8_t ATTR_SYSTEM = 0x04;
 
 enum class IsoType : uint32_t {
     Unknown = 0,
-    GDF,      // Standard Xbox ISO
-    XGD3,     // XGD3 variant (offset 0x02080000)
+    GDF,      // Standard Xbox ISO (XGD1)
+    XGD2,     // XGD2 variant (video partition at 0xFD90000)
+    XGD3,     // XGD3 variant (game partition at 0x02080000)
     XSF       // Custom format
 };
 

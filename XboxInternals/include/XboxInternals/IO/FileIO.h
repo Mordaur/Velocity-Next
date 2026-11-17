@@ -35,6 +35,7 @@ public:
 private:
     EndianType endian;
     UINT64 length;
+    bool readOnly = false;
     void ReadBytesWithChecks(void *buffer, INT32 size);
     std::unique_ptr<fstream> fstr;
     const string filePath;

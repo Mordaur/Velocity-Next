@@ -14,12 +14,67 @@
 
 namespace fs = std::filesystem;
 
-namespace XboxInternals::Iso {
-
 #define ISO_SECTOR_SIZE     0x800
 #define ISO_XGD1_ADDRESS    0x10000
 #define ISO_XGD2_ADDRESS    0xFDA0000
 #define ISO_XGD3_ADDRESS    0x2090000
+
+namespace XboxInternals::Iso {
+
+namespace {
+
+constexpr char kGdfMagic[] = "MICROSOFT*XBOX*MEDIA";
+constexpr size_t kGdfMagicLen = 20;
+constexpr UINT64 kDirRecordHeader = 14;
+constexpr UINT64 kDirRecordLimit = ISO_SECTOR_SIZE - kDirRecordHeader; // 0x7F2
+
+bool IsoNameEquals(const std::string &a, const std::string &b)
+{
+    if (a.size() != b.size())
+        return false;
+
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        unsigned char ca = static_cast<unsigned char>(a[i]);
+        unsigned char cb = static_cast<unsigned char>(b[i]);
+        if (ca >= 'A' && ca <= 'Z')
+            ca = static_cast<unsigned char>(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z')
+            cb = static_cast<unsigned char>(cb - 'A' + 'a');
+        if (ca != cb)
+            return false;
+    }
+
+    return true;
+}
+
+// Reject absolute paths, drive/ADS separators and any "." / ".." component.
+bool SafeRelativePath(const std::string &relative, fs::path &out)
+{
+    std::string normalized = relative;
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    if (normalized.empty())
+        return false;
+
+    fs::path candidate(normalized);
+    if (candidate.is_absolute())
+        return false;
+
+    for (const auto &part : candidate)
+    {
+        const std::string name = part.string();
+        if (name.empty() || name == "." || name == "..")
+            return false;
+        if (name.find(':') != std::string::npos ||
+            name.find('\0') != std::string::npos)
+            return false;
+    }
+
+    out = candidate;
+    return true;
+}
+
+} // namespace
 
 struct IsoImage::Impl {
     std::string path;
@@ -34,125 +89,185 @@ IsoImage::~IsoImage() {
 }
 
 bool IsoImage::ValidGDFXHeader(UINT64 address) {
-    BYTE gdfx_magic_buffer[20];
-    
-    impl_->io->SetPosition(address);
-    impl_->io->ReadBytes(gdfx_magic_buffer, 20);
-    
-    return memcmp(gdfx_magic_buffer, "MICROSOFT*XBOX*MEDIA", 20) == 0;
+    const UINT64 length = impl_->io->Length();
+    if (address > length || length - address < ISO_SECTOR_SIZE)
+        return false;
+
+    std::vector<BYTE> sector(ISO_SECTOR_SIZE);
+    try {
+        impl_->io->SetPosition(address);
+        impl_->io->ReadBytes(sector.data(), ISO_SECTOR_SIZE);
+    }
+    catch (...) {
+        return false;
+    }
+
+    // The kernel requires the signature at both ends of sector 32.
+    return memcmp(sector.data(), kGdfMagic, kGdfMagicLen) == 0 &&
+           memcmp(sector.data() + 0x7EC, kGdfMagic, kGdfMagicLen) == 0;
 }
 
 void IsoImage::ParseISO() {
-    // Find the address of the GDFX header based on XGD version
-    if (ValidGDFXHeader(ISO_XGD1_ADDRESS)) {
-        gdfxHeaderAddress = ISO_XGD1_ADDRESS;
-        info_.type = IsoType::GDF;
-        xgdVersion = "XGD1";
+    struct Candidate { UINT64 address; IsoType type; const char *version; };
+
+    // Probe the most specific layout first; an XGD3 video area can contain the
+    // XGD2 offset's bytes, which used to make the first-match order misclassify.
+    static const Candidate candidates[] = {
+        { ISO_XGD3_ADDRESS, IsoType::XGD3, "XGD3" },
+        { ISO_XGD2_ADDRESS, IsoType::XGD2, "XGD2" },
+        { ISO_XGD1_ADDRESS, IsoType::GDF,  "XGD1" },
+    };
+
+    gdfxHeaderAddress = 0;
+    for (const Candidate &candidate : candidates) {
+        if (ValidGDFXHeader(candidate.address)) {
+            gdfxHeaderAddress = candidate.address;
+            info_.type = candidate.type;
+            xgdVersion = candidate.version;
+            break;
+        }
     }
-    else if (ValidGDFXHeader(ISO_XGD2_ADDRESS)) {
-        gdfxHeaderAddress = ISO_XGD2_ADDRESS;
-        info_.type = IsoType::Unknown;
-        xgdVersion = "XGD2";
-    }
-    else if (ValidGDFXHeader(ISO_XGD3_ADDRESS)) {
-        gdfxHeaderAddress = ISO_XGD3_ADDRESS;
-        info_.type = IsoType::XGD3;
-        xgdVersion = "XGD3";
-    }
-    else {
+
+    if (gdfxHeaderAddress == 0)
         throw std::string("ISO: Invalid Xbox 360 ISO.");
-    }
-    
+
     info_.imageOffset = gdfxHeaderAddress;
-    
+
     // Parse the GDFX header using unified functions
     impl_->io->SetPosition(gdfxHeaderAddress);
     GdfxReadHeader(impl_->io.get(), &gdfxHeader);
-    
+
+    if (!ValidateExtent(gdfxHeader.rootSector, gdfxHeader.rootSize))
+        throw std::string("ISO: Invalid root directory extent.");
+
     info_.rootDirSector = gdfxHeader.rootSector;
     info_.rootDirSize = gdfxHeader.rootSize;
 }
 
-void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, int size, std::string path) {
-    // Seek to the start of the directory listing
-    UINT64 entryAddress = SectorToAddress(sector);
-    impl_->io->SetPosition(entryAddress);
-    
-    GdfxFileEntry current;
-    DWORD bytesLeft = size;
-    
-    while (bytesLeft != 0) {
-        // Save position before reading
-        UINT64 currentAddress = impl_->io->GetPosition();
-        
-        // Use unified GDFX reading function
-        if (!GdfxReadFileEntry(impl_->io.get(), &current))
-            break;
-        
-        // If it's a non-empty directory, recursively read its contents
-        if (current.attributes & GdfxDirectory && current.size != 0) {
-            // Preserve the current position
-            UINT64 seekAddr = impl_->io->GetPosition();
-            
-            ReadFileListing(&current.files, current.sector, current.size, 
-                           path + current.name + "/");
-            
-            // Reset position to current listing
-            impl_->io->SetPosition(seekAddr);
-        }
-        
-        current.filePath = path;
-        
-        // Get the file magic for non-directory entries
-        if (!(current.attributes & GdfxDirectory)) {
-            current.magic = GetFileMagic(&current);
-        } else {
-            current.magic = 0;
-        }
-        
-        entryList->push_back(current);
-        
-        // Seek to the next entry (aligned to 4-byte boundary)
-        entryAddress += (current.nameLen + 0x11) & 0xFFFFFFFC;
-        impl_->io->SetPosition(entryAddress);
-        
-        // Check for end marker
-        DWORD nextBytes = impl_->io->ReadDword();
-        if (nextBytes == 0xFFFFFFFF) {
-            if ((size - ISO_SECTOR_SIZE) <= 0) {
-                // Sort the file entries so that directories are first
-                std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
-                return;
-            }
-            else {
-                size -= ISO_SECTOR_SIZE;
-                entryAddress = SectorToAddress(++sector);
-                impl_->io->SetPosition(entryAddress);
-            }
-        }
-        
-        // Calculate the amount of bytes left in the file listing table to process
-        bytesLeft -= entryAddress - currentAddress;
-        
-        // Back up to the entry
-        impl_->io->SetPosition(entryAddress);
-        
-        // Reset the directory
-        current.files.clear();
+void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector,
+                               UINT64 size, std::string path, int depth,
+                               std::unordered_set<uint64_t> &visited) {
+    auto finish = [entryList]() {
+        std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
+    };
+
+    if (size == 0) {
+        finish();
+        return;
     }
-    
-    std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
+
+    // We materialise the whole tree; the kernel enumerates one directory per
+    // call. Bound the depth and reject a directory that is already being read so
+    // a cyclic/cross-linked entry cannot exhaust the stack.
+    if (depth >= 32) {
+        finish();
+        return;
+    }
+
+    const uint64_t key = (static_cast<uint64_t>(sector) << 32) ^ size;
+    if (!visited.insert(key).second) {
+        finish();
+        return;
+    }
+
+    UINT64 offset = 0;
+    const UINT64 length = impl_->io->Length();
+
+    while (offset < size) {
+        if (size - offset < kDirRecordHeader)
+            break;
+
+        const DWORD sectorIndex = sector + static_cast<DWORD>(offset / ISO_SECTOR_SIZE);
+        const DWORD inSector = static_cast<DWORD>(offset % ISO_SECTOR_SIZE);
+
+        if (inSector > kDirRecordLimit)
+            break;
+
+        const UINT64 address = SectorToAddress(sectorIndex) + inSector;
+        if (address > length || length - address < kDirRecordHeader)
+            break;
+
+        impl_->io->SetPosition(address);
+
+        const DWORD marker = impl_->io->ReadDword();
+        if (marker == 0xFFFFFFFF) {
+            // End marker: skip the remainder of this sector and continue with
+            // the next one (the kernel does not treat it as end-of-directory).
+            offset = (offset / ISO_SECTOR_SIZE + 1) * ISO_SECTOR_SIZE;
+            continue;
+        }
+
+        GdfxFileEntry current{};
+        current.unknown = marker;
+        current.sector = impl_->io->ReadDword();
+        current.size = impl_->io->ReadDword();
+        current.attributes = impl_->io->ReadByte();
+        current.nameLen = impl_->io->ReadByte();
+
+        // The 14-byte header and the name must stay inside one 2048-byte sector.
+        if (inSector + current.nameLen > kDirRecordLimit ||
+            address > length ||
+            length - address < kDirRecordHeader + current.nameLen)
+            break;
+
+        if (current.nameLen != 0) {
+            current.name.resize(current.nameLen);
+            impl_->io->ReadBytes(reinterpret_cast<BYTE *>(&current.name[0]), current.nameLen);
+        }
+
+        const UINT64 stride =
+                (static_cast<UINT64>(current.nameLen) + 0x11) & ~static_cast<UINT64>(3);
+        if (stride == 0)
+            break;
+
+        if ((current.attributes & GdfxDirectory) && current.size != 0 &&
+            ValidateExtent(current.sector, current.size)) {
+            ReadFileListing(&current.files, current.sector, current.size,
+                            path + current.name + "/", depth + 1, visited);
+        }
+
+        current.filePath = path;
+        current.magic = 0;
+        if (!(current.attributes & GdfxDirectory) && current.size >= 4 &&
+            ValidateExtent(current.sector, current.size))
+            current.magic = GetFileMagic(&current);
+
+        entryList->push_back(std::move(current));
+        offset += stride;
+    }
+
+    finish();
 }
 
 void IsoImage::GetFileListing() {
     if (!didReadFileListing) {
         didReadFileListing = true;
-        ReadFileListing(&root, gdfxHeader.rootSector, gdfxHeader.rootSize, "");
+        std::unordered_set<uint64_t> visited;
+        ReadFileListing(&root, gdfxHeader.rootSector, gdfxHeader.rootSize, "", 0, visited);
     }
 }
 
 UINT64 IsoImage::SectorToAddress(DWORD sector) {
-    return (UINT64)sector * ISO_SECTOR_SIZE + gdfxHeaderAddress - ISO_XGD1_ADDRESS;
+    const UINT64 base = gdfxHeaderAddress >= ISO_XGD1_ADDRESS
+            ? gdfxHeaderAddress - ISO_XGD1_ADDRESS : 0;
+    return base + static_cast<UINT64>(sector) * ISO_SECTOR_SIZE;
+}
+
+bool IsoImage::ValidateExtent(DWORD sector, UINT64 size) const {
+    if (!impl_->io)
+        return false;
+
+    const UINT64 base = gdfxHeaderAddress >= ISO_XGD1_ADDRESS
+            ? gdfxHeaderAddress - ISO_XGD1_ADDRESS : 0;
+    const UINT64 start = base + static_cast<UINT64>(sector) * ISO_SECTOR_SIZE;
+
+    if (start < base)
+        return false;
+    if (size == 0)
+        return true;
+
+    const UINT64 length = impl_->io->Length();
+    return start < length && size <= length - start;
 }
 
 GdfxFileEntry* IsoImage::GetFileEntry(std::string filePath) {
@@ -175,7 +290,7 @@ GdfxFileEntry* IsoImage::GetFileEntry(std::string filePath) {
         // Find the entry in the current directory
         for (size_t i = 0; i < curDirectory->size(); i++) {
             GdfxFileEntry *curEntry = &(curDirectory->at(i));
-            if (curEntry->name == entryName) {
+            if (IsoNameEquals(curEntry->name, entryName)) {
                 foundFileEntry = curEntry;
                 
                 // Check if we're at the end
@@ -200,6 +315,9 @@ IsoIO* IsoImage::GetIO(std::string filePath) {
 }
 
 IsoIO* IsoImage::GetIO(GdfxFileEntry *entry) {
+    if (!entry || !ValidateExtent(entry->sector, entry->size))
+        throw std::string("ISO: File extent is outside the image.");
+
     return new IsoIO(impl_->io.get(), entry, this);
 }
 
@@ -208,7 +326,16 @@ std::string IsoImage::GetXGDVersion() {
 }
 
 UINT64 IsoImage::GetTotalSectors() {
-    return (impl_->io->Length() - gdfxHeaderAddress) / ISO_SECTOR_SIZE;
+    if (!impl_->io)
+        return 0;
+
+    const UINT64 base = gdfxHeaderAddress >= ISO_XGD1_ADDRESS
+            ? gdfxHeaderAddress - ISO_XGD1_ADDRESS : 0;
+    const UINT64 length = impl_->io->Length();
+    if (length <= base)
+        return 0;
+
+    return (length - base) / ISO_SECTOR_SIZE;
 }
 
 DWORD IsoImage::GetFileMagic(GdfxFileEntry *entry) {
@@ -363,8 +490,12 @@ bool IsoImage::extractFile(const GdfxFileEntry& entry, const std::string& output
     fullPathStr += entry.name;
     
     std::replace(fullPathStr.begin(), fullPathStr.end(), '\\', '/');
-    
-    fs::path fullPath = fs::path(outputDir) / fullPathStr;
+
+    fs::path relativePath;
+    if (!SafeRelativePath(fullPathStr, relativePath))
+        return false;
+
+    fs::path fullPath = fs::path(outputDir) / relativePath;
     fs::path dir = fullPath.parent_path();
     
     std::error_code ec;
@@ -406,6 +537,9 @@ bool IsoImage::extractFile(const GdfxFileEntry& entry, const std::string& output
     }
     catch (...) {
         delete io;
+        of.close();
+        std::error_code removeError;
+        fs::remove(fullPath, removeError);
         return false;
     }
     

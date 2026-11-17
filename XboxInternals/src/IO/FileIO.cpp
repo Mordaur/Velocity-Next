@@ -4,9 +4,20 @@
 FileIO::FileIO(string path, bool truncate) :
     BaseIO(), filePath(path)
 {
-    fstr = std::make_unique<fstream>(path.c_str(),
-            fstream::in | fstream::out | fstream::binary | (truncate ? fstream::trunc :
-                    static_cast<std::ios_base::openmode>(0)));
+    std::ios_base::openmode mode = fstream::in | fstream::out | fstream::binary;
+    if (truncate)
+        mode |= fstream::trunc;
+
+    fstr = std::make_unique<fstream>(path.c_str(), mode);
+
+    // A read-only file (a mounted ISO, a package on read-only media) can still
+    // be read. Only writers need the read-write handle.
+    if ((!fstr || !fstr->is_open()) && !truncate)
+    {
+        fstr = std::make_unique<fstream>(path.c_str(), fstream::in | fstream::binary);
+        readOnly = true;
+    }
+
     if (!fstr || !fstr->is_open())
     {
         std::string ex("FileIO: Error opening the file. ");
@@ -18,20 +29,31 @@ FileIO::FileIO(string path, bool truncate) :
     endian = BigEndian;
 
     // Use default std::fstream buffering for best performance
-    
-    fstr->seekp(0, std::ios_base::end);
-    length = fstr->tellp();
-    fstr->seekp(0);
+    if (readOnly)
+    {
+        fstr->seekg(0, std::ios_base::end);
+        length = fstr->tellg();
+        fstr->seekg(0);
+    }
+    else
+    {
+        fstr->seekp(0, std::ios_base::end);
+        length = fstr->tellp();
+        fstr->seekp(0);
+    }
 }
 
 void FileIO::SetPosition(UINT64 pos, ios_base::seekdir dir)
 {
-    fstr->seekp(pos, static_cast<std::ios_base::seekdir>(dir));
+    if (readOnly)
+        fstr->seekg(pos, static_cast<std::ios_base::seekdir>(dir));
+    else
+        fstr->seekp(pos, static_cast<std::ios_base::seekdir>(dir));
 }
 
 UINT64 FileIO::GetPosition()
 {
-    return fstr->tellp();
+    return readOnly ? fstr->tellg() : fstr->tellp();
 }
 
 UINT64 FileIO::Length()
@@ -47,7 +69,7 @@ void FileIO::Close()
 
 void FileIO::Flush()
 {
-    if (fstr)
+    if (fstr && !readOnly)
         fstr->flush();
 }
 
@@ -80,6 +102,9 @@ void FileIO::ReadBytes(BYTE *outBuffer, DWORD len)
 
 void FileIO::WriteBytes(BYTE *buffer, DWORD len)
 {
+    if (readOnly)
+        throw string("FileIO: File was opened read-only.\n");
+
     fstr->write((fstream::char_type*)buffer, len);
     if (fstr->fail())
         throw string("FileIO: Error writing to file.\n");

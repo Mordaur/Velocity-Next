@@ -7,6 +7,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <unordered_set>
 
 class IsoIO;
 
@@ -67,7 +68,10 @@ private:
 
     void ParseISO();
     bool ValidGDFXHeader(UINT64 address);
-    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, int size, std::string path);
+    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, UINT64 size,
+                         std::string path, int depth, std::unordered_set<uint64_t> &visited);
+    // A directory/file extent must lie inside the image (start sector + size).
+    bool ValidateExtent(DWORD sector, UINT64 size) const;
     DWORD GetFileMagic(GdfxFileEntry *entry);
     DWORD GetTotalCopyIterations(const std::vector<GdfxFileEntry> *entryList);
     void ExtractAllHelper(std::string outDirectory, std::vector<GdfxFileEntry> *entryList,

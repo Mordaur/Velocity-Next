@@ -34,7 +34,11 @@ bool GdfxReadFileEntry(BaseIO *io, GdfxFileEntry *entry)
     entry->size = io->ReadDword();
     entry->attributes = io->ReadByte();
     entry->nameLen = io->ReadByte();
-    entry->name = io->ReadString(entry->nameLen);
+
+    // GDF names are opaque bytes; ReadString would truncate at an embedded NUL.
+    entry->name.resize(entry->nameLen);
+    if (entry->nameLen != 0)
+        io->ReadBytes(reinterpret_cast<BYTE *>(&entry->name[0]), entry->nameLen);
 
     return true;
 }
