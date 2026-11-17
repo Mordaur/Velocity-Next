@@ -10,6 +10,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QMenu>
+#include <QSet>
 
 #include <QtConcurrent/QtConcurrentRun>
 #include <QMessageBox>
@@ -29,6 +30,101 @@
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 
 bool DeviceContentViewer::OPEN = false;
+
+namespace
+{
+// Tree column 0, role UserRole + 6: the on-device folder a node stands for.
+// Device, profile, title and category nodes carry one so they can be exported
+// as a folder; leaves keep their file path in column 1, role UserRole.
+constexpr int kFolderRole = Qt::UserRole + 6;
+
+const QString kContentRoot = QStringLiteral("Drive:\\Content\\Content\\");
+const QString kSharedRoot = kContentRoot + QStringLiteral("0000000000000000\\");
+
+QString ParentFolder(const QString &filePath)
+{
+    const int slash = filePath.lastIndexOf('\\');
+    return slash < 0 ? QString() : filePath.left(slash + 1);
+}
+
+// Deepest folder that is a prefix of every folder in the list. Always ends with
+// a separator, so a relative path is the remaining mid() of the full path.
+QString CommonFolder(const QStringList &folders)
+{
+    if (folders.isEmpty())
+        return QString();
+
+    QString root = folders.first();
+    for (const QString &folder : folders)
+        while (!root.isEmpty() && !folder.startsWith(root))
+            root = root.left(root.lastIndexOf('\\', root.size() - 2) + 1);
+
+    return root;
+}
+
+// Adds a node's content files - its own package, any SVOD data files and,
+// recursively, its children - to the extraction list.
+void CollectContentFiles(QTreeWidgetItem *item, QStringList &paths, QSet<QString> &seen)
+{
+    QStringList files;
+    files.push_back(item->data(1, Qt::UserRole).toString());
+    files += item->data(4, Qt::UserRole).toStringList();
+
+    for (const QString &file : files)
+    {
+        if (file.isEmpty() || seen.contains(file))
+            continue;
+
+        seen.insert(file);
+        paths.push_back(file);
+    }
+
+    for (int i = 0; i < item->childCount(); ++i)
+        CollectContentFiles(item->child(i), paths, seen);
+}
+
+// The folder a selection is exported relative to. A title keeps its title
+// folder in the path (so saves read <TitleID>/<content type>/<file>); other
+// nodes export the contents of the folder they stand for.
+QString ExportRoot(QTreeWidgetItem *item)
+{
+    const auto kind = static_cast<ContentItemType>(item->data(5, Qt::UserRole).toUInt());
+
+    if (kind == ContentItemType::Title && item->parent() != nullptr)
+    {
+        const QString profileFolder = item->parent()->data(0, kFolderRole).toString();
+        if (!profileFolder.isEmpty())
+            return profileFolder;
+    }
+
+    const QString folder = item->data(0, kFolderRole).toString();
+    return folder.isEmpty() ? ParentFolder(item->data(1, Qt::UserRole).toString()) : folder;
+}
+
+// A file name that is unique among the names used so far by a flat export.
+// The source paths are FATX paths, so both separators have to be handled even
+// on platforms where '\\' is an ordinary file name character.
+QString UniqueName(const QString &path, QSet<QString> &used)
+{
+    const int separator = path.lastIndexOf('\\') > path.lastIndexOf('/')
+            ? path.lastIndexOf('\\')
+            : path.lastIndexOf('/');
+    const QString fileName = separator < 0 ? path : path.mid(separator + 1);
+
+    const int dot = fileName.lastIndexOf('.');
+    const QString base = dot > 0 ? fileName.left(dot) : fileName;
+    const QString suffix = dot > 0 ? fileName.mid(dot + 1) : QString();
+
+    QString name = fileName;
+    for (int i = 2; used.contains(name.toLower()); ++i)
+        name = suffix.isEmpty()
+                ? QStringLiteral("%1 (%2)").arg(base).arg(i)
+                : QStringLiteral("%1 (%2).%3").arg(base).arg(i).arg(suffix);
+
+    used.insert(name.toLower());
+    return name;
+}
+} // namespace
 
 DeviceContentViewer::DeviceContentViewer(QStatusBar *statusBar, QWidget *parent) :
     QDialog(parent), ui(new Ui::DeviceContentViewer), statusBar(statusBar),
@@ -119,6 +215,7 @@ void DeviceContentViewer::LoadSharedItemCategory(const QString &category,
     categoryItem->setText(0, category);
     categoryItem->setIcon(0, QIcon(QPixmap(iconPath).scaled(50, 50)));
     categoryItem->setData(5, Qt::UserRole, static_cast<quint32>(ContentItemType::SharedItemCategory));
+    categoryItem->setData(0, kFolderRole, kSharedRoot);
 
     for (auto &content : *items)
     {
@@ -155,6 +252,7 @@ void DeviceContentViewer::LoadDevicesp()
         deviceItem->setText(0, QString::fromStdWString(device->GetName()));
         deviceItem->setText(1, QString::fromStdString(ByteSizeToString(device->GetTotalMemory())));
         deviceItem->setData(5, Qt::UserRole, static_cast<quint32>(ContentItemType::Device));
+        deviceItem->setData(0, kFolderRole, kContentRoot);
 
         if (device->GetDeviceType() == FatxHarddrive)
             deviceItem->setIcon(0, QIcon(QPixmap(":/Images/harddrive.png").scaled(75, 50)));
@@ -179,6 +277,8 @@ void DeviceContentViewer::LoadDevicesp()
                 profileItem->setData(2, Qt::UserRole, QVariant(QString::fromStdString(profile.GetRawName())));
                 profileItem->setData(3, Qt::UserRole, QVariant(static_cast<quint64>(profile.GetFileSize())));
                 profileItem->setData(5, Qt::UserRole, static_cast<quint32>(ContentItemType::Profile));
+                profileItem->setData(0, kFolderRole,
+                        kContentRoot + QString::fromStdString(profile.GetRawName()) + "\\");
 
                 if (profile.GetThumbnail() != nullptr && profile.GetThumbnailSize() != 0)
                 {
@@ -198,6 +298,13 @@ void DeviceContentViewer::LoadDevicesp()
                     QTreeWidgetItem *titleItem = new QTreeWidgetItem(profileItem);
                     titleItem->setText(0, QString::fromStdWString(title.GetName()));
                     titleItem->setData(5, Qt::UserRole, static_cast<quint32>(ContentItemType::Title));
+
+                    // The backend builds this path with a doubled separator.
+                    QString titleFolder = QString::fromStdString(title.GetPathOnDevice());
+                    titleFolder.replace(QStringLiteral("\\\\"), QStringLiteral("\\"));
+                    if (!titleFolder.endsWith('\\'))
+                        titleFolder += '\\';
+                    titleItem->setData(0, kFolderRole, titleFolder);
 
                     if (title.GetThumbnail() != nullptr && title.GetThumbnailSize() != 0)
                     {
@@ -236,6 +343,7 @@ void DeviceContentViewer::LoadDevicesp()
         QTreeWidgetItem *sharedItemFolder = new QTreeWidgetItem(deviceItem);
         sharedItemFolder->setText(0, "Shared Items");
         sharedItemFolder->setIcon(0, QIcon(QPixmap(":/Images/FolderFileIcon.png").scaled(50, 50)));
+        sharedItemFolder->setData(0, kFolderRole, kSharedRoot);
 
         LoadSharedItemCategory("Games", device->games.get(), sharedItemFolder, ":/Images/xboxcontroller.png");
         LoadSharedItemCategory("DLC", device->dlc.get(), sharedItemFolder, ":/Images/xboxglobe.png");
@@ -417,20 +525,64 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
 
     const QList<QTreeWidgetItem *> selected = ui->treeWidget->selectedItems();
 
-    // Everything selected must have a device path to be extractable.
-    bool canExtract = !selected.isEmpty();
+    // Expand the selection to content files. Device, profile, title and
+    // category nodes contribute everything below them, so selecting a profile
+    // exports its package and all of its saves.
+    QStringList selectedPaths;
+    QStringList roots;
+    QSet<QString> seenPaths;
+    for (QTreeWidgetItem *cur : selected)
+    {
+        const QString root = ExportRoot(cur);
+        if (!root.isEmpty())
+            roots.push_back(root);
+
+        CollectContentFiles(cur, selectedPaths, seenPaths);
+    }
+
+    QString root = CommonFolder(roots);
+    if (root.isEmpty() && !selectedPaths.isEmpty())
+        root = ParentFolder(selectedPaths.first());
+
+    // Two layouts: mirror the folders, or drop every file into the chosen
+    // folder. The flat variant only differs when the selection spans folders.
+    QStringList structurePaths;
+    QStringList flatPaths;
+    QSet<QString> flatNames;
+    bool flatDiffers = false;
+
+    for (const QString &path : selectedPaths)
+    {
+        const QString relative = path.mid(root.size()).replace('\\', '/');
+        structurePaths.push_back(relative);
+        flatDiffers = flatDiffers || relative.contains('/');
+        flatPaths.push_back(UniqueName(path, flatNames));
+    }
+
+    // Deleting still works on single content files only; a folder selection is
+    // not recursively removed.
+    bool canDelete = !selected.isEmpty();
     for (QTreeWidgetItem *cur : selected)
         if (cur->data(1, Qt::UserRole).toString().isEmpty())
-            canExtract = false;
+            canDelete = false;
 
     QMenu contextMenu(this);
     QAction *extract = nullptr;
+    QAction *extractFlat = nullptr;
     QAction *remove = nullptr;
 
-    if (canExtract)
+    if (!selectedPaths.isEmpty())
     {
         extract = contextMenu.addAction(QPixmap(":/Images/extract.png"), "Copy Selected to Local Disk");
-        remove = contextMenu.addAction(QPixmap(":/Images/delete.png"), "Delete Selected Items");
+
+        // A flat export of a single file is the same as the default, so only
+        // offer the choice when the layouts actually differ.
+        if (flatDiffers)
+            extractFlat = contextMenu.addAction(QPixmap(":/Images/extract.png"),
+                    "Copy Selected to Local Disk (Files Only)");
+
+        if (canDelete)
+            remove = contextMenu.addAction(QPixmap(":/Images/delete.png"), "Delete Selected Items");
     }
 
     QAction *copyHere = contextMenu.addAction(QPixmap(":/Images/add.png"), "Copy File(s) Here");
@@ -446,44 +598,14 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
     {
         OpenContent(false);
     }
-    else if (chosen == extract)
+    else if (chosen == extract || chosen == extractFlat)
     {
         const QString saveDir = QFileDialog::getExistingDirectory(this,
                 "Choose a place to extract the files to...", QtHelpers::DefaultLocation());
         if (saveDir.isEmpty())
             return;
 
-        QStringList paths;
-
-        for (QTreeWidgetItem *curItem : selected)
-        {
-            const QString path = curItem->data(1, Qt::UserRole).toString();
-            paths.push_back(path);
-
-            // SVOD content is split across several data files.
-            auto *content = curItem->data(0, Qt::UserRole).value<IXContentHeader *>();
-            if (content != nullptr && content->metaData->fileSystem == FileSystemSVOD)
-            {
-                const QStringList contentFilePaths =
-                        curItem->data(4, Qt::UserRole).toStringList();
-                for (const QString &contentFilePath : contentFilePaths)
-                    paths.push_back(contentFilePath);
-            }
-        }
-
-        // MultiProgressDialog strips one root from every path; use the deepest
-        // directory shared by the selection so the layout is preserved.
-        QString rootPath;
-        if (!paths.isEmpty())
-        {
-            rootPath = paths.first();
-            rootPath = rootPath.left(rootPath.lastIndexOf('\\') + 1);
-            for (const QString &path : paths)
-            {
-                while (!rootPath.isEmpty() && !path.startsWith(rootPath))
-                    rootPath = rootPath.left(rootPath.lastIndexOf('\\', rootPath.size() - 2) + 1);
-            }
-        }
+        const QStringList &relativePaths = (chosen == extractFlat) ? flatPaths : structurePaths;
 
         // The FATX extractor works on FatxFileEntry copies and a FatxDrive, and it
         // runs on a worker thread, so the entries must outlive this function.
@@ -491,7 +613,7 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
         QList<void *> filesToExtract;
         try
         {
-            for (const QString &path : paths)
+            for (const QString &path : selectedPaths)
             {
                 FatxFileEntry *entry = drive->GetFileEntry(path.toStdString());
                 if (entry == nullptr)
@@ -508,7 +630,7 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
         }
 
         auto *dialog = new MultiProgressDialog(OpExtract, FileSystemFATX,
-                drive, saveDir + "/", filesToExtract, this, rootPath);
+                drive, saveDir + "/", filesToExtract, this, root, nullptr, relativePaths);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         // the dialog's destructor waits for its worker, so the entries are no longer in use
         connect(dialog, &QObject::destroyed, this, [filesToExtract]() {

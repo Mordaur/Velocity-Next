@@ -69,7 +69,7 @@ class MultiProgressDialog : public QDialog
 public:
     explicit MultiProgressDialog(Operation op, FileSystem fileSystem, void *device, QString outDir,
             QList<void*> internalFiles, QWidget *parent = 0, QString rootPath = "",
-            FatxFileEntry *parentEntry = nullptr);
+            FatxFileEntry *parentEntry = nullptr, QStringList relativePaths = QStringList());
     ~MultiProgressDialog();
 
     void start();
@@ -92,6 +92,9 @@ private:
     DWORD overallProgressTotal;
     DWORD prevProgress;
     QString rootPath;
+    // Parallel to internalFiles when the caller decides the local layout itself;
+    // empty means "derive it from rootPath" (the historical behaviour).
+    QStringList relativePaths;
     Operation op;
     FatxFileEntry *parentEntry;
     QMutex progressMutex_;  // Protect progress updates from multiple threads

@@ -118,16 +118,33 @@ void ExtractionWorker::run()
 
                     try
                     {
-                        QString temp = QString::fromStdString(entry->path);
-                        // FATX paths use '\\', which is not a separator outside Windows
-                        QString dirPath = QDir::toNativeSeparators(dialog_->outDir +
-                                temp.replace(dialog_->rootPath, "").replace('\\', '/'));
-                        QDir saveDir(dirPath);
+                        QString filePath;
 
-                        if (!saveDir.exists())
-                            saveDir.mkpath(dirPath);
+                        if (i < dialog_->relativePaths.size())
+                        {
+                            // The caller already chose the local layout.
+                            QString relative = dialog_->relativePaths.at(i);
+                            relative.replace('\\', '/');
+                            filePath = dialog_->outDir + relative;
 
-                        io.SaveFile(dirPath.toStdString() + entry->name, updateProgress, dialog_);
+                            const QString dirPath = filePath.left(filePath.lastIndexOf('/'));
+                            QDir().mkpath(dirPath);
+                        }
+                        else
+                        {
+                            QString temp = QString::fromStdString(entry->path);
+                            // FATX paths use '\\', which is not a separator outside Windows
+                            QString dirPath = QDir::toNativeSeparators(dialog_->outDir +
+                                    temp.replace(dialog_->rootPath, "").replace('\\', '/'));
+                            QDir saveDir(dirPath);
+
+                            if (!saveDir.exists())
+                                saveDir.mkpath(dirPath);
+
+                            filePath = dirPath + QString::fromStdString(entry->name);
+                        }
+
+                        io.SaveFile(filePath.toStdString(), updateProgress, dialog_);
                     }
                     catch (string error)
                     {
@@ -158,11 +175,11 @@ void ExtractionWorker::run()
 
 MultiProgressDialog::MultiProgressDialog(Operation op, FileSystem fileSystem, void *device,
         QString outDir, QList<void *> internalFiles, QWidget *parent, QString rootPath,
-        FatxFileEntry *parentEntry) :
+        FatxFileEntry *parentEntry, QStringList relativePaths) :
     QDialog(parent),ui(new Ui::MultiProgressDialog), system(fileSystem), device(device), outDir(outDir),
     internalFiles(internalFiles),
     fileIndex(0), overallProgress(0), overallProgressTotal(0), prevProgress(0), rootPath(rootPath),
-    op(op), parentEntry(parentEntry), worker_(nullptr)
+    relativePaths(relativePaths), op(op), parentEntry(parentEntry), worker_(nullptr)
 {
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     ui->setupUi(this);
