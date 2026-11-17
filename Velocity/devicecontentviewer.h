@@ -46,16 +46,19 @@ private slots:
     void on_btnViewPackage_clicked();
     void onNewDevicesDetected(QList<FatxDrive*> newDrives);
 
-private:
-    // Loading dialog with no close button or Escape handling: the scan cannot be
-    // interrupted safely, so it must not be dismissible.
-    class LoadingDialog;
+protected:
+    void resizeEvent(QResizeEvent *event) override;
 
+private:
     void startContentLoad(const QList<XContentDevice *> &candidates);
+
+    // Dims the viewer and shows "Scanning for content...", with the busy bar in
+    // the main window's status bar. The scan cannot be cancelled.
+    void setScanning(bool scanning);
 
     Ui::DeviceContentViewer *ui;
     QFutureWatcher<QList<XContentDevice *>> *loadWatcher = nullptr;
-    LoadingDialog *loadingDialog = nullptr;
+    QLabel *scanOverlay = nullptr;
     QList<XContentDevice *> queuedContent;
     QStatusBar *statusBar;
     QList<XContentDevice*> devices;

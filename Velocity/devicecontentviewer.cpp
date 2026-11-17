@@ -6,7 +6,6 @@
 #include <QFutureWatcher>
 #include <QLabel>
 #include <QProgressBar>
-#include <QVBoxLayout>
 #include <QFileInfo>
 #include <QIcon>
 #include <QImage>
@@ -31,30 +30,6 @@
 
 bool DeviceContentViewer::OPEN = false;
 
-class DeviceContentViewer::LoadingDialog : public QDialog
-{
-public:
-    explicit LoadingDialog(QWidget *parent) : QDialog(parent)
-    {
-        setWindowTitle("Device Content Viewer");
-        setWindowFlag(Qt::WindowCloseButtonHint, false);
-        setWindowModality(Qt::WindowModal);
-        setFixedSize(320, 110);
-
-        auto *layout = new QVBoxLayout(this);
-        layout->addWidget(new QLabel("Loading device content...", this));
-
-        auto *bar = new QProgressBar(this);
-        bar->setRange(0, 0); // busy animation
-        bar->setTextVisible(false);
-        layout->addWidget(bar);
-    }
-
-    // The scan cannot be cancelled, so ignore Escape and programmatic rejects.
-    void reject() override {}
-    void closeEvent(QCloseEvent *event) override { event->ignore(); }
-};
-
 DeviceContentViewer::DeviceContentViewer(QStatusBar *statusBar, QWidget *parent) :
     QDialog(parent), ui(new Ui::DeviceContentViewer), statusBar(statusBar),
     currentPackage(nullptr), deviceNotifier(nullptr), currentDevice(nullptr)
@@ -72,10 +47,19 @@ DeviceContentViewer::DeviceContentViewer(QStatusBar *statusBar, QWidget *parent)
 
     progressBar = new QProgressBar(this);
     progressBar->setMaximumHeight(statusBar->height() - 5);
-    progressBar->setMinimumWidth(statusBar->width());
+    progressBar->setFixedWidth(220);
     progressBar->setTextVisible(false);
     progressBar->setVisible(false);
     statusBar->addWidget(progressBar);
+
+    // Covers the viewer while a drive is scanned. It is a child widget rather
+    // than a dialog, so it dims the content and swallows clicks in place.
+    scanOverlay = new QLabel("Scanning for content...", this);
+    scanOverlay->setAlignment(Qt::AlignCenter);
+    scanOverlay->setStyleSheet("background-color: rgba(0, 0, 0, 120);"
+                               "color: white; font-size: 16pt; font-weight: bold;");
+    scanOverlay->setGeometry(rect());
+    scanOverlay->hide();
 
     ui->tabWidget->setEnabled(false);
 
@@ -114,6 +98,14 @@ DeviceContentViewer::~DeviceContentViewer()
     delete progressBar;
 
     OPEN = false;
+}
+
+void DeviceContentViewer::resizeEvent(QResizeEvent *event)
+{
+    QDialog::resizeEvent(event);
+
+    if (scanOverlay != nullptr)
+        scanOverlay->setGeometry(rect());
 }
 
 void DeviceContentViewer::LoadSharedItemCategory(const QString &category,
@@ -709,26 +701,13 @@ void DeviceContentViewer::startContentLoad(const QList<XContentDevice *> &candid
     }
 
     loadWatcher = new QFutureWatcher<QList<XContentDevice *>>(this);
-
-    if (loadingDialog == nullptr)
-    {
-        loadingDialog = new LoadingDialog(this);
-        loadingDialog->show();
-    }
+    setScanning(true);
 
     connect(loadWatcher, &QFutureWatcherBase::finished, this, [this]() {
         const QList<XContentDevice *> loaded = loadWatcher->result();
 
         loadWatcher->deleteLater();
         loadWatcher = nullptr;
-
-        if (loadingDialog != nullptr)
-        {
-            // close() would be swallowed by closeEvent(); hide explicitly.
-            loadingDialog->hide();
-            loadingDialog->deleteLater();
-            loadingDialog = nullptr;
-        }
 
         for (auto *device : loaded)
             devices.append(device);
@@ -741,6 +720,10 @@ void DeviceContentViewer::startContentLoad(const QList<XContentDevice *> &candid
             const QList<XContentDevice *> next = queuedContent;
             queuedContent.clear();
             startContentLoad(next);
+        }
+        else
+        {
+            setScanning(false);
         }
     });
 
@@ -765,4 +748,29 @@ void DeviceContentViewer::startContentLoad(const QList<XContentDevice *> &candid
         }
         return loaded;
     }));
+}
+
+void DeviceContentViewer::setScanning(bool scanning)
+{
+    if (scanning == scanOverlay->isVisible())
+        return;
+
+    if (scanning)
+    {
+        ui->treeWidget->setEnabled(false);
+
+        scanOverlay->setGeometry(rect());
+        scanOverlay->raise();
+        scanOverlay->show();
+
+        progressBar->setRange(0, 0); // busy animation
+        progressBar->setVisible(true);
+    }
+    else
+    {
+        scanOverlay->hide();
+
+        progressBar->setVisible(false);
+        progressBar->reset();
+    }
 }
