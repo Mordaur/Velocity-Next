@@ -30,6 +30,12 @@ public:
     void WriteFileEntry(GdfxFileEntry *entry);
     DWORD GetSectorCount();
 
+    // Verify part 0's master block against the descriptor root hash.
+    bool VerifyRoot();
+    // Verify every data block, level-0 table and the master chain. Reads the
+    // whole volume; intended as an integrity check, not a per-read guard.
+    bool Verify();
+
     // Reads the GDFX file listing into root; does nothing if it was already read.
     void GetFileListing();
 

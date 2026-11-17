@@ -111,6 +111,9 @@ SVOD::SVOD(string rootPath, FatxDrive *drive, bool readFileListing)
     io->SetPosition(baseAddress, 0);
     GdfxReadHeader(io.get(), &header);
 
+    if (!VerifyRoot())
+        throw string("SVOD: Root hash does not match part 0.\n");
+
     if (readFileListing)
         GetFileListing();
 }
@@ -374,6 +377,85 @@ void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
     delete [] buff;
 
     metaData->WriteMetaData();
+}
+
+bool SVOD::VerifyRoot()
+{
+    BYTE master[0x1000];
+    BYTE digest[0x14];
+
+    io->SetPosition(0, 0);
+    io->ReadBytes(master, 0x1000);
+    HashBlock(master, digest);
+
+    return memcmp(digest, metaData->svodVolumeDescriptor.rootHash, 0x14) == 0;
+}
+
+bool SVOD::Verify()
+{
+    const DWORD totalDataBlocks = metaData->svodVolumeDescriptor.dataBlockCount;
+    const DWORD partCount = metaData->dataFileCount;
+    constexpr DWORD blocksPerPart = 41412;
+    constexpr DWORD blocksPerGroup = 204;
+
+    BYTE master[0x1000];
+    BYTE level0[0x1000];
+    BYTE data[0x1000];
+    BYTE digest[0x14];
+    BYTE expectedMaster[0x14] = {0};
+
+    for (DWORD part = 0; part < partCount; ++part)
+    {
+        io->SetPosition(0, static_cast<int>(part));
+        io->ReadBytes(master, 0x1000);
+        HashBlock(master, digest);
+
+        if (part == 0)
+        {
+            if (memcmp(digest, metaData->svodVolumeDescriptor.rootHash, 0x14) != 0)
+                return false;
+        }
+        else if (memcmp(digest, expectedMaster, 0x14) != 0)
+        {
+            return false;
+        }
+
+        // Slot 203 links to the next part's master block.
+        memcpy(expectedMaster, master + 4060, 0x14);
+
+        const DWORD firstBlock = part * blocksPerPart;
+        if (firstBlock >= totalDataBlocks)
+            break;
+
+        const DWORD partBlocks = std::min(blocksPerPart, totalDataBlocks - firstBlock);
+        const DWORD groups = (partBlocks + blocksPerGroup - 1) / blocksPerGroup;
+
+        for (DWORD group = 0; group < groups; ++group)
+        {
+            io->SetPosition((1 + group * 205) * 0x1000, static_cast<int>(part));
+            io->ReadBytes(level0, 0x1000);
+            HashBlock(level0, digest);
+
+            if (memcmp(digest, master + group * 0x14, 0x14) != 0)
+                return false;
+
+            const DWORD blocks = std::min(blocksPerGroup, partBlocks - group * blocksPerGroup);
+            for (DWORD k = 0; k < blocks; ++k)
+            {
+                const DWORD block = group * blocksPerGroup + k;
+                const DWORD address = (block + block / blocksPerGroup + 2) * 0x1000;
+
+                io->SetPosition(address, static_cast<int>(part));
+                io->ReadBytes(data, 0x1000);
+                HashBlock(data, digest);
+
+                if (memcmp(digest, level0 + k * 0x14, 0x14) != 0)
+                    return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 void SVOD::HashBlock(BYTE *block, BYTE *outHash)
