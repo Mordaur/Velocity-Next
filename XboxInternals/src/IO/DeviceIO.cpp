@@ -212,7 +212,14 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
     if (impl->cache != nullptr && len <= kCacheWindow)
     {
         const UINT64 windowStart = requestStart - (requestStart % kCacheWindow);
-        if (requestEnd <= windowStart + kCacheWindow)
+
+        // A read at or past the device end must reach the uncached path and fail
+        // there. Clamping such a window would subtract past zero and pass a huge
+        // length to ReadRaw for the fixed-size cache buffer.
+        const bool windowInsideDevice = impl->deviceLength == 0 ||
+                windowStart < impl->deviceLength;
+
+        if (windowInsideDevice && requestEnd <= windowStart + kCacheWindow)
         {
             const bool hit = impl->cacheValid != 0 && impl->cacheStart == windowStart &&
                     requestEnd <= windowStart + impl->cacheValid;
