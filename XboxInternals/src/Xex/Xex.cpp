@@ -244,6 +244,10 @@ void Xex::ExtractData(std::string path)
         ExtractDecryptedData(path);
     else if (compressionState == XexCompressed)
         ExtractDecompressedData(path);
+    else if (compressionState == XexSupercompressed)
+        throw std::string("XEX: XCompress/LZX compression (type 2) is not supported yet.\n");
+    else if (compressionState == XexDeltaCompressed)
+        throw std::string("XEX: Delta compression (type 3) is not supported yet.\n");
 }
 
 void Xex::ExtractDecryptedData(std::string path) const
@@ -772,19 +776,28 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
     io->SetPosition(address);
 
     DWORD baseFileDescriptorSize = io->ReadDword();
+    if (baseFileDescriptorSize < 8)
+        throw std::string("XEX: Invalid base file descriptor size.\n");
 
     encrypted = !!(io->ReadWord());
     compressionState = (XexCompressionState)io->ReadWord();
 
-    // read all the compression blocks
-    DWORD blockCount = (baseFileDescriptorSize - 8) / XEX_COMPRESSION_BLOCK_SIZE;
-    for (DWORD i = 0; i < blockCount; i++)
+    // Type 1 (raw/zero-based) uses 8-byte blocks. Types 2/3 use a digest-chained
+    // 24-byte layout and are rejected at extraction; do not misparse them here.
+    if (compressionState == XexCompressed)
     {
-        XexCompressionBlock block;
-        block.size = io->ReadDword();
-        block.nullSize = io->ReadDword();
+        if ((baseFileDescriptorSize - 8) % XEX_COMPRESSION_BLOCK_SIZE != 0)
+            throw std::string("XEX: Invalid compression block table.\n");
 
-        compressionBlocks.push_back(block);
+        DWORD blockCount = (baseFileDescriptorSize - 8) / XEX_COMPRESSION_BLOCK_SIZE;
+        for (DWORD i = 0; i < blockCount; i++)
+        {
+            XexCompressionBlock block;
+            block.size = io->ReadDword();
+            block.nullSize = io->ReadDword();
+
+            compressionBlocks.push_back(block);
+        }
     }
 }
 

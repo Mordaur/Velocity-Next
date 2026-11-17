@@ -27,14 +27,21 @@ XexAesIO::~XexAesIO()
 
 void XexAesIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
 {
+    if (position + readLength > Length())
+        throw std::string("XexAesIO: Cannot read beyond end of file.\n");
+
     DWORD bytesRead = 0;
     DWORD bytesLeft = readLength;
 
     // check to see if we already have decrypted the data the caller requested
-    if (position <= curAesBlockAddress + XEX_AES_BLOCK_SIZE)
+    if (position >= curAesBlockAddress &&
+        position <= curAesBlockAddress + XEX_AES_BLOCK_SIZE)
     {
-        // calculate the number of bytes to read
+        // calculate the number of bytes to read, clamped to the request and the
+        // cached block
         DWORD bytesToRead = (curAesBlockAddress + XEX_AES_BLOCK_SIZE) - position;
+        if (bytesToRead > bytesLeft)
+            bytesToRead = bytesLeft;
 
         // calculate the offset into the decrypted block to start 'reading' from
         DWORD offset = position - curAesBlockAddress;
