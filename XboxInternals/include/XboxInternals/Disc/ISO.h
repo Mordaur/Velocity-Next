@@ -63,6 +63,7 @@ private:
     bool didReadFileListing;
     GdfxHeader gdfxHeader;
     UINT64 gdfxHeaderAddress;
+    UINT64 volumeBaseSector = 0;
     std::wstring titleName;
     std::string xgdVersion;
 

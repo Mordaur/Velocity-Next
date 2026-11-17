@@ -30,6 +30,8 @@ enum class IsoType : uint32_t {
 struct IsoInfo {
     IsoType type = IsoType::Unknown;
     uint32_t sectorSize = SECTOR_SIZE;
+    uint32_t sectorStride = SECTOR_SIZE;   // 2048 or 2352 for raw dumps
+    uint32_t sectorUserOffset = 0;         // 16/24 in a 2352-byte sector
     uint64_t rootOffset = 0;
     uint32_t rootDirSector = 0;
     uint32_t rootDirSize = 0;

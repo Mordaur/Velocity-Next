@@ -108,27 +108,36 @@ bool IsoImage::ValidGDFXHeader(UINT64 address) {
 }
 
 void IsoImage::ParseISO() {
-    struct Candidate { UINT64 address; IsoType type; const char *version; };
+    struct Candidate { DWORD baseSector; IsoType type; const char *version; };
 
     // Probe the most specific layout first; an XGD3 video area can contain the
     // XGD2 offset's bytes, which used to make the first-match order misclassify.
     static const Candidate candidates[] = {
-        { ISO_XGD3_ADDRESS, IsoType::XGD3, "XGD3" },
-        { ISO_XGD2_ADDRESS, IsoType::XGD2, "XGD2" },
-        { ISO_XGD1_ADDRESS, IsoType::GDF,  "XGD1" },
+        { 0x4100,  IsoType::XGD3, "XGD3" },
+        { 0x1FB20, IsoType::XGD2, "XGD2" },
+        { 0,       IsoType::GDF,  "XGD1" },
+    };
+
+    auto tryLayout = [this](UINT32 stride, UINT32 userOffset) {
+        for (const Candidate &candidate : candidates) {
+            const UINT64 descriptor = (static_cast<UINT64>(candidate.baseSector) + 32) * stride
+                    + userOffset;
+            if (!ValidGDFXHeader(descriptor))
+                continue;
+
+            gdfxHeaderAddress = descriptor;
+            volumeBaseSector = candidate.baseSector;
+            info_.type = candidate.type;
+            info_.sectorStride = stride;
+            info_.sectorUserOffset = userOffset;
+            xgdVersion = candidate.version;
+            return true;
+        }
+        return false;
     };
 
     gdfxHeaderAddress = 0;
-    for (const Candidate &candidate : candidates) {
-        if (ValidGDFXHeader(candidate.address)) {
-            gdfxHeaderAddress = candidate.address;
-            info_.type = candidate.type;
-            xgdVersion = candidate.version;
-            break;
-        }
-    }
-
-    if (gdfxHeaderAddress == 0)
+    if (!tryLayout(2048, 0) && !tryLayout(2352, 16) && !tryLayout(2352, 24))
         throw std::string("ISO: Invalid Xbox 360 ISO.");
 
     info_.imageOffset = gdfxHeaderAddress;
@@ -248,18 +257,17 @@ void IsoImage::GetFileListing() {
 }
 
 UINT64 IsoImage::SectorToAddress(DWORD sector) {
-    const UINT64 base = gdfxHeaderAddress >= ISO_XGD1_ADDRESS
-            ? gdfxHeaderAddress - ISO_XGD1_ADDRESS : 0;
-    return base + static_cast<UINT64>(sector) * ISO_SECTOR_SIZE;
+    return (volumeBaseSector + static_cast<UINT64>(sector)) * info_.sectorStride
+            + info_.sectorUserOffset;
 }
 
 bool IsoImage::ValidateExtent(DWORD sector, UINT64 size) const {
     if (!impl_->io)
         return false;
 
-    const UINT64 base = gdfxHeaderAddress >= ISO_XGD1_ADDRESS
-            ? gdfxHeaderAddress - ISO_XGD1_ADDRESS : 0;
-    const UINT64 start = base + static_cast<UINT64>(sector) * ISO_SECTOR_SIZE;
+    const UINT64 base = volumeBaseSector * info_.sectorStride;
+    const UINT64 start = (volumeBaseSector + static_cast<UINT64>(sector)) * info_.sectorStride
+            + info_.sectorUserOffset;
 
     if (start < base)
         return false;
@@ -329,13 +337,12 @@ UINT64 IsoImage::GetTotalSectors() {
     if (!impl_->io)
         return 0;
 
-    const UINT64 base = gdfxHeaderAddress >= ISO_XGD1_ADDRESS
-            ? gdfxHeaderAddress - ISO_XGD1_ADDRESS : 0;
+    const UINT64 base = volumeBaseSector * info_.sectorStride;
     const UINT64 length = impl_->io->Length();
     if (length <= base)
         return 0;
 
-    return (length - base) / ISO_SECTOR_SIZE;
+    return (length - base) / info_.sectorStride;
 }
 
 DWORD IsoImage::GetFileMagic(GdfxFileEntry *entry) {
