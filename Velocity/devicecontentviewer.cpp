@@ -4,7 +4,9 @@
 #include <QApplication>
 #include <QFileDialog>
 #include <QFutureWatcher>
-#include <QProgressDialog>
+#include <QLabel>
+#include <QProgressBar>
+#include <QVBoxLayout>
 #include <QFileInfo>
 #include <QIcon>
 #include <QImage>
@@ -28,6 +30,30 @@
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 
 bool DeviceContentViewer::OPEN = false;
+
+class DeviceContentViewer::LoadingDialog : public QDialog
+{
+public:
+    explicit LoadingDialog(QWidget *parent) : QDialog(parent)
+    {
+        setWindowTitle("Device Content Viewer");
+        setWindowFlag(Qt::WindowCloseButtonHint, false);
+        setWindowModality(Qt::WindowModal);
+        setFixedSize(320, 110);
+
+        auto *layout = new QVBoxLayout(this);
+        layout->addWidget(new QLabel("Loading device content...", this));
+
+        auto *bar = new QProgressBar(this);
+        bar->setRange(0, 0); // busy animation
+        bar->setTextVisible(false);
+        layout->addWidget(bar);
+    }
+
+    // The scan cannot be cancelled, so ignore Escape and programmatic rejects.
+    void reject() override {}
+    void closeEvent(QCloseEvent *event) override { event->ignore(); }
+};
 
 DeviceContentViewer::DeviceContentViewer(QStatusBar *statusBar, QWidget *parent) :
     QDialog(parent), ui(new Ui::DeviceContentViewer), statusBar(statusBar),
@@ -61,6 +87,19 @@ DeviceContentViewer::DeviceContentViewer(QStatusBar *statusBar, QWidget *parent)
 
 DeviceContentViewer::~DeviceContentViewer()
 {
+    // The worker reads the drives owned by the notifier; let it finish before
+    // those are destroyed. Its results will never be collected, so free them.
+    if (loadWatcher != nullptr)
+    {
+        loadWatcher->waitForFinished();
+        const QList<XContentDevice *> pending = loadWatcher->result();
+        for (auto *device : pending)
+            delete device;
+    }
+
+    qDeleteAll(queuedContent);
+    queuedContent.clear();
+
     for (auto *device : devices)
         delete device;
     devices.clear();
@@ -654,39 +693,58 @@ void DeviceContentViewer::onNewDevicesDetected(QList<FatxDrive*> newDrives)
         }
     }
 
+    startContentLoad(candidates);
+}
+
+void DeviceContentViewer::startContentLoad(const QList<XContentDevice *> &candidates)
+{
     if (candidates.isEmpty())
         return;
 
-    // Reading a populated drive takes seconds (many small FATX reads). Run it in
-    // the background so the window keeps painting and the progress animates
-    // instead of looking hung.
-    auto *watcher = new QFutureWatcher<QList<XContentDevice *>>(this);
+    // One load at a time; a drive detected while loading is queued behind it.
+    if (loadWatcher != nullptr)
+    {
+        queuedContent.append(candidates);
+        return;
+    }
 
-    auto *progress = new QProgressDialog("Loading device content...", QString(), 0, 0, this);
-    progress->setWindowTitle("Device Content Viewer");
-    progress->setWindowModality(Qt::WindowModal);
-    progress->setCancelButton(nullptr);
-    progress->setMinimumDuration(0);
-    progress->show();
+    loadWatcher = new QFutureWatcher<QList<XContentDevice *>>(this);
 
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, progress]() {
-        const QList<XContentDevice *> loaded = watcher->result();
-        watcher->deleteLater();
-        progress->close();
-        progress->deleteLater();
+    if (loadingDialog == nullptr)
+    {
+        loadingDialog = new LoadingDialog(this);
+        loadingDialog->show();
+    }
 
-        bool added = false;
-        for (auto *device : loaded)
+    connect(loadWatcher, &QFutureWatcherBase::finished, this, [this]() {
+        const QList<XContentDevice *> loaded = loadWatcher->result();
+
+        loadWatcher->deleteLater();
+        loadWatcher = nullptr;
+
+        if (loadingDialog != nullptr)
         {
-            devices.append(device);
-            added = true;
+            // close() would be swallowed by closeEvent(); hide explicitly.
+            loadingDialog->hide();
+            loadingDialog->deleteLater();
+            loadingDialog = nullptr;
         }
 
-        if (added)
+        for (auto *device : loaded)
+            devices.append(device);
+
+        if (!loaded.isEmpty())
             LoadDevicesp();
+
+        if (!queuedContent.isEmpty())
+        {
+            const QList<XContentDevice *> next = queuedContent;
+            queuedContent.clear();
+            startContentLoad(next);
+        }
     });
 
-    watcher->setFuture(QtConcurrent::run([candidates]() {
+    loadWatcher->setFuture(QtConcurrent::run([candidates]() {
         QList<XContentDevice *> loaded;
         for (auto *device : candidates)
         {

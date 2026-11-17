@@ -2,6 +2,7 @@
 #define DEVICECONTENTVIEWER_H
 
 #include <QDialog>
+#include <QFutureWatcher>
 #include <QLabel>
 #include <QList>
 #include <QProgressBar>
@@ -46,7 +47,16 @@ private slots:
     void onNewDevicesDetected(QList<FatxDrive*> newDrives);
 
 private:
+    // Loading dialog with no close button or Escape handling: the scan cannot be
+    // interrupted safely, so it must not be dismissible.
+    class LoadingDialog;
+
+    void startContentLoad(const QList<XContentDevice *> &candidates);
+
     Ui::DeviceContentViewer *ui;
+    QFutureWatcher<QList<XContentDevice *>> *loadWatcher = nullptr;
+    LoadingDialog *loadingDialog = nullptr;
+    QList<XContentDevice *> queuedContent;
     QStatusBar *statusBar;
     QList<XContentDevice*> devices;
     IXContentHeader *currentPackage;
