@@ -24,6 +24,15 @@ Velocity-Next
 - **Smart Pointer Refactoring**: Modern C++20 memory management in XboxInternals
 - **MSVC 2022 and MinGW**, CMake 3.20+ presets, standalone XboxInternals library
 
+### Backend findings
+
+The format and kernel research behind `XboxInternals` is documented in the
+[project wiki](https://github.com/Mordaur/Velocity-Next/wiki). It covers
+FATX/XTAF, STFS, content and profile layout, device access and hardening, with
+a [coverage matrix](https://github.com/Mordaur/Velocity-Next/wiki/Coverage) that
+maps every behavioural claim to its source of truth and verification. The
+source tree is the implementation; the wiki is the evidence behind it.
+
 ### Getting Velocity-Next
 
 No packaged release has been published yet. Until the first release is tagged,
