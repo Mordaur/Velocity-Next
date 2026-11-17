@@ -37,8 +37,8 @@ void ReadSvodVolumeDescriptorEx(SvodVolumeDescriptor *descriptor, BaseIO *io)
     io->ReadBytes(descriptor->rootHash, 0x14);
 
     descriptor->flags = io->ReadByte();
-    descriptor->dataBlockCount = io->ReadInt24(LittleEndian);
-    descriptor->dataBlockOffset = io->ReadInt24(LittleEndian);
+    descriptor->dataBlockCount = io->ReadInt24(BigEndian);
+    descriptor->dataBlockOffset = io->ReadInt24(BigEndian);
 
     io->ReadBytes(descriptor->reserved, 0x05);
 }
@@ -169,8 +169,8 @@ void WriteSvodVolumeDescriptorEx(SvodVolumeDescriptor *descriptor, BaseIO *io)
     io->Write(descriptor->rootHash, 0x14);
 
     io->Write(descriptor->flags);
-    io->Write((INT24)descriptor->dataBlockCount);
-    io->Write((INT24)descriptor->dataBlockOffset);
+    io->Write((INT24)descriptor->dataBlockCount, BigEndian);
+    io->Write((INT24)descriptor->dataBlockOffset, BigEndian);
 
     io->Write(descriptor->reserved, 5);
 
@@ -185,10 +185,10 @@ void ReadCertificateEx(Certificate *cert, BaseIO *io, DWORD address)
     cert->publicKeyCertificateSize = io->ReadWord();
     io->ReadBytes(cert->ownerConsoleID, 5);
 
-    char tempPartNum[0x15];
-    tempPartNum[0x14] = 0;
+    char tempPartNum[0x15] = {0};
     io->ReadBytes((BYTE*)tempPartNum, 0x11);
-    cert->ownerConsolePartNumber = string(tempPartNum);
+    // Keep all 17 bytes: part number (0xB) + reserved (4) + privileges (2).
+    cert->ownerConsolePartNumber.assign(tempPartNum, 0x11);
 
     DWORD temp = io->ReadDword();
     cert->ownerConsoleType = (ConsoleType)(temp & 3);

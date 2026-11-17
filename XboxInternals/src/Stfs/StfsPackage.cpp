@@ -954,6 +954,12 @@ DWORD StfsPackage::GetHashTableEntryCount(DWORD index, Level lvl)
 
 void StfsPackage::Rehash()
 {
+    // Rehash rewrites the header hash. LIVE/PIRS packages carry a 0x100-byte
+    // package signature over that hash which cannot be recomputed without
+    // Microsoft's key, so the operation would silently invalidate the package.
+    if (metaData->magic != CON && (flags & StfsPackagePEC) == 0)
+        throw string("STFS: Rehash is only supported for console-signed (CON) packages.\n");
+
     // Invalidate the cached hash table since we're rebuilding everything
     cached.trueBlockNumber = 0xFFFFFFFF;
     
@@ -1308,8 +1314,9 @@ void StfsPackage::BuildTableInMemory(HashTable* table, BYTE* outBuffer)
     memset(outBuffer, 0, 0x1000);
     for (DWORD i = 0; i < table->entryCount; i++)
     {
-        // copy the hash over
-        memcpy(outBuffer + (i * 0x18), table->entries[i].blockHash, 0x15);
+        // copy the hash over (0x14 bytes; status is at +0x14)
+        memcpy(outBuffer + (i * 0x18), table->entries[i].blockHash, 0x14);
+        outBuffer[(i * 0x18) + 0x14] = table->entries[i].status;
 
         // copy over the next block
         INT24 swappedValue = table->entries[i].nextBlock;

@@ -487,18 +487,22 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
     calculated = (io->GetPosition() < calculated) ? (DWORD)io->GetPosition() : calculated;
     DWORD realHeaderSize = calculated - headerStart;
 
-    // read the certificate
+    // read the certificate header verbatim (part number + reserved + privileges)
     kvIo.SetPosition(0x9B8 + adder);
     certificate.publicKeyCertificateSize = kvIo.ReadWord();
     kvIo.ReadBytes(certificate.ownerConsoleID, 5);
 
-    char tempPartNum[0x15];
-    tempPartNum[0x14] = 0;
-    kvIo.ReadBytes((BYTE*)tempPartNum, 0x14);
-    certificate.ownerConsolePartNumber = string(tempPartNum);
+    char tempPartNum[0x15] = {0};
+    kvIo.ReadBytes((BYTE*)tempPartNum, 0x11);
+    certificate.ownerConsolePartNumber.assign(tempPartNum, 0x11);
 
-    certificate.ownerConsoleType = (ConsoleType)kvIo.ReadByte();
+    // console type is a big-endian dword at certificate offset 0x18
+    kvIo.SetPosition(0x9B8 + adder + 0x18);
+    DWORD consoleType = kvIo.ReadDword();
+    certificate.ownerConsoleType = static_cast<ConsoleType>(consoleType & 3);
+    certificate.consoleTypeFlags = static_cast<ConsoleTypeFlags>(consoleType & 0xFFFFFFFC);
 
+    kvIo.SetPosition(0x9B8 + adder + 0x1C);
     char tempGenDate[9] = {0};
     kvIo.ReadBytes((BYTE*)tempGenDate, 8);
     certificate.dateGeneration = string(tempGenDate);
