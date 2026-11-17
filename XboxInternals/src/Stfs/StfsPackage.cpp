@@ -257,6 +257,14 @@ DWORD StfsPackage::BlockToAddress(DWORD blockNum)
     // check for invalid block number
     if (blockNum > UINT24_MAX)
         throw string("STFS: Block number must be less than 0xFFFFFF.\n");
+
+    // A logical block at or past the allocated count is outside the volume. The
+    // kernel rejects this on every block reference ("STFS: reference to illegal
+    // block number"); the same bound applies to blocks reached through a corrupt
+    // file-table chain, which would otherwise be read from outside the data area.
+    if (blockNum >= metaData->stfsVolumeDescriptor.allocatedBlockCount)
+        throw string("STFS: Reference to illegal block number.\n");
+
     return (ComputeBackingDataBlockNumber(blockNum) << 0x0C) + firstHashTableAddress;
 }
 
