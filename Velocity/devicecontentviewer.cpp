@@ -2,6 +2,7 @@
 #include "ui_devicecontentviewer.h"
 
 #include <QApplication>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QIcon>
 #include <QImage>
@@ -417,13 +418,11 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
         if (saveDir.isEmpty())
             return;
 
-        QList<void *> filesToExtract;
         QStringList paths;
 
         for (QTreeWidgetItem *curItem : selected)
         {
             const QString path = curItem->data(1, Qt::UserRole).toString();
-            filesToExtract.push_back(new std::string(path.toStdString()));
             paths.push_back(path);
 
             // SVOD content is split across several data files.
@@ -433,10 +432,7 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
                 const QStringList contentFilePaths =
                         curItem->data(4, Qt::UserRole).toStringList();
                 for (const QString &contentFilePath : contentFilePaths)
-                {
-                    filesToExtract.push_back(new std::string(contentFilePath.toStdString()));
                     paths.push_back(contentFilePath);
-                }
             }
         }
 
@@ -454,14 +450,39 @@ void DeviceContentViewer::showContextMenu(const QPoint &pos)
             }
         }
 
+        // The FATX extractor works on FatxFileEntry copies and a FatxDrive, and it
+        // runs on a worker thread, so the entries must outlive this function.
+        FatxDrive *drive = currentDevice->GetFatxDrive();
+        QList<void *> filesToExtract;
+        try
+        {
+            for (const QString &path : paths)
+            {
+                FatxFileEntry *entry = drive->GetFileEntry(path.toStdString());
+                if (entry == nullptr)
+                    throw std::string("Could not find " + path.toStdString() + " on the device.");
+                filesToExtract.push_back(new FatxFileEntry(*entry));
+            }
+        }
+        catch (const std::string &error)
+        {
+            for (void *file : filesToExtract)
+                delete static_cast<FatxFileEntry *>(file);
+            QMessageBox::critical(this, "Error", QString::fromStdString(error));
+            return;
+        }
+
         auto *dialog = new MultiProgressDialog(OpExtract, FileSystemFATX,
-                currentDevice, saveDir, filesToExtract, this, rootPath);
+                drive, saveDir + "/", filesToExtract, this, rootPath);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        // the dialog's destructor waits for its worker, so the entries are no longer in use
+        connect(dialog, &QObject::destroyed, this, [filesToExtract]() {
+            for (void *file : filesToExtract)
+                delete static_cast<FatxFileEntry *>(file);
+        });
         dialog->setModal(true);
         dialog->show();
         dialog->start();
-
-        for (void *file : filesToExtract)
-            delete static_cast<std::string *>(file);
     }
     else if (chosen == remove)
     {
