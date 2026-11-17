@@ -203,6 +203,7 @@ void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT6
     const bool enhanced = metaData->svodVolumeDescriptor.flags != 0;
     const DWORD dataBlockOffset = metaData->svodVolumeDescriptor.dataBlockOffset;
 
+    io->SetEndian(LittleEndian);
     UINT64 offset = 0;
     while (offset < size)
     {
