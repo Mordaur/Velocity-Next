@@ -38,7 +38,7 @@ private:
     IndexableMultiFileIO *io;
     XContentHeader *metadata;
     GdfxFileEntry fileEntry;
-    DWORD pos;
+    UINT64 pos;
     DWORD offset;
 };
 

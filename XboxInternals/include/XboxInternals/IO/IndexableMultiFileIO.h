@@ -31,6 +31,7 @@ public:
 
     DWORD FileCount();
     DWORD CurrentFileLength();
+    const std::vector<std::string>& FilePaths() const { return files; }
 
     // Unused BaseIO overrides required by the interface.
     void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg) override;

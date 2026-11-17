@@ -11,6 +11,32 @@
 #include <XboxInternals/IO/FatxIndexableMultiFileIO.h>
 #include <XboxInternals/IO/FatxIO.h>
 #include <XboxInternals/IO/FileIO.h>
+#include <XboxInternals/Disc/SvodLayout.h>
+
+#include <cstdio>
+#include <unordered_set>
+
+namespace {
+bool SvodNameEquals(const std::string &a, const std::string &b)
+{
+    if (a.size() != b.size())
+        return false;
+
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        unsigned char ca = static_cast<unsigned char>(a[i]);
+        unsigned char cb = static_cast<unsigned char>(b[i]);
+        if (ca >= 'A' && ca <= 'Z')
+            ca = static_cast<unsigned char>(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z')
+            cb = static_cast<unsigned char>(cb - 'A' + 'a');
+        if (ca != cb)
+            return false;
+    }
+
+    return true;
+}
+} // namespace
 
 std::vector<std::string> SVOD::GetDataFilePaths(const std::string &rootDescriptorPath)
 {
@@ -18,7 +44,7 @@ std::vector<std::string> SVOD::GetDataFilePaths(const std::string &rootDescripto
 
     std::string dataFileDirectoryPath = rootDescriptorPath + ".data/";
     // use std::filesystem for cross-platform existence checks
-    std::filesystem::path p(Utils::NormalizeFilePath(dataFileDirectoryPath));
+    std::filesystem::path p(dataFileDirectoryPath);
     bool dataFileDirectoryExists = std::filesystem::exists(p) && std::filesystem::is_directory(p);
 
     std::vector<std::string> dataFiles;
@@ -41,7 +67,7 @@ SVOD::SVOD(string rootPath, FatxDrive *drive, bool readFileListing)
 
     if (drive == nullptr)
     {
-        rootFile = std::make_unique<FileIO>(Utils::NormalizeFilePath(rootPath));
+        rootFile = std::make_unique<FileIO>(rootPath);
     }
     else
     {
@@ -53,8 +79,9 @@ SVOD::SVOD(string rootPath, FatxDrive *drive, bool readFileListing)
     metaDataOwner = std::make_unique<XContentHeader>(rootFile.get());
     metaData = metaDataOwner.get();
 
-    baseAddress = (metaData->svodVolumeDescriptor.flags & EnhancedGDFLayout) ? 0x2000 : 0x12000;
-    offset = (metaData->svodVolumeDescriptor.flags & EnhancedGDFLayout) ? 0x2000 : 0x1000;
+    const bool enhanced = metaData->svodVolumeDescriptor.flags != 0;
+    baseAddress = enhanced ? 0x2000 : 0x12000;
+    offset = enhanced ? 0x2000 : 0x1000;
 
     if (metaData->fileSystem != FileSystemSVOD)
         throw string("SVOD: Invalid file system header.\n");
@@ -71,14 +98,15 @@ SVOD::SVOD(string rootPath, FatxDrive *drive, bool readFileListing)
 
     if (drive == nullptr)
     {
-        std::string normalizedDirectory = Utils::NormalizeFilePath(contentDirectory);
-        io = std::make_unique<LocalIndexableMultiFileIO>(std::move(normalizedDirectory));
+        io = std::make_unique<LocalIndexableMultiFileIO>(contentDirectory);
     }
     else
     {
         std::string fatxDataDirectory = Utils::NormalizeFilePath(contentDirectory);
         io = std::make_unique<FatxIndexableMultiFileIO>(fatxDataDirectory, drive);
     }
+
+    ValidateDataFiles();
 
     io->SetPosition(baseAddress, 0);
     GdfxReadHeader(io.get(), &header);
@@ -109,85 +137,162 @@ void SVOD::Resign(string kvPath)
 
 void SVOD::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex)
 {
-    DWORD trueSector = (sector - (metaData->svodVolumeDescriptor.dataBlockOffset * 2)) % 0x14388;
-    *addressInDataFile = trueSector * 0x800;
-    *dataFileIndex = (sector - (metaData->svodVolumeDescriptor.dataBlockOffset * 2)) / 0x14388;
-
-    *addressInDataFile += offset;
-    *addressInDataFile += ((trueSector / 0x198) + ((trueSector % 0x198 == 0 && trueSector != 0) ? 0 : 1)) * 0x1000;
+    if (!XboxInternals::SvodLayout::Map(sector,
+            metaData->svodVolumeDescriptor.dataBlockOffset,
+            metaData->svodVolumeDescriptor.flags != 0,
+            addressInDataFile, dataFileIndex))
+        throw string("SVOD: Sector outside the data volume.\n");
 }
 
-void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, int size, string path)
+void SVOD::ValidateDataFiles()
 {
-    DWORD eAddr, eIndex;
-    SectorToAddress(sector, &eAddr, &eIndex);
-    io->SetPosition(eAddr, static_cast<int>(eIndex));
+    const DWORD expected = metaData->dataFileCount;
+    if (expected == 0 || expected > 0x38)
+        throw string("SVOD: Invalid data file count.\n");
 
-    GdfxFileEntry current{};
-
-    while (true)
+    const auto &paths = io->FilePaths();
+    for (DWORD i = 0; i < expected; ++i)
     {
-        io->GetPosition(&current.address, &current.fileIndex);
+        char name[16];
+        std::snprintf(name, sizeof(name), "Data%04u", i);
 
-        if (!GdfxReadFileEntry(io.get(), &current) && size != 0)
+        bool found = false;
+        for (const auto &path : paths)
+        {
+            const size_t separator = path.find_last_of("/\\");
+            const std::string base = (separator == std::string::npos)
+                    ? path : path.substr(separator + 1);
+            if (SvodNameEquals(base, name))
+            {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+            throw string("SVOD: Missing data part ") + name + ".\n";
+    }
+}
+
+void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT64 size,
+                          string path, int depth, std::unordered_set<uint64_t> &visited)
+{
+    auto finish = [entryList]() {
+        std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
+    };
+
+    if (size == 0)
+    {
+        finish();
+        return;
+    }
+
+    if (depth >= 32)
+    {
+        finish();
+        return;
+    }
+
+    const uint64_t key = (static_cast<uint64_t>(sector) << 32) ^ size;
+    if (!visited.insert(key).second)
+    {
+        finish();
+        return;
+    }
+
+    const bool enhanced = metaData->svodVolumeDescriptor.flags != 0;
+    const DWORD dataBlockOffset = metaData->svodVolumeDescriptor.dataBlockOffset;
+
+    UINT64 offset = 0;
+    while (offset < size)
+    {
+        if (size - offset < 14)
             break;
 
-        if (current.attributes & GdfxDirectory)
+        const DWORD sectorIndex = sector + static_cast<DWORD>(offset / 0x800);
+        const DWORD inSector = static_cast<DWORD>(offset % 0x800);
+
+        if (inSector > 0x7F2)
+            break;
+
+        DWORD addressInFile = 0, fileIndex = 0;
+        if (!XboxInternals::SvodLayout::Map(sectorIndex, dataBlockOffset, enhanced,
+                                            &addressInFile, &fileIndex))
+            break;
+
+        if (static_cast<UINT64>(addressInFile) + inSector + 14 >
+            XboxInternals::SvodLayout::kFullPartBytes)
+            break;
+
+        io->SetPosition(addressInFile + inSector, static_cast<int>(fileIndex));
+
+        GdfxFileEntry current{};
+        io->GetPosition(&current.address, &current.fileIndex);
+
+        DWORD marker = io->ReadDword();
+        if (marker == 0xFFFFFFFF)
         {
-            DWORD seekAddr, seekIndex;
-            io->GetPosition(&seekAddr, &seekIndex);
+            offset = (offset / 0x800 + 1) * 0x800;
+            continue;
+        }
 
-            ReadFileListing(&current.files, current.sector, current.size, path + current.name + "/");
+        current.unknown = marker;
+        current.sector = io->ReadDword();
+        current.size = io->ReadDword();
+        current.attributes = io->ReadByte();
+        current.nameLen = io->ReadByte();
 
-            io->SetPosition(seekAddr, static_cast<int>(seekIndex));
+        if (inSector + current.nameLen > 0x7F2)
+            break;
+
+        if (current.nameLen != 0)
+        {
+            current.name.resize(current.nameLen);
+            io->ReadBytes(reinterpret_cast<BYTE *>(&current.name[0]), current.nameLen);
+        }
+
+        const UINT64 stride =
+                (static_cast<UINT64>(current.nameLen) + 0x11) & ~static_cast<UINT64>(3);
+        if (stride == 0)
+            break;
+
+        if ((current.attributes & GdfxDirectory) && current.size != 0)
+        {
+            ReadFileListing(&current.files, current.sector, current.size,
+                            path + current.name + "/", depth + 1, visited);
         }
 
         current.filePath = path;
-        entryList->push_back(current);
-
-        eAddr += (current.nameLen + 0x11) & 0xFFFFFFFC;
-        io->SetPosition(eAddr);
-
-        if (io->ReadDword() == 0xFFFFFFFF)
-        {
-            if ((size - 0x800) <= 0)
-            {
-                std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
-                return;
-            }
-            else
-            {
-                size -= 0x800;
-                SectorToAddress(++sector, &eAddr, &eIndex);
-                io->SetPosition(eAddr, static_cast<int>(eIndex));
-                io->GetPosition(&eAddr, &eIndex);
-            }
-        }
-
-        io->SetPosition(eAddr);
-        current.files.clear();
+        entryList->push_back(std::move(current));
+        offset += stride;
     }
 
-    std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
+    finish();
 }
 
 GdfxFileEntry SVOD::GetFileEntry(string path, vector<GdfxFileEntry> *listing)
 {
-    string entryName = path.substr(1, path.substr(1).find_first_of('/'));
+    while (!path.empty() && path.front() == '/')
+        path.erase(0, 1);
 
-    size_t i = 0;
-    for (; i < listing->size(); i++)
+    if (path.empty())
+        throw string("SVOD: Empty path.\n");
+
+    const size_t separator = path.find('/');
+    const string entryName = path.substr(0, separator);
+
+    for (auto &entry : *listing)
     {
-        if (listing->at(i).name == entryName)
-        {
-            if (path.substr(1).find_first_of('/') == string::npos)
-                return listing->at(i);
-            else
-                break;
-        }
+        if (!SvodNameEquals(entry.name, entryName))
+            continue;
+
+        if (separator == string::npos)
+            return entry;
+
+        return GetFileEntry(path.substr(separator + 1), &entry.files);
     }
 
-    return GetFileEntry(path.substr(entryName.length() + 1), &listing->at(i).files);
+    throw string("SVOD: File not found.\n");
 }
 
 SvodIO SVOD::GetSvodIO(string path)
@@ -202,6 +307,9 @@ SvodIO SVOD::GetSvodIO(GdfxFileEntry entry)
 
 void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
 {
+    if (metaData->magic != CON)
+        throw string("SVOD: Rehash is only supported for console-signed packages; the LIVE package signature cannot be recomputed.\n");
+
     DWORD fileCount = io->FileCount();
     BYTE master[0x1000] = {0};
     BYTE level0[0x1000] = {0};
@@ -212,6 +320,8 @@ void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
     {
         io->SetPosition(static_cast<DWORD>(0x2000), static_cast<int>(i));
         DWORD hashTableCount = ((io->CurrentFileLength() - 0x2000) + 0xCCFFF) / 0xCD000;
+        if (hashTableCount > 203)
+            throw string("SVOD: Hash table count exceeds the master block.\n");
         DWORD totalBlockCount = (io->CurrentFileLength() - 0x1000 - (hashTableCount * 0x1000)) >> 0xC;
 
         for (DWORD x = 0; x < hashTableCount; x++)
@@ -234,7 +344,8 @@ void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
             memset(level0, 0, 0x1000);
         }
 
-        memcpy(master + hashTableCount * 0x14, prevHash, 0x14);
+        // Slot 203 (offset 4060) carries the next part's master hash.
+        memcpy(master + 4060, prevHash, 0x14);
 
         io->SetPosition(static_cast<DWORD>(0), static_cast<int>(i));
         io->WriteBytes(master, 0x1000);
@@ -279,10 +390,7 @@ void SVOD::WriteFileEntry(GdfxFileEntry *entry)
 
 DWORD SVOD::GetSectorCount()
 {
-    io->SetPosition(static_cast<DWORD>(0), static_cast<int>(io->FileCount() - 1));
-    DWORD fileLen = io->CurrentFileLength() - 0x2000;
-
-    return (io->FileCount() * 0x14388) + ((fileLen - (0x1000 * (fileLen / 0xCD000))) / 0x800);
+    return metaData->svodVolumeDescriptor.dataBlockCount * 2;
 }
 
 std::string SVOD::GetContentName()
@@ -298,6 +406,7 @@ void SVOD::GetFileListing()
     if (!didReadFileListing)
     {
         didReadFileListing = true;
-        ReadFileListing(&root, header.rootSector, header.rootSize, "/");
+        std::unordered_set<uint64_t> visited;
+        ReadFileListing(&root, header.rootSector, header.rootSize, "/", 0, visited);
     }
 }

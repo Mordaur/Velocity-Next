@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <XboxInternals/Export.h>
@@ -35,8 +36,10 @@ public:
     std::vector<GdfxFileEntry> root;
 
 private:
-    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, int size, std::string path);
+    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, UINT64 size,
+                         std::string path, int depth, std::unordered_set<uint64_t> &visited);
     GdfxFileEntry GetFileEntry(std::string path, std::vector<GdfxFileEntry> *listing);
+    void ValidateDataFiles();
     void HashBlock(BYTE *block, BYTE *outHash);
     std::string GetContentName();
 

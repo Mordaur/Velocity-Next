@@ -1,10 +1,11 @@
 #include <XboxInternals/IO/SvodIO.h>
 #include <XboxInternals/IO/FileIO.h>
+#include <XboxInternals/Disc/SvodLayout.h>
 
 SvodIO::SvodIO(XContentHeader *metadata, GdfxFileEntry entry, IndexableMultiFileIO *io) :
     BaseIO(), io(io), metadata(metadata), fileEntry(entry), pos(0)
 {
-    offset = ((metadata->svodVolumeDescriptor.flags & EnhancedGDFLayout) ? 0x2000 : 0x1000);
+    offset = (metadata->svodVolumeDescriptor.flags != 0) ? 0x2000 : 0x1000;
 
     // seek to the file's beginning
     DWORD addr, index;
@@ -19,16 +20,11 @@ SvodIO::~SvodIO()
 
 void SvodIO::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex)
 {
-    DWORD trueSector = (sector - (metadata->svodVolumeDescriptor.dataBlockOffset * 2)) % 0x14388;
-    *addressInDataFile = trueSector * 0x800;
-    *dataFileIndex = (sector - (metadata->svodVolumeDescriptor.dataBlockOffset * 2)) / 0x14388;
-
-    // for the silly hash tables at the beginning
-    *addressInDataFile += offset;
-
-    // for the data hash table(s)
-    *addressInDataFile += ((trueSector / 0x198) + ((trueSector % 0x198 == 0 &&
-            trueSector != 0) ? 0 : 1)) * 0x1000;
+    if (!XboxInternals::SvodLayout::Map(sector,
+            metadata->svodVolumeDescriptor.dataBlockOffset,
+            metadata->svodVolumeDescriptor.flags != 0,
+            addressInDataFile, dataFileIndex))
+        throw std::string("SvodIO: Sector outside the data volume.\n");
 }
 
 void SvodIO::SetPosition(UINT64 address, ios_base::seekdir dir)
@@ -36,31 +32,17 @@ void SvodIO::SetPosition(UINT64 address, ios_base::seekdir dir)
     if (dir != std::ios_base::beg)
         throw std::string("SvodIO: Unsupported seek direction\n");
 
-    /* DISCLAIMER: This function is not perfect and will not work for all SVOD systems. If the
-       system has more than 204 (0xCC) data files, then this function may not work. */
+    if (address > Length())
+        throw std::string("SvodIO: Cannot seek beyond end of file.\n");
 
-    DWORD baseAddr, baseIndex, index, addr;
-    SectorToAddress(fileEntry.sector, &baseAddr, &baseIndex);
+    const UINT64 fileSector = static_cast<UINT64>(fileEntry.sector) + address / 0x800;
+    if (fileSector > 0xFFFFFFFFULL)
+        throw std::string("SvodIO: Sector index out of range.\n");
 
-    // the number of bytes between the file start and the end of the hash table before it
-    DWORD baseHashOff = (baseAddr - 0x2000) % 0xCD000;
+    DWORD addr = 0, index = 0;
+    SectorToAddress(static_cast<DWORD>(fileSector), &addr, &index);
 
-    // the amount of bytes taken up by level0 hash tables inbetween the file start and the seek address
-    DWORD totalHashOffset = ((baseHashOff + address) / 0xCC000) << 0xC;
-
-    index = ((baseAddr + address + totalHashOffset) / 0xA290000) + baseIndex;
-    addr = (baseAddr + address + totalHashOffset) % 0xA290000;
-
-    // account for level1 hash tables
-    addr += ((baseAddr + address + totalHashOffset) / 0xA290000) << 0xC;
-    if (addr >= 0xA290000)
-    {
-        index++;
-        addr = (addr % 0xA290000) + 0x2000;
-    }
-
-    // seek to the position
-    io->SetPosition(addr, static_cast<int>(index));
+    io->SetPosition(addr + static_cast<DWORD>(address % 0x800), static_cast<int>(index));
     pos = address;
 }
 
@@ -76,99 +58,66 @@ UINT64 SvodIO::Length()
 
 void SvodIO::ReadBytes(BYTE *outBuffer, DWORD len)
 {
-    // all the SvodIOs are using the same IO underneath, so we have to make sure we're at the correct pos
-    SetPosition(pos);
-    pos += len;
+    if (pos + len > Length())
+        throw std::string("SvodIO: Cannot read beyond end of file.\n");
 
-    // get the current position
-    DWORD addr, index;
-    io->GetPosition(&addr, &index);
-
-    // calculate the amount of bytes until the next hash table
-    DWORD bytesUntilTable = 0xCC000 - ((addr - 0x2000) % 0xCD000);
-
-    // calculate the amount of bytes to read
-    DWORD bytesToRead = (bytesUntilTable > len) ? len : bytesUntilTable;
-
-    // read the bytes before the table
-    io->ReadBytes(outBuffer, bytesToRead);
-    outBuffer += bytesToRead;
-    len -= bytesToRead;
-
-    // read in between all the hash tables
-    while (len >= 0xCC000)
+    while (len > 0)
     {
-        // check to see if we're at the end of a data file
-        io->GetPosition(&addr, &index);
-        if (addr == 0)
-            io->SetPosition((DWORD)0x2000, static_cast<int>(index));
-        else
-            io->SetPosition((DWORD)addr + 0x1000);
+        // Re-map for every chunk so a seek never relies on the previous part.
+        SetPosition(pos);
 
-        io->ReadBytes(outBuffer, 0xCC000);
-        outBuffer += 0xCC000;
-        len -= 0xCC000;
-    }
+        DWORD addressInFile = 0, index = 0;
+        io->GetPosition(&addressInFile, &index);
 
-    if (len != 0)
-    {
-        // check to see if we're at the end of a data file
-        io->GetPosition(&addr, &index);
-        if (addr == 0)
-            io->SetPosition((DWORD)0x2000, static_cast<int>(index));
-        else
-            io->SetPosition((DWORD)(addr + 0x1000));
+        const UINT64 dataStart = XboxInternals::SvodLayout::DataStartBytes(
+                metadata->svodVolumeDescriptor.flags != 0);
+        if (addressInFile < dataStart)
+            throw std::string("SvodIO: Invalid data address.\n");
 
-        io->ReadBytes(outBuffer, len);
+        const UINT64 offsetInGroup = (addressInFile - dataStart) % 0xCD000;
+        UINT64 chunk = 0xCC000 - offsetInGroup;
+        if (chunk == 0)
+            chunk = 0xCC000;
+        if (chunk > len)
+            chunk = len;
+
+        io->ReadBytes(outBuffer, static_cast<DWORD>(chunk));
+
+        outBuffer += chunk;
+        pos += chunk;
+        len -= static_cast<DWORD>(chunk);
     }
 }
 
 void SvodIO::WriteBytes(BYTE *buffer, DWORD len)
 {
-    // all the SvodIOs are using the same IO underneath, so we have to make sure we're at the correct pos
-    SetPosition(pos);
-    pos += len;
+    if (pos + len > Length())
+        throw std::string("SvodIO: Cannot write beyond end of file.\n");
 
-    // get the current position
-    DWORD addr, index;
-    io->GetPosition(&addr, &index);
-
-    // calculate the amount of bytes until the next hash table
-    DWORD bytesUntilTable = 0xCC000 - ((addr - 0x2000) % 0xCD000);
-
-    // calculate the amount of bytes to read
-    DWORD bytesToWrite = (bytesUntilTable > len) ? len : bytesUntilTable;
-
-    // Write the bytes before the table
-    io->WriteBytes(buffer, bytesToWrite);
-    buffer += bytesToWrite;
-    len -= bytesToWrite;
-
-    // Write in between all the hash tables
-    while (len >= 0xCC000)
+    while (len > 0)
     {
-        // check to see if we're at the end of a data file
-        io->GetPosition(&addr, &index);
-        if (addr == 0xA290000)
-            io->SetPosition((DWORD)0, static_cast<int>(index + 1));
-        else
-            io->SetPosition(addr + 0x1000);
+        SetPosition(pos);
 
-        io->WriteBytes(buffer, 0xCC000);
-        buffer += 0xCC000;
-        len -= 0xCC000;
-    }
+        DWORD addressInFile = 0, index = 0;
+        io->GetPosition(&addressInFile, &index);
 
-    if (len != 0)
-    {
-        // check to see if we're at the end of a data file
-        io->GetPosition(&addr, &index);
-        if (addr == 0xA290000)
-            io->SetPosition((DWORD)0, static_cast<int>(index + 1));
-        else
-            io->SetPosition((DWORD)(addr + 0x1000));
+        const UINT64 dataStart = XboxInternals::SvodLayout::DataStartBytes(
+                metadata->svodVolumeDescriptor.flags != 0);
+        if (addressInFile < dataStart)
+            throw std::string("SvodIO: Invalid data address.\n");
 
-        io->WriteBytes(buffer, len);
+        const UINT64 offsetInGroup = (addressInFile - dataStart) % 0xCD000;
+        UINT64 chunk = 0xCC000 - offsetInGroup;
+        if (chunk == 0)
+            chunk = 0xCC000;
+        if (chunk > len)
+            chunk = len;
+
+        io->WriteBytes(buffer, static_cast<DWORD>(chunk));
+
+        buffer += chunk;
+        pos += chunk;
+        len -= static_cast<DWORD>(chunk);
     }
 }
 
