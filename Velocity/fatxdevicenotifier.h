@@ -31,6 +31,10 @@ private:
     std::atomic<bool> stop;
 
     void run() override;
+
+    // Loads FATX drives through the privileged helper; used once when local
+    // raw-device access is denied, mirroring DeviceViewer.
+    std::vector<std::unique_ptr<FatxDrive>> loadDrivesThroughHelper();
 };
 
 #endif // FATXDEVICENOTIFIER_H

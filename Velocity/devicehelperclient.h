@@ -74,6 +74,14 @@ public:
     void Flush() override;
 
 private:
+    // FATX parsing issues a lot of tiny reads (dirents, FAT entries, STFS
+    // headers); each one would otherwise be a separate pipe round trip. A read
+    // that fits inside one aligned window is served from this cache instead.
+    static constexpr UINT64 kCacheWindow = 0x10000;
+    QByteArray cache;
+    UINT64 cacheStart = 0;
+    size_t cacheLength = 0;
+
     std::shared_ptr<HelperClient> client;
     HelperDeviceHandle device;
     UINT64 position;

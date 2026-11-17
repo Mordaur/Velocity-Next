@@ -3,10 +3,14 @@
 
 #include <QApplication>
 #include <QFileDialog>
+#include <QFutureWatcher>
+#include <QProgressDialog>
 #include <QFileInfo>
 #include <QIcon>
 #include <QImage>
 #include <QMenu>
+
+#include <QtConcurrent/QtConcurrentRun>
 #include <QMessageBox>
 #include <QPixmap>
 
@@ -635,28 +639,72 @@ void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStrin
 
 void DeviceContentViewer::onNewDevicesDetected(QList<FatxDrive*> newDrives)
 {
-    bool added = false;
+    if (newDrives.isEmpty())
+        return;
 
+    QList<XContentDevice *> candidates;
     for (auto *drive : newDrives)
     {
         try
         {
-            auto *device = new XContentDevice(drive);
-            if (device->LoadDevice())
-            {
-                devices.append(device);
-                added = true;
-            }
-            else
-            {
-                delete device;
-            }
+            candidates.append(new XContentDevice(drive));
         }
         catch (...)
         {
         }
     }
 
-    if (added)
-        LoadDevicesp();
+    if (candidates.isEmpty())
+        return;
+
+    // Reading a populated drive takes seconds (many small FATX reads). Run it in
+    // the background so the window keeps painting and the progress animates
+    // instead of looking hung.
+    auto *watcher = new QFutureWatcher<QList<XContentDevice *>>(this);
+
+    auto *progress = new QProgressDialog("Loading device content...", QString(), 0, 0, this);
+    progress->setWindowTitle("Device Content Viewer");
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setCancelButton(nullptr);
+    progress->setMinimumDuration(0);
+    progress->show();
+
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, progress]() {
+        const QList<XContentDevice *> loaded = watcher->result();
+        watcher->deleteLater();
+        progress->close();
+        progress->deleteLater();
+
+        bool added = false;
+        for (auto *device : loaded)
+        {
+            devices.append(device);
+            added = true;
+        }
+
+        if (added)
+            LoadDevicesp();
+    });
+
+    watcher->setFuture(QtConcurrent::run([candidates]() {
+        QList<XContentDevice *> loaded;
+        for (auto *device : candidates)
+        {
+            bool ok = false;
+            try
+            {
+                ok = device->LoadDevice();
+            }
+            catch (...)
+            {
+                ok = false;
+            }
+
+            if (ok)
+                loaded.append(device);
+            else
+                delete device;
+        }
+        return loaded;
+    }));
 }

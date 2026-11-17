@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QThread>
 #include <QUuid>
 
 #include <algorithm>
@@ -233,8 +234,13 @@ bool HelperClient::start(QString *error)
         if (!isElevationPending())
             break;
 
-        // Keep the GUI painting while the OS elevation prompt is open.
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        // Keep the GUI painting while the OS elevation prompt is open. Worker
+        // threads (the device notifier) have no event loop, so sleep instead of
+        // spinning.
+        if (QThread::currentThread() == QCoreApplication::instance()->thread())
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        else
+            QThread::msleep(50);
     }
 
     if (error)
@@ -585,6 +591,37 @@ UINT64 HelperDeviceIO::Length()
 
 void HelperDeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
 {
+    // Serve small reads from an aligned window cache (see the header).
+    if (len <= kCacheWindow && device.size != 0)
+    {
+        const UINT64 requestStart = position;
+        const UINT64 requestEnd = position + len;
+        const UINT64 windowStart = requestStart - (requestStart % kCacheWindow);
+
+        if (windowStart < device.size && requestEnd <= windowStart + kCacheWindow)
+        {
+            const bool hit = cacheLength != 0 && cacheStart == windowStart;
+            if (!hit)
+            {
+                const UINT64 available = device.size - windowStart;
+                const size_t windowLength = static_cast<size_t>(
+                        std::min<UINT64>(available, kCacheWindow));
+
+                cache = client->readAt(device.handle, windowStart,
+                                       static_cast<uint32_t>(windowLength));
+                cacheStart = windowStart;
+                cacheLength = static_cast<size_t>(cache.size());
+            }
+
+            if (requestEnd <= cacheStart + cacheLength)
+            {
+                std::memcpy(outBuffer, cache.constData() + (requestStart - windowStart), len);
+                position = requestEnd;
+                return;
+            }
+        }
+    }
+
     UINT64 remaining = len;
     UINT64 offset = position;
     while (remaining > 0)
@@ -605,6 +642,9 @@ void HelperDeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
 
 void HelperDeviceIO::WriteBytes(BYTE *buffer, DWORD len)
 {
+    // Never serve stale data after a write.
+    cacheLength = 0;
+
     if (!device.writable)
         throw std::string("HelperDeviceIO: device handle is read-only");
 
