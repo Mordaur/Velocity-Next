@@ -1,7 +1,7 @@
 Velocity-Next
 =============
 
-**Velocity-Next is a continuation of the original [Velocity](https://github.com/hetelek/Velocity) project, which ceased active development some time ago. This fork aims to modernize the codebase, add new features, and maintain compatibility with current operating systems and toolchains.**
+**Velocity-Next is a continuation of the original [Velocity](https://github.com/hetelek/Velocity) project, which [ceased active development](https://github.com/hetelek/Velocity/commit/928af4ced6ff4dde990cca960e110af6476139fd) some time ago. This fork aims to modernize the codebase, add new features, and maintain compatibility with current operating systems and toolchains.**
 
 ### What's New in Velocity-Next
 
