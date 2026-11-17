@@ -216,6 +216,7 @@ void DeviceContentViewer::LoadDevicesp()
     {
         currentDevice = devices.first();
         UpdateDevicePanel();
+        ui->treeWidget->setEnabled(true);
         ui->tabWidget->setEnabled(true);
     }
 }
