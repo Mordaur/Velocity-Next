@@ -60,6 +60,7 @@ add_library(XboxInternals ${_lib_type}
   src/Stfs/IXContentHeader.cpp
   src/Stfs/XContentHeader.cpp
   src/Xex/Xex.cpp
+  src/Xex/XexLzxDecoder.cpp
   src/Xex/Xuiz.cpp
   src/Utils.cpp
 )

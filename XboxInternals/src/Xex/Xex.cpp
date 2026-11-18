@@ -1,10 +1,12 @@
 #include <XboxInternals/Xex/Xex.h>
+#include <XboxInternals/Xex/XexLzxDecoder.h>
 #include <XboxInternals/IO/XexZeroBasedCompressionIO.h>
 #include <XboxInternals/IO/XexAesIO.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -12,23 +14,27 @@
 namespace fs = std::filesystem;
 
 Xex::Xex(BaseIO *io) :
-    io(io), firstResourceFileAddr(0xFFFFFFFF), imageBaseAddress(0),
-    entryPoint(0), originalBaseAddress(0), defaultStackSize(0), defaultFileSystemCacheSize(0),
-    defaultHeapSize(0), titleWorkspaceSize(0), esrbRating(ESRB_RP), pegiRating(PEGI_Unrated),
-    pegifiRating(PEGIFI_Unrated), pegiptRating(PEGIPT_Unrated), pegibbfcRating(PEGIBBF_Unrated),
-    oflcAURating(OFLCAU_UNRATED), oflcNZRating(OFLCNZ_UNRATED), 
-    encrypted(false), encryptionState(Decrypted), compressionState(XexDecompressed)
+    io(io), firstResourceFileAddr(0xFFFFFFFF),
+    esrbRating(ESRB_RP), pegiRating(PEGI_Unrated), pegifiRating(PEGIFI_Unrated),
+    pegiptRating(PEGIPT_Unrated), pegibbfcRating(PEGIBBF_Unrated),
+    oflcAURating(OFLCAU_UNRATED), oflcNZRating(OFLCNZ_UNRATED),
+    imageBaseAddress(0), entryPoint(0), originalBaseAddress(0), defaultStackSize(0),
+    defaultFileSystemCacheSize(0), defaultHeapSize(0), titleWorkspaceSize(0),
+    encrypted(false), encryptionState(Decrypted), compressionState(XexDecompressed),
+    compressedBlockSize(0), compressedBlock0Size(0), compressedBlock0Sha1()
 {
     Parse();
 }
 
 Xex::Xex(std::string fileName) :
-    io(nullptr), ownedIO(std::make_unique<FileIO>(fileName)), firstResourceFileAddr(0xFFFFFFFF), imageBaseAddress(0),
-    entryPoint(0), originalBaseAddress(0), defaultStackSize(0), defaultFileSystemCacheSize(0),
-    defaultHeapSize(0), titleWorkspaceSize(0), esrbRating(ESRB_RP), pegiRating(PEGI_Unrated),
-    pegifiRating(PEGIFI_Unrated), pegiptRating(PEGIPT_Unrated), pegibbfcRating(PEGIBBF_Unrated),
+    io(nullptr), ownedIO(std::make_unique<FileIO>(fileName)), firstResourceFileAddr(0xFFFFFFFF),
+    esrbRating(ESRB_RP), pegiRating(PEGI_Unrated), pegifiRating(PEGIFI_Unrated),
+    pegiptRating(PEGIPT_Unrated), pegibbfcRating(PEGIBBF_Unrated),
     oflcAURating(OFLCAU_UNRATED), oflcNZRating(OFLCNZ_UNRATED),
-    encrypted(false), encryptionState(Decrypted), compressionState(XexDecompressed)
+    imageBaseAddress(0), entryPoint(0), originalBaseAddress(0), defaultStackSize(0),
+    defaultFileSystemCacheSize(0), defaultHeapSize(0), titleWorkspaceSize(0),
+    encrypted(false), encryptionState(Decrypted), compressionState(XexDecompressed),
+    compressedBlockSize(0), compressedBlock0Size(0), compressedBlock0Sha1()
 {
     io = ownedIO.get();
 
@@ -245,7 +251,7 @@ void Xex::ExtractData(std::string path)
     else if (compressionState == XexCompressed)
         ExtractDecompressedData(path);
     else if (compressionState == XexSupercompressed)
-        throw std::string("XEX: XCompress/LZX compression (type 2) is not supported yet.\n");
+        ExtractCompressedData(path);
     else if (compressionState == XexDeltaCompressed)
         throw std::string("XEX: Delta compression (type 3) is not supported yet.\n");
 }
@@ -541,10 +547,7 @@ void Xex::Parse()
 
     // read in all the optional header entries
     for (DWORD i = 0; i < header.optionalHeaderEntryCount; i++)
-    {
-        XexOptionalHeaderEntry entry;
-        ParseOptionalHeaderEntry(&entry, i);
-    }
+        ParseOptionalHeaderEntry(i);
 
     // read the security info
     io->SetPosition(header.headerAddress);
@@ -567,12 +570,18 @@ void Xex::Parse()
     // Always try to determine which encryption key is used
     // Note: Some XEX files have encrypted=0 in BaseFileDescriptor but are still encrypted!
     const BYTE *key = XEX_RETAIL_KEY;
-    
-    // preserve the position in the file, TryKey() changes it
+
+    // preserve the position in the file, the key probes change it
     UINT64 position = io->GetPosition();
 
-    // I don't think it says in the header which key it uses so we'll just try both
-    if (TryKey(XEX_RETAIL_KEY))
+    if (compressionState == XexSupercompressed)
+    {
+        // A compressed image does not start with a DOS header, so the MZ probe
+        // below cannot work: identify the key with the signed digest of the
+        // first compressed block instead (see SelectCompressedImageKey).
+        key = SelectCompressedImageKey();
+    }
+    else if (TryKey(XEX_RETAIL_KEY))
     {
         encryptionState = RetailEncrypted;
         key = XEX_RETAIL_KEY;
@@ -620,7 +629,7 @@ void Xex::Parse()
     }
 }
 
-void Xex::ParseOptionalHeaderEntry(XexOptionalHeaderEntry *entry, int index)
+void Xex::ParseOptionalHeaderEntry(int index)
 {
     // seek to the beginning of the entry
     io->SetPosition(XEX_HEADER_SIZE + index * XEX_OPTIONAL_HEADER_ENTRY_SIZE);
@@ -782,8 +791,10 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
     encrypted = !!(io->ReadWord());
     compressionState = (XexCompressionState)io->ReadWord();
 
-    // Type 1 (raw/zero-based) uses 8-byte blocks. Types 2/3 use a digest-chained
-    // 24-byte layout and are rejected at extraction; do not misparse them here.
+    // Type 1 (raw/zero-based) uses 8-byte blocks. Type 2 uses a digest-chained
+    // 24-byte layout whose per-block sizes/digests live in the blocks
+    // themselves; only the first block is described here. Type 3 is not
+    // supported and is left unparsed.
     if (compressionState == XexCompressed)
     {
         if ((baseFileDescriptorSize - 8) % XEX_COMPRESSION_BLOCK_SIZE != 0)
@@ -798,6 +809,22 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
 
             compressionBlocks.push_back(block);
         }
+    }
+    else if (compressionState == XexSupercompressed)
+    {
+        if (baseFileDescriptorSize < 0x24)
+            throw std::string("XEX: Invalid LZX base file descriptor size.\n");
+
+        compressedBlockSize = io->ReadDword();
+        compressedBlock0Size = io->ReadDword();
+        io->ReadBytes(compressedBlock0Sha1, sizeof(compressedBlock0Sha1));
+
+        // the kernel requires a power of two here (XexpLoadCompressedImage)
+        if (compressedBlockSize == 0 || (compressedBlockSize & (compressedBlockSize - 1)) != 0)
+            throw std::string("XEX: Invalid LZX block size.\n");
+
+        if (compressedBlock0Size < 0x18)
+            throw std::string("XEX: Invalid LZX first block size.\n");
     }
 }
 
@@ -891,6 +918,193 @@ bool Xex::TryKey(const BYTE *key)
     }
     
     return (magic == 0x4D5A); 	// 'MZ'
+}
+
+void Xex::ComputeSha1(const BYTE *data, size_t length, BYTE *outHash)
+{
+    const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
+    sha1->update(data, length);
+    sha1->final(outHash);
+}
+
+void Xex::ComputeImageKey(const BYTE *masterKey, BYTE *imageKey) const
+{
+    auto aes = Botan::BlockCipher::create("AES-128");
+    aes->set_key(masterKey, XEX_AES_BLOCK_SIZE);
+
+    // image key = AES-128-ECB of the per-file key in the security page
+    memcpy(imageKey, securityInfo.key, XEX_AES_BLOCK_SIZE);
+    aes->decrypt(imageKey);
+}
+
+const BYTE *Xex::SelectCompressedImageKey()
+{
+    const UINT64 fileLength = io->Length();
+
+    if (header.dataAddress >= fileLength)
+        throw std::string("XEX: Compressed data starts past the end of the file.\n");
+
+    if (compressedBlock0Size > fileLength - header.dataAddress)
+        throw std::string("XEX: The first compressed block is larger than the file.\n");
+
+    // read the first block as it is stored in the file
+    std::vector<BYTE> block0(compressedBlock0Size);
+    io->SetPosition(header.dataAddress);
+    io->ReadBytes(block0.data(), compressedBlock0Size);
+
+    // The payload of a type 2 image does not start with "MZ", so the SHA-1 of
+    // block 0 from the signed base-file descriptor is the only reliable key
+    // probe. Try the plaintext first (the descriptor's encryption flag is not
+    // always trustworthy) and then the two master keys.
+    const BYTE *masterKeys[3] = { nullptr, XEX_RETAIL_KEY, XEX_DEVKIT_KEY };
+    const XexEncryptionState states[3] = { Decrypted, RetailEncrypted, DevKitEncrypted };
+
+    std::vector<BYTE> decrypted(compressedBlock0Size);
+    BYTE digest[0x14];
+
+    for (size_t i = 0; i < 3; i++)
+    {
+        const BYTE *plain = block0.data();
+
+        if (masterKeys[i] != nullptr)
+        {
+            if ((compressedBlock0Size % XEX_AES_BLOCK_SIZE) != 0)
+                throw std::string("XEX: Encrypted first compressed block is not AES aligned.\n");
+
+            BYTE imageKey[XEX_AES_BLOCK_SIZE];
+            ComputeImageKey(masterKeys[i], imageKey);
+
+            auto aes = Botan::BlockCipher::create("AES-128");
+            aes->set_key(imageKey, XEX_AES_BLOCK_SIZE);
+
+            BYTE iv[XEX_AES_BLOCK_SIZE] = {0};
+            memcpy(decrypted.data(), block0.data(), compressedBlock0Size);
+
+            for (DWORD offset = 0; offset < compressedBlock0Size; offset += XEX_AES_BLOCK_SIZE)
+                AesCbcDecrypt(aes.get(), iv, decrypted.data() + offset, decrypted.data() + offset);
+
+            plain = decrypted.data();
+        }
+
+        ComputeSha1(plain, compressedBlock0Size, digest);
+
+        if (memcmp(digest, compressedBlock0Sha1, sizeof(compressedBlock0Sha1)) == 0)
+        {
+            encryptionState = states[i];
+            return (masterKeys[i] != nullptr) ? masterKeys[i] : XEX_RETAIL_KEY;
+        }
+    }
+
+    throw std::string("XEX: Could not identify the compression key (block 0 digest mismatch).\n");
+}
+
+void Xex::ExtractCompressedData(std::string path)
+{
+    // A type 2 image decompresses to exactly securityInfo.imageSize bytes.
+    if (securityInfo.imageSize == 0 || securityInfo.imageSize > MaxDecompressedImageSize)
+        throw std::string("XEX: Unsupported decompressed image size.\n");
+
+    const UINT64 fileLength = io->Length();
+    if (header.dataAddress >= fileLength)
+        throw std::string("XEX: Compressed data starts past the end of the file.\n");
+
+    const bool decrypt = (encryptionState == RetailEncrypted || encryptionState == DevKitEncrypted);
+
+    std::unique_ptr<Botan::BlockCipher> aes;
+    if (decrypt)
+    {
+        aes = Botan::BlockCipher::create("AES-128");
+        aes->set_key(decryptedKey, XEX_AES_BLOCK_SIZE);
+    }
+
+    XexLzxDecoder decoder;
+
+    std::vector<BYTE> block;
+    std::vector<BYTE> chunkOutput(XexLzxDecoder::FrameSize);
+
+    BYTE expectedHash[0x14];
+    memcpy(expectedHash, compressedBlock0Sha1, sizeof(expectedHash));
+
+    BYTE iv[XEX_AES_BLOCK_SIZE] = {0}; // CBC state, continuous across blocks
+    UINT64 cursor = header.dataAddress;
+    DWORD currentBlockSize = compressedBlock0Size;
+    DWORD produced = 0;
+    DWORD blockIndex = 0;
+
+    FileIO outFile(path, true);
+
+    while (produced < securityInfo.imageSize)
+    {
+        if (currentBlockSize < 0x18)
+            throw std::string("XEX: Compressed block is too small.\n");
+
+        if (currentBlockSize > fileLength - cursor)
+            throw std::string("XEX: Compressed block runs past the end of the file.\n");
+
+        if (decrypt && (currentBlockSize % XEX_AES_BLOCK_SIZE) != 0)
+            throw std::string("XEX: Encrypted compressed block is not AES aligned.\n");
+
+        block.resize(currentBlockSize);
+        io->SetPosition(cursor);
+        io->ReadBytes(block.data(), currentBlockSize);
+
+        // The kernel decrypts whole blocks with a CBC state that carries over
+        // from one block to the next (zero IV at the start).
+        if (decrypt)
+        {
+            for (DWORD offset = 0; offset < currentBlockSize; offset += XEX_AES_BLOCK_SIZE)
+                AesCbcDecrypt(aes.get(), iv, block.data() + offset, block.data() + offset);
+        }
+
+        // digest chain: the descriptor signs block 0, every block signs the next
+        BYTE hash[0x14];
+        ComputeSha1(block.data(), currentBlockSize, hash);
+
+        if (memcmp(hash, expectedHash, sizeof(expectedHash)) != 0)
+            throw std::string("XEX: Compressed block ") + std::to_string(blockIndex) +
+                " failed its digest check (corrupt data or wrong key).\n";
+
+        // chunk list: { u16 compressedLength; u8 data[compressedLength]; } until u16 0
+        size_t offset = 0x18;
+
+        while (offset + 2 <= currentBlockSize && produced < securityInfo.imageSize)
+        {
+            const WORD chunkLength = static_cast<WORD>((block[offset] << 8) | block[offset + 1]);
+            offset += 2;
+
+            if (chunkLength == 0)
+                break;
+
+            if (chunkLength > currentBlockSize - offset)
+                throw std::string("XEX: Compressed chunk runs past the end of its block.\n");
+
+            // each chunk decodes to one frame, the last one to the remainder
+            const DWORD expectedOutput = std::min<DWORD>(XexLzxDecoder::FrameSize,
+                                                         securityInfo.imageSize - produced);
+
+            decoder.DecodeChunk(block.data() + offset, chunkLength, chunkOutput.data(), expectedOutput);
+            outFile.WriteBytes(chunkOutput.data(), expectedOutput);
+
+            produced += expectedOutput;
+            offset += chunkLength;
+        }
+
+        // the current block describes the next one
+        memcpy(expectedHash, block.data() + 4, sizeof(expectedHash));
+        const DWORD nextBlockSize = (static_cast<DWORD>(block[0]) << 24) |
+                                    (static_cast<DWORD>(block[1]) << 16) |
+                                    (static_cast<DWORD>(block[2]) << 8) |
+                                    static_cast<DWORD>(block[3]);
+
+        cursor += currentBlockSize;
+        currentBlockSize = nextBlockSize;
+        blockIndex++;
+
+        if (currentBlockSize == 0 && produced < securityInfo.imageSize)
+            throw std::string("XEX: The compressed block chain ended before the image was complete.\n");
+    }
+
+    outFile.Close();
 }
 
 BaseIO *Xex::GetRawDataIO()

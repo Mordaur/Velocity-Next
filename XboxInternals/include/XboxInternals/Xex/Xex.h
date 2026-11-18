@@ -154,6 +154,17 @@ private:
     BYTE lanKey[XEX_LAN_KEY_SIZE];
     BYTE decryptedKey[XEX_AES_BLOCK_SIZE];
 
+    // Type 2 (XCompress/LZX) base-file descriptor (optional header 0x3FF):
+    // { u32 size; u16 encryption; u16 compression; u32 blockSize;
+    //   u32 sizeOfBlock0; u8 sha1OfBlock0[20] }
+    DWORD compressedBlockSize;
+    DWORD compressedBlock0Size;
+    BYTE compressedBlock0Sha1[0x14];
+
+    // Upper bound for a decompressed image; anything above is rejected instead
+    // of trying to materialise it.
+    static constexpr DWORD MaxDecompressedImageSize = 0x40000000; // 1 GiB
+
     XexExecutionInfo executionInfo;
 
 
@@ -161,7 +172,7 @@ private:
 
     void Parse();
 
-    void ParseOptionalHeaderEntry(XexOptionalHeaderEntry *entry, int index);
+    void ParseOptionalHeaderEntry(int index);
 
     void ParseSystemImportLibraryTable(DWORD address);
 
@@ -182,6 +193,17 @@ private:
     void ExtractFromRawData(std::string outPath, DWORD address, DWORD size);
 
     bool TryKey(const BYTE *key);
+
+    // Type 2 (XCompress/LZX) support.
+    void ExtractCompressedData(std::string path);
+    // Derives the XEX image key (AES-128-ECB of securityInfo.key with the given
+    // master key).
+    void ComputeImageKey(const BYTE *masterKey, BYTE *imageKey) const;
+    // Picks the master key by hashing the decrypted first compressed block and
+    // comparing it with the SHA-1 in the base-file descriptor. Returns the key
+    // to use for the image key derivation and updates encryptionState.
+    const BYTE *SelectCompressedImageKey();
+    static void ComputeSha1(const BYTE *data, size_t length, BYTE *outHash);
 
 
     // Get an IO pointing to the beginning of the decrypted and fully decompressed data in an XEX
