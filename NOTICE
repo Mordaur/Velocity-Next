@@ -24,8 +24,8 @@ Fork Name: Velocity-Next
 Reason for Fork:
   The original Velocity project ceased active development.
   Velocity-Next continues the project to provide:
-  - Modern compiler support (MSVC 2022, MinGW 13.1+)
-  - Updated build system (CMake 3.20+, modern patterns)
+  - Modern compiler support (MinGW-w64 13.1+, GCC 11+, Clang 14+)
+  - Updated build system (CMake 3.25+ presets, modern patterns)
   - Standalone XboxInternals library distribution
   - Bug fixes and feature enhancements
   - Active maintenance and community support
@@ -50,7 +50,8 @@ Velocity-Next includes the following third-party components:
 
 2. Qt 6 (LGPL v3 / GPL v3)
    - The Qt Company Ltd.
-   - Dynamically linked (MSVC) or statically linked (MinGW)
+   - Dynamically linked; bundled with the Windows and macOS releases,
+     host-provided on Linux
 
 ACKNOWLEDGMENTS
 ---------------

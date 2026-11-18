@@ -22,7 +22,7 @@ Velocity-Next
 - **Hardened FATX**: corrupt cluster chains, zero-length files and non-512-byte
   sector sizes are handled safely
 - **Smart Pointer Refactoring**: Modern C++20 memory management in XboxInternals
-- **MinGW (Windows), GCC (Linux), Clang (macOS)**, CMake 3.20+ presets, standalone XboxInternals library
+- **MinGW (Windows), GCC (Linux), Clang (macOS)**, CMake 3.25+ presets, standalone XboxInternals library
 
 ### Backend findings
 
@@ -35,10 +35,18 @@ source tree is the implementation; the wiki is the evidence behind it.
 
 ### Getting Velocity-Next
 
-No packaged release has been published yet. Until the first release is tagged,
-build from source using [BUILD.md](BUILD.md). Release archives keep
-`velocity-device-helper` next to the executable, which the app needs for raw
-device access.
+Pre-built archives are published on the
+[Releases page](https://github.com/Mordaur/Velocity-Next/releases); **v0.3.1** is
+the latest. Every archive keeps `velocity-device-helper` next to the executable,
+which the app needs for raw device access.
+
+| Platform | Archive | Notes |
+|---|---|---|
+| Windows | `Velocity-Next-Windows-MinGW.zip` | Qt bundled |
+| macOS | `Velocity-Next.dmg` | arm64, unsigned |
+| Linux | `Velocity-Next-Linux.tar.gz` | requires Qt 6.10.3 on the host |
+
+To build from source instead, see [BUILD.md](BUILD.md).
 
 ### Credits
 
@@ -104,7 +112,7 @@ Velocity-Next is a cross-platform Xbox 360 file management application built wit
   images, while XGD1 and 2352-byte raw dumps are **experimental**
 - **XEX** - Xbox executables with metadata and data extraction; raw/zero-based
   and XCompress/LZX (type 2) are supported, delta (type 3) is not
-- **SVOD** - Secure Video on Demand packages
+- **SVOD/GOD** - Secure Video on Demand / Games on Demand packages
 - **YTGR** - Avatar asset packages
 - **XUIZ** - Dashboard package files, with extraction
 - **STRB** - Avatar asset blocks
@@ -132,7 +140,8 @@ Velocity-Next includes the following third-party libraries:
 
 - **Botan** (BSD-2-Clause): Cryptography library embedded as amalgamation build. See [LICENSE-Botan.txt](LICENSE-Botan.txt) for full license text.
 - **Qt 6**: Cross-platform application framework (LGPL v3 / GPL v3). Qt is
-  dynamically linked on every platform and shipped alongside the executable.
+  dynamically linked: the Windows zip and macOS bundle ship it, while the Linux
+  tarball expects Qt 6.10.3 on the host.
 
 ### Build System Acknowledgments
 

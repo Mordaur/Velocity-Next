@@ -11,7 +11,8 @@
     (`qt6-base-private-dev` on Debian/Ubuntu, `qt6-qtbase-private-devel` on
     Fedora, included in `qt6-base` on Arch)
   - Verified by building against Qt 6.7.3, 6.8.3, 6.10.3 and 6.12.0
-- **CMake 3.20+**
+- **CMake 3.25+** (the presets use schema version 6; 3.20+ works when configuring
+  manually without `--preset`)
 - **C++20 compiler**:
   - **Windows**: MinGW 13.1.0+ (Qt's MinGW kit; MSVC is not supported)
   - **macOS**: Clang (Xcode Command Line Tools)
@@ -60,9 +61,11 @@ matrix build followed by a release.
 
 ### Downloading Pre-built Releases
 
-See the [Releases page](https://github.com/Mordaur/Velocity-Next/releases). No
-release has been published yet, so until v0.3.0 is tagged build from source with
-the presets above.
+See the [Releases page](https://github.com/Mordaur/Velocity-Next/releases).
+**v0.3.1** is the latest release; it publishes the Windows MinGW zip, the macOS
+DMG and the Linux tarball. Every archive keeps `velocity-device-helper` next to
+the executable. The Linux tarball does not bundle Qt — install Qt 6.10.3 on the
+host, or build from source with the presets above.
 
 ## Botan Dependency
 
