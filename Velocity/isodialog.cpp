@@ -28,6 +28,10 @@
 #include <QDir>
 #include <QTextStream>
 #include <QStatusBar>
+
+#include <exception>
+#include <string>
+
 #include <QPixmap>
 #include <QBuffer>
 #include <QStringDecoder>
@@ -36,11 +40,21 @@
 #include <QTimer>
 #include <QRegularExpression>
 #include <QApplication>
+
 #include <QtConcurrent/QtConcurrent>
 #include <fstream>
 #include <memory>
 #include "XboxInternals/Iso/IsoImage.h"
 #include "XboxInternals/Disc/Gdfx.h"
+
+namespace
+{
+    // Thrown from the per-file progress callback so the destructor can join a
+    // running extractAll() instead of freeing `iso_` underneath it.
+    struct IsoExtractionCancelled
+    {
+    };
+}
 
 // Helper function to format file sizes
 static QString formatSize(quint64 size) {
@@ -125,7 +139,28 @@ IsoDialog::IsoDialog(QStatusBar* statusBar, QWidget* parent)
     connect(tree_, &QTreeWidget::customContextMenuRequested, this, &IsoDialog::showContextMenu);
 }
 
-IsoDialog::~IsoDialog() = default;
+IsoDialog::~IsoDialog()
+{
+    // The extraction lambda captures `this` and reaches `iso_`; both die with
+    // this object. Join it first - the flag makes the worker stop at the next
+    // file boundary.
+    if (extractionWatcher_ != nullptr && !extractionWatcher_->isFinished())
+    {
+        cancelExtraction_ = true;
+        extractionWatcher_->waitForFinished();
+    }
+}
+
+void IsoDialog::setExtractionBusy(bool busy)
+{
+    tree_->setEnabled(!busy);
+    searchBox_->setEnabled(!busy);
+    extractSelectedButton_->setEnabled(!busy);
+    extractAllButton_->setEnabled(!busy);
+    expandAllButton_->setEnabled(!busy);
+    collapseAllButton_->setEnabled(!busy);
+    sectorToolButton_->setEnabled(!busy);
+}
 
 void IsoDialog::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasUrls()) event->acceptProposedAction();
@@ -350,8 +385,18 @@ void IsoDialog::onExtractSelected() {
 }
 
 void IsoDialog::onExtractAll() {
+    if (extractionWatcher_ != nullptr && !extractionWatcher_->isFinished())
+    {
+        QMessageBox::information(this, tr("Extraction in progress"),
+                tr("Wait for the current extraction to finish before starting another."));
+        return;
+    }
+
     const QString outDir = QFileDialog::getExistingDirectory(this, tr("Select Output Directory for Batch Export"));
     if (outDir.isEmpty()) return;
+
+    cancelExtraction_ = false;
+    setExtractionBusy(true);
 
     // Derive a default folder name using any Title ID embedded in the ISO filename
     const QString isoBaseName = QFileInfo(currentIsoPath_).baseName();
@@ -388,10 +433,30 @@ void IsoDialog::onExtractAll() {
         // Progress callback that emits signal
         auto progressCallback = [](void* arg, uint32_t current, uint32_t total) {
             IsoDialog* dialog = static_cast<IsoDialog*>(arg);
+            if (dialog->cancelExtraction_.load())
+                throw IsoExtractionCancelled();
             emit dialog->extractionProgressUpdate(static_cast<int>(current), static_cast<int>(total));
         };
         
-        bool success = iso_->extractAll(fullOutDir.toStdString(), progressCallback, this);
+        bool success = false;
+        try
+        {
+            success = iso_->extractAll(fullOutDir.toStdString(), progressCallback, this);
+        }
+        catch (const IsoExtractionCancelled&)
+        {
+            return ExtractionResult{false, 0, QStringLiteral("Extraction cancelled."), fullOutDir};
+        }
+        catch (const std::string& error)
+        {
+            // Backend parsers throw std::string; do not let it escape into the
+            // event loop through QFutureWatcher::result().
+            return ExtractionResult{false, 0, QString::fromStdString(error), fullOutDir};
+        }
+        catch (const std::exception& error)
+        {
+            return ExtractionResult{false, 0, QString::fromUtf8(error.what()), fullOutDir};
+        }
         
         // Count actual extracted files by scanning the output directory
         int fileCount = 0;
@@ -794,6 +859,8 @@ void IsoDialog::onCollapseAll() {
 }
 
 void IsoDialog::onExtractionFinished() {
+    setExtractionBusy(false);
+
     // Close and cleanup progress dialog first
     if (extractionProgress_) {
         extractionProgress_->reset();  // Reset before deleting to avoid issues

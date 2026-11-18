@@ -39,7 +39,14 @@ namespace Ui
 class MultiProgressDialog;
 }
 
+class QCloseEvent;
+
 void updateProgress(void *form, DWORD curProgress, DWORD total);
+
+// Stops and joins every extraction started from `owner`'s child progress
+// dialogs. An owner must call this before it releases the device it handed to
+// the dialog: ~MultiProgressDialog runs after the owner's members are gone.
+void cancelProgressDialogs(QWidget *owner);
 
 // Forward declaration
 class MultiProgressDialog;
@@ -76,6 +83,13 @@ public:
 
     void start();
 
+    // Requests cancellation of the running worker and waits for it to leave
+    // run(). Safe to call more than once.
+    void cancelAndWait();
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private slots:
     void onProgressUpdate(int fileIndex, DWORD curProgress, DWORD total);
     void onFileComplete(int fileIndex);
@@ -101,6 +115,9 @@ private:
     FatxFileEntry *parentEntry;
     QMutex progressMutex_;  // Protect progress updates from multiple threads
     ExtractionWorker *worker_;
+    // QThread::finished() is emitted before the thread clears its running flag,
+    // so closeEvent cannot rely on isRunning() alone for the final close.
+    bool workerFinished_ = false;
 
     void operateOnNextFile();
 

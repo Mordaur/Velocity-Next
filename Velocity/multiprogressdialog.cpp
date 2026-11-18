@@ -1,9 +1,19 @@
 #include "multiprogressdialog.h"
 #include "ui_multiprogressdialog.h"
+#include <QCloseEvent>
 #include <QTimer>
 #include <QFileInfo>
 #include <QMutexLocker>
 #include <memory>
+
+namespace
+{
+    // Thrown from the progress callback so a long copy stops at the next
+    // progress tick instead of running to completion after a cancel request.
+    struct ExtractionCancelled
+    {
+    };
+}
 
 // ExtractionWorker implementation
 ExtractionWorker::ExtractionWorker(MultiProgressDialog *dialog)
@@ -60,6 +70,11 @@ void ExtractionWorker::run()
                         StfsPackage *package = reinterpret_cast<StfsPackage*>(dialog_->device);
                         package->ExtractFile(&entry->entry, dirPathStd, updateProgress, dialog_);
                     }
+                    catch (const ExtractionCancelled&)
+                    {
+                        emit extractionComplete(false, QStringLiteral("Extraction cancelled by user"));
+                        return;
+                    }
                     catch (const std::exception& e)
                     {
                         emit extractionComplete(false, 
@@ -98,6 +113,11 @@ void ExtractionWorker::run()
                     {
                         io.SaveFile(dialog_->outDir.toStdString() + entry->name, updateProgress, dialog_);
                         io.Close();
+                    }
+                    catch (const ExtractionCancelled&)
+                    {
+                        emit extractionComplete(false, QStringLiteral("Extraction cancelled by user"));
+                        return;
                     }
                     catch (string error)
                     {
@@ -154,6 +174,11 @@ void ExtractionWorker::run()
 
                         io.SaveFile(filePath.toStdString(), updateProgress, dialog_);
                     }
+                    catch (const ExtractionCancelled&)
+                    {
+                        emit extractionComplete(false, QStringLiteral("Extraction cancelled by user"));
+                        return;
+                    }
                     catch (string error)
                     {
                         emit extractionComplete(false, 
@@ -170,6 +195,10 @@ void ExtractionWorker::run()
         }
 
         emit extractionComplete(true, "");
+    }
+    catch (const ExtractionCancelled&)
+    {
+        emit extractionComplete(false, QStringLiteral("Extraction cancelled by user"));
     }
     catch (const std::exception& e)
     {
@@ -212,13 +241,43 @@ MultiProgressDialog::MultiProgressDialog(Operation op, FileSystem fileSystem, vo
 
 MultiProgressDialog::~MultiProgressDialog()
 {
-    if (worker_)
-    {
-        worker_->requestInterruption();
-        worker_->wait(5000);  // Wait up to 5 seconds
-        delete worker_;
-    }
+    // Never delete a QThread that is still running. cancelAndWait() asks the
+    // worker to stop at its next progress tick; without that request a single
+    // large file could keep it busy past any fixed timeout.
+    cancelAndWait();
+    delete worker_;
+    worker_ = nullptr;
     delete ui;
+}
+
+void MultiProgressDialog::cancelAndWait()
+{
+    if (worker_ == nullptr || !worker_->isRunning())
+        return;
+
+    worker_->requestInterruption();
+    worker_->wait();
+}
+
+void MultiProgressDialog::closeEvent(QCloseEvent *event)
+{
+    if (!workerFinished_ && worker_ != nullptr && worker_->isRunning())
+    {
+        // The caller's device must outlive the worker; finish first, then let
+        // the finished() handler close and delete this dialog.
+        worker_->requestInterruption();
+        event->ignore();
+        return;
+    }
+
+    QDialog::closeEvent(event);
+}
+
+void cancelProgressDialogs(QWidget *owner)
+{
+    const QList<MultiProgressDialog *> dialogs = owner->findChildren<MultiProgressDialog *>();
+    for (MultiProgressDialog *dialog : dialogs)
+        dialog->cancelAndWait();
 }
 
 void MultiProgressDialog::start()
@@ -262,7 +321,16 @@ void MultiProgressDialog::start()
         connect(worker_, &ExtractionWorker::extractionComplete, this, &MultiProgressDialog::onExtractionComplete);
         connect(worker_, &ExtractionWorker::windowTitleUpdate, this, &MultiProgressDialog::onWindowTitleUpdate);
         connect(worker_, &ExtractionWorker::groupBoxTitleUpdate, this, &MultiProgressDialog::onGroupBoxTitleUpdate);
-        
+
+        // extractionComplete() is emitted from inside run(), so the thread may
+        // still be alive when it arrives. finished() is the only safe point to
+        // close and free the dialog, and it also covers cancel-on-close.
+        connect(worker_, &QThread::finished, this, [this]() {
+            workerFinished_ = true;
+            close();
+            deleteLater();
+        });
+
         worker_->start();
     }
     else
@@ -294,6 +362,9 @@ void MultiProgressDialog::onFileComplete(int fileIndex)
 
 void MultiProgressDialog::onExtractionComplete(bool success, QString errorMessage)
 {
+    if (!success && errorMessage == QStringLiteral("Extraction cancelled by user"))
+        return;  // finished() closes the dialog; a cancel is not an error
+
     if (success)
     {
         close();
@@ -321,9 +392,12 @@ void MultiProgressDialog::operateOnNextFile()
     // make sure there's another file to extract
     if (fileIndex == internalFiles.size())
     {
-        // Use QTimer to close the dialog after returning from the callback
-        // This prevents crashes when closing during progress updates
-        QTimer::singleShot(0, this, &MultiProgressDialog::close);
+        // Use QTimer to close and free the dialog after returning from the
+        // callback; deleting it inline would invalidate the caller's frame.
+        QTimer::singleShot(0, this, [this]() {
+            close();
+            deleteLater();
+        });
         return;
     }
     prevProgress = 0;
@@ -510,7 +584,10 @@ void MultiProgressDialog::operateOnNextFile()
             }
 
             // cleanup
-            close();
+            QTimer::singleShot(0, this, [this]() {
+                close();
+                deleteLater();
+            });
             return;
         }
     }
@@ -524,6 +601,11 @@ void updateProgress(void *form, DWORD curProgress, DWORD total)
     // If worker thread exists, emit signals for thread-safe UI updates
     if (dialog->worker_ && QThread::currentThread() == dialog->worker_)
     {
+        // A cancel request must not wait for the current file to finish; unwind
+        // the extraction and let ExtractionWorker::run() report the cancel.
+        if (dialog->worker_->isInterruptionRequested())
+            throw ExtractionCancelled();
+
         // We're on the worker thread - use signals
         emit dialog->worker_->progressUpdate(dialog->fileIndex, curProgress, total);
         

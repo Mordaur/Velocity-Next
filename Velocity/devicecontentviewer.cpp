@@ -167,6 +167,10 @@ DeviceContentViewer::DeviceContentViewer(QStatusBar *statusBar, QWidget *parent)
 
 DeviceContentViewer::~DeviceContentViewer()
 {
+    // Stop copies/extractions still using the device handles before the
+    // drive list is released below.
+    cancelProgressDialogs(this);
+
     // The worker reads the drives owned by the notifier; let it finish before
     // those are destroyed. Its results will never be collected, so free them.
     if (loadWatcher != nullptr)

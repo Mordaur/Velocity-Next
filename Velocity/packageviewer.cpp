@@ -1,6 +1,7 @@
 #include "packageviewer.h"
 #include "ui_packageviewer.h"
 #include "xexdialog.h"
+#include "multiprogressdialog.h"
 
 #include <XboxInternals/IO/StfsIO.h>
 
@@ -135,7 +136,9 @@ PackageViewer::PackageViewer(QStatusBar *statusBar, StfsPackage *package,
 
 PackageViewer::~PackageViewer()
 {
-    
+    // Stop any extraction that still holds `package` before it is released.
+    cancelProgressDialogs(this);
+
     for (int i = 0; i < gpdActions.size(); i++)
         if (gpdActions.at(i)->property("package").isValid())
             gpdActions.at(i)->setProperty("package", QVariant());

@@ -515,6 +515,14 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
         throw;
     }
 
+    if (entry->fileSize != 0 && entry->blocksForFile == 0)
+    {
+        except.str(std::string());
+        except << "STFS: File '" << entry->name.c_str()
+               << "' has data but no allocated blocks.\n";
+        throw except.str();
+    }
+
     // A corrupt file table can claim more bytes than the entry's block chain
     // can hold; the contiguous read path below sizes its buffer from the block
     // count, so reject the mismatch instead of overrunning it.
@@ -839,7 +847,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
     }
 
     // set the out to null if the file doesn't exist
-    if (!found)
+    if (!found && out != nullptr)
         out->nameLen = 0;
 }
 

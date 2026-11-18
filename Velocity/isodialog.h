@@ -2,6 +2,7 @@
 #include <QDialog>
 #include <QMap>
 #include <QFutureWatcher>
+#include <atomic>
 #include <memory>
 #include "XboxInternals/Iso/IsoImage.h"  // Full header needed for GdfxFileEntry in method signature
 
@@ -71,6 +72,9 @@ private:
     void openFileInViewer(const XboxInternals::Iso::IsoEntry& entry);
     QTreeWidgetItem* findOrCreateFolder(const QString& path);
     void onExtractionFinished();
+    // Enables/disables the widgets that must not touch `iso_` while the
+    // background extraction owns it.
+    void setExtractionBusy(bool busy);
     
     QPushButton* extractSelectedButton_ = nullptr;
     QPushButton* extractAllButton_ = nullptr;
@@ -86,5 +90,8 @@ private:
     std::unique_ptr<XboxInternals::Iso::IsoImage> iso_;
     QString currentIsoPath_;
     QMap<QString, QTreeWidgetItem*> folderItems_;
+    // Set by the destructor and checked once per extracted file; the QtConcurrent
+    // future cannot be cancelled through QFuture::cancel().
+    std::atomic<bool> cancelExtraction_{false};
 };
 

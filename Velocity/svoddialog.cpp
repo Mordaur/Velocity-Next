@@ -44,6 +44,9 @@ SvodDialog::SvodDialog(SVOD *svod, QStatusBar *statusBar, QWidget *parent, bool 
 
 SvodDialog::~SvodDialog()
 {
+    // Join a running extraction before `svod` is destroyed.
+    cancelProgressDialogs(this);
+
     if (disposeSvod)
         delete svod;
     delete ui;

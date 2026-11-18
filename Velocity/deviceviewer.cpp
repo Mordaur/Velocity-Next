@@ -72,6 +72,10 @@ DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
 
 DeviceViewer::~DeviceViewer()
 {
+    // The drive pointers passed to progress dialogs live in loadedDrives;
+    // join any running copy before the members are released.
+    cancelProgressDialogs(this);
+
     delete ui;
 }
 
