@@ -61,11 +61,27 @@ jobs:
           path: artifacts
           merge-multiple: true
       
+      - name: Extract release notes
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          version="${tag#v}"
+          awk -v ver="$version" '
+            $0 ~ "^## Velocity-Next v" ver " " {found=1; next}
+            found && /^## / {exit}
+            found {print}
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG section for $tag; GitHub will generate the notes." >&2
+            rm -f release-notes.md
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           name: ${{ steps.tag.outputs.tag }}
           tag_name: ${{ steps.tag.outputs.tag }}
+          body_path: ${{ hashFiles('release-notes.md') != '' && 'release-notes.md' || '' }}
+          generate_release_notes: ${{ hashFiles('release-notes.md') == '' }}
           files: |
             artifacts/*.zip
             artifacts/*.dmg
