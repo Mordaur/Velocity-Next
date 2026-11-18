@@ -143,7 +143,14 @@ bool XexLzxDecoder::Huffman::Build(const BYTE *lengths, int symbolCount)
         count[i] = 0;
 
     for (int i = 0; i < symbolCount; i++)
+    {
+        // A code length is at most MaxCodeLength bits. A larger byte can only
+        // come from a corrupt stream and would index past `count`.
+        if (lengths[i] > MaxCodeLength)
+            return false;
+
         count[lengths[i]]++;
+    }
 
     int total = 0;
     for (int i = 1; i <= MaxCodeLength; i++)
@@ -479,7 +486,9 @@ void XexLzxDecoder::ReadCodeLengths(BitReader &bits, BYTE *lengths, int first, i
             int runLength = static_cast<int>(bits.Get(1)) + 4;
             const int delta = preTree.Decode(bits);
 
-            if (delta < 0)
+            // The delta is a code length (0..16). The pretree can return 17..19
+            // for a corrupt stream; subtracting that would wrap the cast below.
+            if (delta < 0 || delta > 16)
                 Throw("invalid pretree symbol");
 
             int value = lengths[index] - delta;

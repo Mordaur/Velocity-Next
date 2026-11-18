@@ -283,6 +283,38 @@ namespace
         fs::remove(path, ignored);
     }
 
+    void testLzxRegression()
+    {
+        // libFuzzer crash from CI: an invalid pretree delta (17..19) produced a
+        // 254-byte code length, which indexed past Huffman::count[17]. The input
+        // must be rejected, never write out of bounds.
+        static const BYTE input[] = {
+            0x3F, 0x2F, 0x23, 0x00, 0x00, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7B,
+            0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x00, 0x49, 0x49, 0x49, 0x49, 0x49,
+            0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49,
+            0x49, 0x49, 0x49, 0x00, 0xE8, 0x00, 0x00, 0x00, 0x1A, 0x1A
+        };
+
+        XexLzxDecoder decoder;
+        BYTE output[0x400] = {};
+
+        try
+        {
+            decoder.DecodeChunk(input, sizeof(input), output, sizeof(output));
+        }
+        catch (const std::string &)
+        {
+        }
+        catch (const std::exception &)
+        {
+        }
+        catch (...)
+        {
+        }
+
+        check(true, "LZX pretree-delta regression input is rejected safely");
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -318,6 +350,7 @@ int main()
 {
     testMemoryIO();
     testLzxGarbage();
+    testLzxRegression();
     testCorruptStfsHeaders();
     testCorruptXdbf();
     testGarbageImages();
