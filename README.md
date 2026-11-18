@@ -36,13 +36,13 @@ source tree is the implementation; the wiki is the evidence behind it.
 ### Getting Velocity-Next
 
 Pre-built archives are published on the
-[Releases page](https://github.com/Mordaur/Velocity-Next/releases); **v0.3.1** is
+[Releases page](https://github.com/Mordaur/Velocity-Next/releases); **v0.3.2** is
 the latest. Every archive keeps `velocity-device-helper` next to the executable,
 which the app needs for raw device access.
 
 | Platform | Archive | Notes |
 |---|---|---|
-| Windows | `Velocity-Next-Windows-MinGW.zip` | Qt bundled |
+| Windows | `Velocity-Next-Windows.zip` | Qt bundled |
 | macOS | `Velocity-Next.dmg` | arm64, unsigned |
 | Linux | `Velocity-Next-Linux.tar.gz` | requires Qt 6.10.3 on the host |
 

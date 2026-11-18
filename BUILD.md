@@ -62,9 +62,9 @@ matrix build followed by a release.
 ### Downloading Pre-built Releases
 
 See the [Releases page](https://github.com/Mordaur/Velocity-Next/releases).
-**v0.3.1** is the latest release; it publishes the Windows MinGW zip, the macOS
-DMG and the Linux tarball. Every archive keeps `velocity-device-helper` next to
-the executable. The Linux tarball does not bundle Qt — install Qt 6.10.3 on the
+**v0.3.2** is the latest release; it publishes the Windows zip, the macOS DMG
+and the Linux tarball. Every archive keeps `velocity-device-helper` next to the
+executable. The Linux tarball does not bundle Qt — install Qt 6.10.3 on the
 host, or build from source with the presets above.
 
 ## Botan Dependency

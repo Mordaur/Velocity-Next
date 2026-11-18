@@ -31,7 +31,7 @@ To clean up, remove: CMakeCache.txt and CMakeFiles/
 ")
 endif()
 
-project(VelocityNext VERSION 0.3.1 LANGUAGES CXX)
+project(VelocityNext VERSION 0.3.2 LANGUAGES CXX)
 
 # Display build configuration for debugging
 message(STATUS "Generator: ${CMAKE_GENERATOR}")

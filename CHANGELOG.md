@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## Velocity-Next v0.3.2 - 2026-11-18
+
+### 🐞 Extraction
+
+- Closing an ISO or package dialog during a copy no longer frees the device
+  under the worker. Both dialog types cancel and join their worker before
+  releasing state, refuse a second concurrent extraction, and delete
+  themselves when the worker finishes. This is the same lifetime class as #11,
+  on the ISO path.
+
+### 🔑 KeyVault
+
+- Cancelling the keyvault picker, or choosing a missing, short or foreign file,
+  no longer crashes or silently skips resigning. The resigner rejects an empty
+  path and any file that is not 0x4000/0x4010 bytes, the UI warns when nothing
+  is selected, and backend errors are shown instead of escaping the event loop.
+
+### 🛡️ Robustness
+
+- Enum values read from packages are validated at the read boundary
+  (`BaseIO::ReadEnum` / `EnumTraits`) instead of being cast, so malformed
+  headers can no longer produce out-of-range enumerators. STFS magic and
+  `MemoryIO` writes are bounds-checked as well.
+- LZX: invalid pretree deltas and code lengths above 16 are rejected; a
+  fuzzer-found out-of-bounds write in the Huffman table is fixed.
 
 ### 🧱 Build
 
@@ -10,6 +34,11 @@
   `Velocity-Next-Windows.zip`. The library's C++ ABI is compiler-family
   specific, so an MSVC build was never linkable from MinGW consumers or the
   reverse; a C ABI is the planned interoperability path.
+- **Sanitizer and fuzz gates.** CI runs an ASan/UBSan smoke target plus
+  libFuzzer targets for the LZX decoder and the XEX header parser on every push
+  and pull request.
+- CMake presets require 3.25+ (schema version 6); 3.20+ still works when
+  configuring manually.
 
 ## Velocity-Next v0.3.1 - 2026-11-18
 
