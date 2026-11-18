@@ -2,6 +2,7 @@
 #define XEXLZXDECODER_H
 
 #include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Export.h>
 
 #include <array>
 #include <cstddef>
@@ -25,7 +26,7 @@
  * (bit reader), sub_80159E78 (symbol loop), sub_8015A2D8 (code lengths),
  * sub_80159470 (stored block header), sub_80158EA0 (E8 translation).
  */
-class XexLzxDecoder
+class XBOXINTERNALS_EXPORT XexLzxDecoder
 {
 public:
     static constexpr DWORD WindowSize = 0x8000;
