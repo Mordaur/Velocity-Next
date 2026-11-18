@@ -216,9 +216,6 @@ void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT6
         const DWORD sectorIndex = sector + static_cast<DWORD>(offset / 0x800);
         const DWORD inSector = static_cast<DWORD>(offset % 0x800);
 
-        if (inSector > 0x7F2)
-            break;
-
         DWORD addressInFile = 0, fileIndex = 0;
         if (!XboxInternals::SvodLayout::Map(sectorIndex, dataBlockOffset, enhanced,
                                             &addressInFile, &fileIndex))
@@ -233,12 +230,18 @@ void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT6
         GdfxFileEntry current{};
         io->GetPosition(&current.address, &current.fileIndex);
 
+        // Match the kernel's GDF directory rule: the first dword is checked
+        // before any bounds test, and an all-ones dword is the sector end
+        // marker, so a multi-sector directory continues in the next sector.
         DWORD marker = io->ReadDword();
         if (marker == 0xFFFFFFFF)
         {
             offset = (offset / 0x800 + 1) * 0x800;
             continue;
         }
+
+        if (inSector > 0x7F2)
+            break;
 
         current.unknown = marker;
         current.sector = io->ReadDword();
@@ -249,11 +252,14 @@ void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT6
         if (inSector + current.nameLen > 0x7F2)
             break;
 
-        if (current.nameLen != 0)
+        if (current.nameLen == 0)
         {
-            current.name.resize(current.nameLen);
-            io->ReadBytes(reinterpret_cast<BYTE *>(&current.name[0]), current.nameLen);
+            offset += (14 + 3) & ~static_cast<UINT64>(3);
+            continue;
         }
+
+        current.name.resize(current.nameLen);
+        io->ReadBytes(reinterpret_cast<BYTE *>(&current.name[0]), current.nameLen);
 
         const UINT64 stride =
                 (static_cast<UINT64>(current.nameLen) + 0x11) & ~static_cast<UINT64>(3);
