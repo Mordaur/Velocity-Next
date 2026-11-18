@@ -15,9 +15,6 @@ jobs:
           - os: windows-latest
             compiler: mingw
             name: Windows (MinGW)
-          - os: windows-latest
-            compiler: msvc
-            name: Windows (MSVC)
           - os: macos-latest
             compiler: clang
             name: macOS
@@ -102,24 +99,6 @@ jobs:
           & $gxxPath --version
         shell: pwsh
       
-      # Windows MSVC setup
-      - name: Setup MSVC Developer Environment
-        if: matrix.os == 'windows-latest' && matrix.compiler == 'msvc'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-      
-      - name: Install Qt (Windows MSVC)
-        if: matrix.os == 'windows-latest' && matrix.compiler == 'msvc'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.10.3'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_msvc2022_64'
-          modules: 'qtnetworkauth'
-          cache: true
-      
       # macOS setup
       - name: Install Qt (macOS)
         if: matrix.os == 'macos-latest'
@@ -159,11 +138,6 @@ jobs:
             -DCMAKE_CXX_COMPILER="${{ steps.mingw-setup.outputs.cxx-compiler }}"
         shell: pwsh
       
-      - name: Configure CMake (Windows MSVC)
-        if: matrix.os == 'windows-latest' && matrix.compiler == 'msvc'
-        run: cmake --preset windows-msvc-release
-        shell: pwsh
-      
       - name: Configure CMake (macOS)
         if: matrix.os == 'macos-latest'
         run: cmake --preset macos-release
@@ -180,11 +154,6 @@ jobs:
           cmake --build --preset windows-mingw-release
         shell: pwsh
       
-      - name: Build (Windows MSVC)
-        if: matrix.os == 'windows-latest' && matrix.compiler == 'msvc'
-        run: cmake --build --preset windows-msvc-release
-        shell: pwsh
-      
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
         run: cmake --build --preset macos-release
@@ -194,7 +163,7 @@ jobs:
         run: cmake --build --preset linux-release
       
       # Package step
-      - name: Package (Windows MinGW)
+      - name: Package (Windows)
         if: matrix.os == 'windows-latest' && matrix.compiler == 'mingw'
         run: |
           mkdir release-mingw
@@ -202,18 +171,7 @@ jobs:
           cp out/build/windows-mingw-release/VelocityNext/velocity-device-helper.exe release-mingw/
           cp out/build/windows-mingw-release/XboxInternals/libXboxInternals.dll release-mingw/
           windeployqt release-mingw/VelocityNext.exe
-          Compress-Archive -Path release-mingw/* -DestinationPath Velocity-Next-Windows-MinGW.zip
-        shell: pwsh
-      
-      - name: Package (Windows MSVC)
-        if: matrix.os == 'windows-latest' && matrix.compiler == 'msvc'
-        run: |
-          mkdir release-msvc
-          cp out/build/windows-msvc-release/VelocityNext/VelocityNext.exe release-msvc/
-          cp out/build/windows-msvc-release/VelocityNext/velocity-device-helper.exe release-msvc/
-          cp out/build/windows-msvc-release/XboxInternals/XboxInternals.dll release-msvc/
-          windeployqt release-msvc/VelocityNext.exe
-          Compress-Archive -Path release-msvc/* -DestinationPath Velocity-Next-Windows-MSVC.zip
+          Compress-Archive -Path release-mingw/* -DestinationPath Velocity-Next-Windows.zip
         shell: pwsh
       
       - name: Package (macOS)
@@ -237,19 +195,12 @@ jobs:
           tar -czf Velocity-Next-Linux.tar.gz -C release-linux .
       
       # Upload artifacts
-      - name: Upload artifact (Windows MinGW)
+      - name: Upload artifact (Windows)
         if: matrix.os == 'windows-latest' && matrix.compiler == 'mingw'
         uses: actions/upload-artifact@v4
         with:
-          name: Velocity-Next-Windows-MinGW
-          path: Velocity-Next-Windows-MinGW.zip
-      
-      - name: Upload artifact (Windows MSVC)
-        if: matrix.os == 'windows-latest' && matrix.compiler == 'msvc'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Velocity-Next-Windows-MSVC
-          path: Velocity-Next-Windows-MSVC.zip
+          name: Velocity-Next-Windows
+          path: Velocity-Next-Windows.zip
       
       - name: Upload artifact (macOS)
         if: matrix.os == 'macos-latest'

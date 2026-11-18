@@ -47,12 +47,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Build System Strategy:
-# - All presets use the Ninja generator (including MSVC) for consistency across platforms
-# - This provides faster builds and uniform behavior between MinGW/MSVC/GCC/Clang
-# - If you prefer the Visual Studio generator for IDE integration:
-#   * Use: cmake -G "Visual Studio 17 2022" -A x64 -S . -B build
-#   * Note: VS generator uses multi-config (Debug/Release in same tree)
-#   * Presets use single-config (separate directories per build type)
+# - All presets use the Ninja generator for consistency across platforms
+# - Supported toolchains: GCC (Linux), Clang (macOS), MinGW-w64 (Windows)
+# - Presets use single-config (separate directories per build type)
 
 # Platform-specific settings
 if(APPLE)
@@ -71,13 +68,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Create an INTERFACE library to hold common compile options
 add_library(velocity_compiler_flags INTERFACE)
 
-# Ensure MSVC reports correct __cplusplus value for C++20 compliance
-if(MSVC)
-    target_compile_options(velocity_compiler_flags INTERFACE /Zc:__cplusplus)
-endif()
-
 # All Velocity targets (XboxInternals, Velocity) must link against velocity_compiler_flags
-# to inherit common compile options (e.g., MSVC /Zc:__cplusplus for C++20 compliance)
+# so the common compile options apply uniformly to GCC, Clang and MinGW.
 # Example: target_link_libraries(MyTarget PRIVATE velocity_compiler_flags)
 
 # ------------------------------
@@ -300,9 +292,6 @@ string(TIMESTAMP CONFIG_START_TIME "%s")
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     set(COMPILER_NAME "GCC")
     execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE COMPILER_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    set(COMPILER_NAME "MSVC")
-    set(COMPILER_VERSION ${MSVC_VERSION})
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(COMPILER_NAME "Clang")
     execute_process(COMMAND ${CMAKE_CXX_COMPILER} --version OUTPUT_VARIABLE CLANG_VERSION_OUTPUT)

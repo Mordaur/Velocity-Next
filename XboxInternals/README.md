@@ -16,7 +16,7 @@ XboxInternals is a C++20 library for working with Xbox 360 file formats, includi
 
 ### Prerequisites
 
-- **C++20 compiler** (MinGW 13.1.0+, MSVC 2022, GCC 11+, or Clang 14+)
+- **C++20 compiler** (MinGW 13.1.0+, GCC 11+, or Clang 14+)
 - **CMake 3.20+**
 - **Qt 6.7.3+** (Core, Xml components)
 - **Python 3** (for Botan amalgamation build)
@@ -49,12 +49,11 @@ cmake --install build --prefix C:/MyLibraries
 **⚠️ Toolchain Requirement:** Your project must use the same compiler family as the installed library:
 
 - **MinGW Build** → Consumer must use MinGW (g++)
-- **MSVC Build** → Consumer must use MSVC (cl.exe)
 - **GCC/Clang (Linux/macOS)** → Consumer uses matching toolchain
 
 **Why?** Different compilers on Windows produce incompatible binaries (different C++ ABI, runtime libraries, and calling conventions). Cross-compiler usage (e.g., MSVC consuming MinGW-built libraries) is not supported.
 
-**Recommendation:** Install separate builds for each toolchain you need to support.
+**Recommendation:** Install separate builds for each toolchain you need to support. MSVC is not a supported Windows toolchain for this project; consumers that need one should wait for the C ABI, or build the library themselves with their own Qt kit.
 
 ### CMake Integration (Recommended)
 

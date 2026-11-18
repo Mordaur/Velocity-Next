@@ -13,7 +13,7 @@
   - Verified by building against Qt 6.7.3, 6.8.3, 6.10.3 and 6.12.0
 - **CMake 3.20+**
 - **C++20 compiler**:
-  - **Windows**: MinGW 13.1.0+ or MSVC 2022 (Visual Studio 17.0+)
+  - **Windows**: MinGW 13.1.0+ (Qt's MinGW kit; MSVC is not supported)
   - **macOS**: Clang (Xcode Command Line Tools)
   - **Linux**: GCC 11+ or Clang 14+
 - **Python 3** (for Botan amalgamation build)
@@ -26,10 +26,8 @@ git clone https://github.com/Mordaur/Velocity-Next
 cd Velocity-Next
 
 # Configure (choose one preset)
-cmake --preset windows-mingw-release    # Windows MinGW Release
-cmake --preset windows-mingw-debug      # Windows MinGW Debug
-cmake --preset windows-msvc-release     # Windows MSVC Release
-cmake --preset windows-msvc-debug       # Windows MSVC Debug
+cmake --preset windows-mingw-release    # Windows Release
+cmake --preset windows-mingw-debug      # Windows Debug
 cmake --preset macos-release            # macOS Release  
 cmake --preset macos-debug              # macOS Debug
 cmake --preset linux-release            # Linux Release
@@ -47,8 +45,7 @@ matrix build followed by a release.
 
 ### Available Workflows
 
-- **Windows MinGW** - Produces portable .zip with Qt dependencies bundled
-- **Windows MSVC** - MSVC 2022 build for maximum compatibility
+- **Windows (MinGW)** - Produces portable .zip with Qt dependencies bundled
 - **Linux** - Ubuntu build with AppImage support (planned)
 - **macOS** - .app bundle and DMG installer
 
@@ -119,13 +116,9 @@ cmake --build build
 ### Release Builds (Recommended for end users)
 
 ```bash
-# Windows MinGW Release
+# Windows Release
 cmake --preset windows-mingw-release
 cmake --build --preset windows-mingw-release
-
-# Windows MSVC Release
-cmake --preset windows-msvc-release
-cmake --build --preset windows-msvc-release
 
 # macOS Release
 cmake --preset macos-release
@@ -139,13 +132,9 @@ cmake --build --preset linux-release
 ### Debug Builds (For development)
 
 ```bash
-# Windows MinGW Debug
+# Windows Debug
 cmake --preset windows-mingw-debug
 cmake --build --preset windows-mingw-debug
-
-# Windows MSVC Debug
-cmake --preset windows-msvc-debug
-cmake --build --preset windows-msvc-debug
 
 # macOS Debug
 cmake --preset macos-debug
@@ -199,32 +188,13 @@ cmake --preset windows-mingw-release -DBOTAN_VERSION=3.14.1
 
 ### Windows
 
-#### MinGW
 - **Presets**: `windows-mingw-release` or `windows-mingw-debug`
-- **Compiler**: MinGW 13.1.0+ (must match Qt installation)
-- **Qt Installation**: Use Qt Online Installer and select MinGW kit
+- **Compiler**: MinGW 13.1.0+ (must match the Qt installation)
+- **Qt Installation**: Qt Online Installer → MinGW kit
 - **Output**: Executable with Windows resource data
-
-#### MSVC (Visual Studio 2022)
-- **Presets**: `windows-msvc-release` or `windows-msvc-debug`
-- **Requirements**: Visual Studio 2022 (17.0+) with C++ workload
-- **Qt Installation**: Use Qt Online Installer and select MSVC 2022 64-bit kit
-- **Setup**: Run from **Developer Command Prompt for VS 2022** or **Developer PowerShell for VS 2022**
-- **Output**: Executable with Windows resource data
-
-**MSVC Build Example:**
-```bash
-# Open Developer Command Prompt for VS 2022 or Developer PowerShell for VS 2022
-# Then run:
-cmake --preset windows-msvc-release
-cmake --build --preset windows-msvc-release
-```
-
-**Note**: MSVC builds require:
-- Visual Studio 2022 or Build Tools for Visual Studio 2022
-- C++ CMake tools for Windows component
-- Ninja build system (included with Visual Studio)
-- Qt compiled for MSVC 2022 (download from Qt installer)
+- **MSVC is not supported**: Windows builds use the MinGW kit, which is what the
+  release zip ships. An MSVC build would need its own Qt kit and produces a
+  `libXboxInternals.dll` that is ABI-incompatible with the MinGW one.
 
 ### macOS
 - **Bundle**: Creates .app bundle with proper metadata

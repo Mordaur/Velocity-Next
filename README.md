@@ -22,7 +22,7 @@ Velocity-Next
 - **Hardened FATX**: corrupt cluster chains, zero-length files and non-512-byte
   sector sizes are handled safely
 - **Smart Pointer Refactoring**: Modern C++20 memory management in XboxInternals
-- **MSVC 2022 and MinGW**, CMake 3.20+ presets, standalone XboxInternals library
+- **MinGW (Windows), GCC (Linux), Clang (macOS)**, CMake 3.20+ presets, standalone XboxInternals library
 
 ### Backend findings
 

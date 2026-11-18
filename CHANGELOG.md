@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### 🧱 Build
+
+- **MSVC support removed.** Windows builds use the MinGW kit only. The
+  `windows-msvc-*` presets, `cmake/msvc-toolchain.cmake`, the MSVC CI job and
+  `Velocity-Next-Windows-MSVC.zip` are gone; the remaining Windows artifact is
+  `Velocity-Next-Windows.zip`. The library's C++ ABI is compiler-family
+  specific, so an MSVC build was never linkable from MinGW consumers or the
+  reverse; a C ABI is the planned interoperability path.
+
 ## Velocity-Next v0.3.1 - 2026-11-18
 
 ### 📀 Disc images

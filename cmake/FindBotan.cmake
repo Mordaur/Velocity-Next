@@ -166,7 +166,7 @@ function(botan_generate TARGET_NAME MODULES)
     target_link_libraries(
         ${TARGET}
         PRIVATE
-            $<$<NOT:$<BOOL:${MSVC}>>:pthread>
+            pthread
     )
     set_target_properties(
         ${TARGET}
