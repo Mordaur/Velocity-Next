@@ -189,8 +189,13 @@ void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sect
         const DWORD sectorIndex = sector + static_cast<DWORD>(offset / ISO_SECTOR_SIZE);
         const DWORD inSector = static_cast<DWORD>(offset % ISO_SECTOR_SIZE);
 
-        if (inSector > kDirRecordLimit)
-            break;
+        // A directory can span several sectors. When fewer than 14 bytes remain
+        // in the current sector the run is padded and the listing continues at
+        // the start of the next sector; it is *not* the end of the directory.
+        if (inSector > kDirRecordLimit) {
+            offset = (offset / ISO_SECTOR_SIZE + 1) * ISO_SECTOR_SIZE;
+            continue;
+        }
 
         const UINT64 address = SectorToAddress(sectorIndex) + inSector;
         if (address > length || length - address < kDirRecordHeader)
@@ -213,16 +218,29 @@ void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sect
         current.attributes = impl_->io->ReadByte();
         current.nameLen = impl_->io->ReadByte();
 
-        // The 14-byte header and the name must stay inside one 2048-byte sector.
-        if (inSector + current.nameLen > kDirRecordLimit ||
-            address > length ||
+        // The 14-byte header and the name must stay inside one 2048-byte
+        // sector; GDFX records never straddle a sector boundary. If the tail of
+        // this sector is too small, it is padding and the next sector follows.
+        if (inSector + current.nameLen > kDirRecordLimit) {
+            if (inSector == 0)
+                break; // a record cannot be larger than a sector
+            offset = (offset / ISO_SECTOR_SIZE + 1) * ISO_SECTOR_SIZE;
+            continue;
+        }
+
+        if (address > length ||
             length - address < kDirRecordHeader + current.nameLen)
             break;
 
-        if (current.nameLen != 0) {
-            current.name.resize(current.nameLen);
-            impl_->io->ReadBytes(reinterpret_cast<BYTE *>(&current.name[0]), current.nameLen);
+        // An unused slot (no name) is not an entry. Skip its aligned record
+        // header instead of pushing an empty-named file.
+        if (current.nameLen == 0) {
+            offset += (kDirRecordHeader + 3) & ~static_cast<UINT64>(3);
+            continue;
         }
+
+        current.name.resize(current.nameLen);
+        impl_->io->ReadBytes(reinterpret_cast<BYTE *>(&current.name[0]), current.nameLen);
 
         const UINT64 stride =
                 (static_cast<UINT64>(current.nameLen) + 0x11) & ~static_cast<UINT64>(3);
