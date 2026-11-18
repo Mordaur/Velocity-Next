@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Qt 6.7.3 or higher** (Components: Core, Xml, Widgets, Network)
+- **Qt 6.12.0 or higher** (Components: Core, Xml, Widgets, Network)
   - The package browser uses `qzipreader_p.h`. Qt 6.10 stopped exporting the
     private include directories from `Qt6::Core`, so CMake requests
     `CorePrivate` when the installation provides it (Qt 6.10+) and falls back
@@ -10,7 +10,7 @@
   - On Linux the private headers may be a separate package
     (`qt6-base-private-dev` on Debian/Ubuntu, `qt6-qtbase-private-devel` on
     Fedora, included in `qt6-base` on Arch)
-  - Verified by building against Qt 6.7.3, 6.8.3, 6.10.3 and 6.12.0
+  - Qt 6.12.0 is the minimum and the version used by CI and the releases
 - **CMake 3.25+** (the presets use schema version 6; 3.20+ works when configuring
   manually without `--preset`)
 - **C++20 compiler**:
@@ -64,7 +64,7 @@ matrix build followed by a release.
 See the [Releases page](https://github.com/Mordaur/Velocity-Next/releases).
 **v0.3.2** is the latest release; it publishes the Windows zip, the macOS DMG
 and the Linux tarball. Every archive keeps `velocity-device-helper` next to the
-executable. The Linux tarball does not bundle Qt — install Qt 6.10.3 on the
+executable. The Linux tarball does not bundle Qt — install Qt 6.12.0 on the
 host, or build from source with the presets above.
 
 ## Botan Dependency
@@ -80,8 +80,8 @@ The cryptography library is automatically handled:
 
 ### Qt Version Information
 
-- **Minimum Required**: Qt 6.7.3
-- **Tested Versions**: 6.7.3, 6.8.3 (no CorePrivate), 6.10.3 (CI), 6.12 (development)
+- **Minimum Required**: Qt 6.12.0
+- **Tested Versions**: 6.12.0 (CI and minimum)
 - **Components Required**: Core, Xml, Widgets, Network
 
 ### Automatic Discovery
@@ -241,7 +241,7 @@ lives outside the checkout.
 #### macOS Distribution
 
 **Prerequisites:**
-- Qt 6.7.3 or higher installed on your system
+- Qt 6.12.0 or higher installed on your system
 - Xcode command line tools installed
 - Build the project first using the presets above
 - `app.entitlements` file exists in project root
@@ -367,7 +367,7 @@ when the debugger launches.
       "environment": [
         {
           "name": "PATH",
-          "value": "C:/Qt/6.10.3/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${env:PATH}"
+          "value": "C:/Qt/6.12.0/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${env:PATH}"
         }
       ],
       "setupCommands": [
@@ -394,7 +394,7 @@ binary (MinGW's ASan/UBSan support is uneven).
 ### Qt Not Found
 
 ```bash
-# Verify Qt installation (must be 6.7.3 or higher)
+# Verify Qt installation (must be 6.12.0 or higher)
 qmake6 --version
 
 # Set Qt path explicitly

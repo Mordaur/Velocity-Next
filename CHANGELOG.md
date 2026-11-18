@@ -34,6 +34,8 @@
   `Velocity-Next-Windows.zip`. The library's C++ ABI is compiler-family
   specific, so an MSVC build was never linkable from MinGW consumers or the
   reverse; a C ABI is the planned interoperability path.
+- **Qt 6.12 is the minimum.** `QT_MIN_VERSION`, the CI jobs and the Windows
+  preset now require Qt 6.12.0 (the releases are built against it).
 - **Sanitizer and fuzz gates.** CI runs an ASan/UBSan smoke target plus
   libFuzzer targets for the LZX decoder and the XEX header parser on every push
   and pull request.

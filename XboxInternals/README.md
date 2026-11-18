@@ -18,7 +18,7 @@ XboxInternals is a C++20 library for working with Xbox 360 file formats, includi
 
 - **C++20 compiler** (MinGW 13.1.0+, GCC 11+, or Clang 14+)
 - **CMake 3.20+**
-- **Qt 6.7.3+** (Core, Xml components)
+- **Qt 6.12.0+** (Core, Xml components)
 - **Python 3** (for Botan amalgamation build)
 
 ### Build as Standalone Library
@@ -107,7 +107,7 @@ int main() {
 
 ### External Dependencies
 
-- **Qt 6.7.3+** (LGPL v3 / GPL v3) - Must be installed on consumer's system
+- **Qt 6.12.0+** (LGPL v3 / GPL v3) - Must be installed on consumer's system
   - Required components: Core, Xml
   - Linked privately (not exposed in public API)
 

@@ -44,7 +44,7 @@ which the app needs for raw device access.
 |---|---|---|
 | Windows | `Velocity-Next-Windows.zip` | Qt bundled |
 | macOS | `Velocity-Next.dmg` | arm64, unsigned |
-| Linux | `Velocity-Next-Linux.tar.gz` | requires Qt 6.10.3 on the host |
+| Linux | `Velocity-Next-Linux.tar.gz` | requires Qt 6.12.0 on the host |
 
 To build from source instead, see [BUILD.md](BUILD.md).
 
@@ -141,7 +141,7 @@ Velocity-Next includes the following third-party libraries:
 - **Botan** (BSD-2-Clause): Cryptography library embedded as amalgamation build. See [LICENSE-Botan.txt](LICENSE-Botan.txt) for full license text.
 - **Qt 6**: Cross-platform application framework (LGPL v3 / GPL v3). Qt is
   dynamically linked: the Windows zip and macOS bundle ship it, while the Linux
-  tarball expects Qt 6.10.3 on the host.
+  tarball expects Qt 6.12.0 on the host.
 
 ### Build System Acknowledgments
 
