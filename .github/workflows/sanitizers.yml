@@ -1,0 +1,99 @@
+name: Sanitizers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  asan-ubsan:
+    name: ASan + UBSan (smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.10.3'
+          host: 'linux'
+          target: 'desktop'
+          modules: 'qtnetworkauth'
+          cache: true
+
+      - name: Configure
+        run: >
+          cmake -S . -B build/sanitize -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DSANITIZERS=address,undefined
+          -DQT_FIND_PRIVATE_MODULES=ON
+
+      - name: Build smoke target
+        run: cmake --build build/sanitize --target xbi_smoke -j"$(nproc)"
+
+      - name: Run smoke test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build/sanitize --output-on-failure
+
+  fuzz:
+    name: libFuzzer (LZX decoder)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.10.3'
+          host: 'linux'
+          target: 'desktop'
+          modules: 'qtnetworkauth'
+          cache: true
+
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: >
+          cmake -S . -B build/fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link"
+          -DSANITIZERS=address,undefined
+          -DBUILD_FUZZERS=ON
+          -DQT_FIND_PRIVATE_MODULES=ON
+
+      - name: Build fuzz target
+        run: cmake --build build/fuzz --target lzx_fuzz -j"$(nproc)"
+
+      - name: Fuzz the LZX decoder
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: >
+          ./build/fuzz/tests/lzx_fuzz
+          -runs=50000 -max_total_time=120 -timeout=10 -max_len=8192
+
+      - name: Fuzz the XEX header parser
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: >
+          ./build/fuzz/tests/xex_fuzz
+          -dict=tests/fuzz/xex.dict
+          -runs=200000 -max_total_time=120 -timeout=10 -max_len=8192
+
+      - name: Upload reproducers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-reproducers
+          path: |
+            crash-*
+            leak-*
+            timeout-*
+          if-no-files-found: ignore

@@ -1,0 +1,333 @@
+/* Smoke target for the sanitizer CI job.
+ *
+ * It is deliberately small and corpus-free: it exercises the code paths that can
+ * be driven with synthetic data and asserts only on invariants (round-trips,
+ * bounds rejection, "must throw"), never on parsed values. Anything that needs a
+ * real image belongs in the out-of-tree harness under tests/ at the work folder
+ * root.
+ */
+
+#include <XboxInternals/Disc/ISO.h>
+#include <XboxInternals/Gpd/Xdbf.h>
+#include <XboxInternals/IO/MemoryIO.h>
+#include <XboxInternals/Stfs/StfsPackage.h>
+#include <XboxInternals/Stfs/XContentHeader.h>
+#include <XboxInternals/Xex/XexLzxDecoder.h>
+
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+namespace
+{
+    int g_failures = 0;
+
+    void check(bool condition, const char *what)
+    {
+        if (!condition)
+        {
+            std::fprintf(stderr, "FAIL: %s\n", what);
+            ++g_failures;
+        }
+    }
+
+    template <typename Fn>
+    bool throws(Fn &&fn)
+    {
+        try
+        {
+            fn();
+        }
+        catch (const std::string &)
+        {
+            return true;
+        }
+        catch (const std::exception &)
+        {
+            return true;
+        }
+        catch (...)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    void testMemoryIO()
+    {
+        BYTE raw[256] = {};
+
+        MemoryIO io(raw, sizeof(raw));
+        io.SetEndian(LittleEndian);
+        io.Write(static_cast<DWORD>(0x11223344));
+        io.Write(static_cast<WORD>(0xBEEF));
+        io.Write(static_cast<UINT64>(0x0102030405060708ull));
+        io.Write(std::string("hello"));
+
+        io.SetPosition(0);
+        check(io.ReadDword() == 0x11223344u, "little-endian DWORD round-trip");
+        check(io.ReadWord() == 0xBEEFu, "little-endian WORD round-trip");
+        check(io.ReadUInt64() == 0x0102030405060708ull, "little-endian UINT64 round-trip");
+        check(io.ReadString() == "hello", "NUL-terminated string round-trip");
+
+        BYTE be[16] = {};
+        MemoryIO big(be, sizeof(be));
+        big.SetEndian(BigEndian);
+        big.Write(static_cast<DWORD>(0x11223344));
+        check(be[0] == 0x11 && be[1] == 0x22 && be[2] == 0x33 && be[3] == 0x44,
+              "big-endian DWORD is written MSB first");
+        big.SetPosition(0);
+        check(big.ReadDword() == 0x11223344u, "big-endian DWORD round-trip");
+
+        // Bounds rejection: a fixed window must refuse both directions.
+        check(throws([&] {
+            MemoryIO tiny(raw, 2);
+            tiny.ReadDword();
+        }), "read past the end throws");
+
+        check(throws([&] {
+            MemoryIO tiny(raw, 2);
+            BYTE two[4] = {1, 2, 3, 4};
+            tiny.WriteBytes(two, sizeof(two));
+        }), "write past the end throws");
+
+        check(throws([&] {
+            MemoryIO tiny(raw, 2);
+            tiny.SetPosition(3);
+        }), "seek past the end throws");
+    }
+
+    void testLzxGarbage()
+    {
+        // Not a fuzzer: fixed patterns, fixed lengths. The contract is only
+        // "either returns or throws std::string; never crashes or hangs".
+        const std::size_t lengths[] = {0, 1, 2, 3, 4, 15, 16, 17, 31, 64, 257, 1024, 4096};
+
+        for (int pattern = 0; pattern < 4; ++pattern)
+        {
+            for (std::size_t length : lengths)
+            {
+                std::vector<BYTE> input(length);
+                std::uint32_t state = 0x12345678u + static_cast<std::uint32_t>(pattern);
+
+                for (std::size_t i = 0; i < length; ++i)
+                {
+                    switch (pattern)
+                    {
+                    case 0:
+                        input[i] = 0x00;
+                        break;
+                    case 1:
+                        input[i] = 0xFF;
+                        break;
+                    case 2:
+                        state = state * 1664525u + 1013904223u;
+                        input[i] = static_cast<BYTE>(state >> 24);
+                        break;
+                    default:
+                        input[i] = static_cast<BYTE>(i & 0xFF);
+                        break;
+                    }
+                }
+
+                XexLzxDecoder decoder;
+                BYTE output[0x100] = {};
+
+                try
+                {
+                    decoder.DecodeChunk(length == 0 ? nullptr : input.data(), length,
+                                        output, sizeof(output));
+                }
+                catch (const std::string &)
+                {
+                }
+                catch (const std::exception &)
+                {
+                }
+                catch (...)
+                {
+                }
+            }
+        }
+    }
+
+    void putBE32(std::vector<BYTE> &buffer, std::size_t offset, std::uint32_t value)
+    {
+        buffer[offset] = static_cast<BYTE>(value >> 24);
+        buffer[offset + 1] = static_cast<BYTE>(value >> 16);
+        buffer[offset + 2] = static_cast<BYTE>(value >> 8);
+        buffer[offset + 3] = static_cast<BYTE>(value);
+    }
+
+    void testCorruptStfsHeaders()
+    {
+        const std::size_t size = 0xC000;
+
+        // 1. Invalid file-system value: must be rejected before any enum cast.
+        {
+            std::vector<BYTE> header(size, 0);
+            header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
+            putBE32(header, 0x340, static_cast<std::uint32_t>(size));  // headerSize
+            putBE32(header, 0x3A9, 0x12345678);                       // fileSystem
+            MemoryIO io(header.data(), header.size());
+            check(throws([&] { XContentHeader metadata(&io); }),
+                  "invalid STFS file system is rejected");
+        }
+
+        // 2. Avatar metadata with an invalid installer type.
+        {
+            std::vector<BYTE> header(size, 0);
+            header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
+            putBE32(header, 0x340, static_cast<std::uint32_t>(size));
+            putBE32(header, 0x344, 0x9000);                 // AvatarItem
+            putBE32(header, 0x3A9, 0);                      // FileSystemSTFS
+            putBE32(header, 0x3D9, 0xA5A5A5A5);             // subCategory
+            header[0x3F1] = 0x00;                           // skeleton 0 (valid)
+            putBE32(header, 0x971A, 0x7F7F7F7F);            // installerType
+            MemoryIO io(header.data(), header.size());
+            check(throws([&] { XContentHeader metadata(&io); }),
+                  "invalid STFS installer type is rejected");
+        }
+
+        // 3. Valid installer type with a garbage resume state and thumbnail sizes.
+        {
+            std::vector<BYTE> header(size, 0);
+            header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
+            putBE32(header, 0x340, static_cast<std::uint32_t>(size));
+            putBE32(header, 0x344, 0x9000);                 // AvatarItem
+            putBE32(header, 0x3A9, 0);                      // FileSystemSTFS
+            putBE32(header, 0x3D9, 0xA5A5A5A5);             // subCategory
+            header[0x3F1] = 0x00;                           // skeleton 0 (valid)
+            putBE32(header, 0x971A, 0x50245443);            // TitleContentProgressCache
+            putBE32(header, 0x971E, 0xDEADBEEF);            // resumeState
+            MemoryIO io(header.data(), header.size());
+            bool failed = false;
+            try
+            {
+                XContentHeader metadata(&io);
+            }
+            catch (const std::string &e)
+            {
+                std::fprintf(stderr, "  (corrupt STFS parse threw: %s)\n", e.c_str());
+                failed = true;
+            }
+            catch (const std::exception &e)
+            {
+                std::fprintf(stderr, "  (corrupt STFS parse threw: %s)\n", e.what());
+                failed = true;
+            }
+            catch (...)
+            {
+                failed = true;
+            }
+            check(!failed, "corrupt STFS metadata parses without UB");
+        }
+
+        // 4. Invalid skeleton version is rejected.
+        {
+            std::vector<BYTE> header(size, 0);
+            header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
+            putBE32(header, 0x340, static_cast<std::uint32_t>(size));
+            putBE32(header, 0x344, 0x9000);                 // AvatarItem
+            putBE32(header, 0x3A9, 0);                      // FileSystemSTFS
+            putBE32(header, 0x3D9, 0xA5A5A5A5);             // subCategory
+            header[0x3F1] = 0x7F;                           // invalid skeleton
+            MemoryIO io(header.data(), header.size());
+            check(throws([&] { XContentHeader metadata(&io); }),
+                  "invalid STFS skeleton version is rejected");
+        }
+    }
+
+    void testCorruptXdbf()
+    {
+        namespace fs = std::filesystem;
+
+        std::vector<BYTE> buffer(0x40, 0);
+        putBE32(buffer, 0x00, 0x58444246);  // "XDBF"
+        putBE32(buffer, 0x04, 1);           // version
+        putBE32(buffer, 0x08, 0x12);        // entry table length
+        putBE32(buffer, 0x0C, 1);           // entry count
+        putBE32(buffer, 0x10, 8);           // free-mem table length
+        putBE32(buffer, 0x14, 1);           // free-mem entry count
+        buffer[0x18] = 0x00;
+        buffer[0x19] = 0x7F;                // unknown entry type
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_corrupt.xdbf";
+        {
+            std::ofstream file(path, std::ios::binary | std::ios::trunc);
+            file.write(reinterpret_cast<const char *>(buffer.data()),
+                       static_cast<std::streamsize>(buffer.size()));
+        }
+
+        // Unknown entry types are legal; the contract is "no UB, no crash".
+        try
+        {
+            Xdbf xdbf(path.string());
+            (void)xdbf;
+        }
+        catch (const std::string &)
+        {
+        }
+        catch (const std::exception &)
+        {
+        }
+        catch (...)
+        {
+        }
+
+        std::error_code ignored;
+        fs::remove(path, ignored);
+    }
+
+    void testGarbageImages()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_garbage.bin";
+
+        {
+            std::ofstream file(path, std::ios::binary | std::ios::trunc);
+            for (int i = 0; i < 128; ++i)
+                file.put(static_cast<char>(0xA5));
+        }
+
+        {
+            XboxInternals::Iso::IsoImage image;
+            check(!image.open(path.string()), "garbage ISO is rejected");
+        }
+
+        {
+            // StfsPackage takes a path and parses in its constructor; either it
+            // rejects the header or it throws. Both are fine, a crash is not.
+            (void)throws([&] {
+                StfsPackage package(path.string());
+                (void)package;
+            });
+        }
+
+        std::error_code ignored;
+        fs::remove(path, ignored);
+    }
+}
+
+int main()
+{
+    testMemoryIO();
+    testLzxGarbage();
+    testCorruptStfsHeaders();
+    testCorruptXdbf();
+    testGarbageImages();
+
+    if (g_failures != 0)
+    {
+        std::fprintf(stderr, "xbi_smoke: %d failure(s)\n", g_failures);
+        return 1;
+    }
+
+    std::printf("xbi_smoke: ok\n");
+    return 0;
+}

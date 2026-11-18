@@ -43,7 +43,7 @@ endif()
 # Export compilation database for clang-tidy / clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Use folders in IDE (Visual Studio) for cleaner grouping
+# Use folders in the IDE (Qt Creator, VS Code, ...) for cleaner grouping
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Build System Strategy:
@@ -71,6 +71,25 @@ add_library(velocity_compiler_flags INTERFACE)
 # All Velocity targets (XboxInternals, Velocity) must link against velocity_compiler_flags
 # so the common compile options apply uniformly to GCC, Clang and MinGW.
 # Example: target_link_libraries(MyTarget PRIVATE velocity_compiler_flags)
+
+# Runtime instrumentation. Empty (default) keeps release builds untouched.
+# Usage: -DSANITIZERS=address,undefined   or   -DSANITIZERS=thread
+set(SANITIZERS "" CACHE STRING "Comma-separated sanitizer list (address,undefined,thread); empty disables")
+if(SANITIZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        message(FATAL_ERROR "SANITIZERS requires GCC or Clang (found ${CMAKE_CXX_COMPILER_ID})")
+    endif()
+    add_compile_options(-fsanitize=${SANITIZERS} -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=${SANITIZERS})
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        # Cheap container bounds checks in libstdc++ (operator[], iterators).
+        add_compile_definitions(_GLIBCXX_ASSERTIONS)
+    endif()
+    message(STATUS "Sanitizers enabled: ${SANITIZERS}")
+endif()
+
+# libFuzzer targets (Clang only; see tests/). Off by default.
+option(BUILD_FUZZERS "Build libFuzzer targets (requires Clang)" OFF)
 
 # ------------------------------
 # Options
@@ -444,3 +463,13 @@ message(STATUS "")
 add_subdirectory(DeviceHelper)
 add_subdirectory(XboxInternals)
 add_subdirectory(Velocity VelocityNext)
+
+# ------------------------------
+# Tests
+# ------------------------------
+# The corpus/differential harness lives outside the repo (tests/ at the work
+# folder root). What is in-tree is a smoke target used by the sanitizer CI job.
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
