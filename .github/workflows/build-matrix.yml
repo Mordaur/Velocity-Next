@@ -31,10 +31,15 @@ jobs:
           submodules: recursive
       
       # Windows MinGW setup
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Install Qt (Windows MinGW)
         if: matrix.os == 'windows-latest' && matrix.compiler == 'mingw'
         uses: jurplel/install-qt-action@v4
         with:
+          setup-python: false
           version: '6.12.0'
           host: 'windows'
           target: 'desktop'
@@ -100,10 +105,15 @@ jobs:
         shell: pwsh
       
       # macOS setup
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Install Qt (macOS)
         if: matrix.os == 'macos-latest'
         uses: jurplel/install-qt-action@v4
         with:
+          setup-python: false
           version: '6.12.0'
           host: 'mac'
           target: 'desktop'
@@ -112,10 +122,15 @@ jobs:
           cache: true
       
       # Linux setup
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Install Qt (Linux)
         if: matrix.os == 'ubuntu-latest'
         uses: jurplel/install-qt-action@v4
         with:
+          setup-python: false
           version: '6.12.0'
           host: 'linux'
           target: 'desktop'
