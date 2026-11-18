@@ -1507,12 +1507,32 @@ void ProfileEditor::saveAll()
 
         PEC->metaData->WriteMetaData();
 
+        bool pecResigned = true;
         if (path != "")
-            PEC->Resign(path);
+        {
+            try
+            {
+                PEC->Resign(path);
+            }
+            catch (const std::string &error)
+            {
+                QMessageBox::critical(this, "Resign Failed",
+                        "The avatar award package could not be resigned.\n\n" +
+                                QString::fromStdString(error));
+                pecResigned = false;
+            }
+            catch (const std::exception &error)
+            {
+                QMessageBox::critical(this, "Resign Failed",
+                        "The avatar award package could not be resigned.\n\n" + QString(error.what()));
+                pecResigned = false;
+            }
+        }
 
         delete PEC;
 
-        profile->ReplaceFile(pecTempPath, "PEC");
+        if (pecResigned)
+            profile->ReplaceFile(pecTempPath, "PEC");
     }
 
     // save the achievements
@@ -1588,7 +1608,22 @@ void ProfileEditor::saveAll()
     // NOTE: Do NOT call Rehash() - ReplaceFile maintains hash consistency via SetNextBlock
     profile->metaData->WriteMetaData();
     if (path != "")
-        profile->Resign(path);
+    {
+        try
+        {
+            profile->Resign(path);
+        }
+        catch (const std::string &error)
+        {
+            QMessageBox::critical(this, "Resign Failed",
+                    "The profile could not be resigned.\n\n" + QString::fromStdString(error));
+        }
+        catch (const std::exception &error)
+        {
+            QMessageBox::critical(this, "Resign Failed",
+                    "The profile could not be resigned.\n\n" + QString(error.what()));
+        }
+    }
 }
 
 State ProfileEditor::getStateFromFlags(DWORD flags)

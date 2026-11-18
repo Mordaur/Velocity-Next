@@ -185,10 +185,8 @@ void ProfileCreatorWizard::onFinished(int status)
         newProfile.CreateFolder("AvatarAssets");
 
         newProfile.Rehash();
-        string path = QtHelpers::GetKVPath(newProfile.metaData->certificate.ownerConsoleType, this);
-
-        if (path != "")
-            newProfile.Resign(path);
+        QtHelpers::ResignWithKV(newProfile.metaData->certificate.ownerConsoleType, this,
+                [&newProfile](const std::string &kv) { newProfile.Resign(kv); });
 
         // delete the temp files
         QFile::remove(accountTempPath);

@@ -213,7 +213,8 @@ void ProfileCleanerWizard::clean()
 
     // fix the profile
     newProfile.Rehash();
-    newProfile.Resign(QtHelpers::GetKVPath(newProfile.metaData->certificate.ownerConsoleType, this));
+    QtHelpers::ResignWithKV(newProfile.metaData->certificate.ownerConsoleType, this,
+            [&newProfile](const std::string &kv) { newProfile.Resign(kv); });
 
     newProfile.Close();
 

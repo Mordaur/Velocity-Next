@@ -115,7 +115,8 @@ void ThemeCreationWizard::onFinished(int status)
 
         // fix the package
         theme->Rehash();
-        theme->Resign(QtHelpers::GetKVPath(theme->metaData->certificate.ownerConsoleType, this));
+        QtHelpers::ResignWithKV(theme->metaData->certificate.ownerConsoleType, this,
+                [theme](const std::string &kv) { theme->Resign(kv); });
 
         // delete the temp files
         QFile::remove(paramsFilePath);

@@ -556,7 +556,8 @@ void GameAdderDialog::finalizeInjection() {
 
         // Resign the package
         // NOTE: InjectFile maintains hash consistency internally, Rehash causes hang
-        package->Resign(QtHelpers::GetKVPath(package->metaData->certificate.ownerConsoleType));
+        QtHelpers::ResignWithKV(package->metaData->certificate.ownerConsoleType, this,
+                [this](const std::string &kv) { package->Resign(kv); });
 
         // Handle cleanup if necessary
         if (dispose) {

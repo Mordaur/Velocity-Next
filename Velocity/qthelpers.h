@@ -70,6 +70,42 @@ public:
 
     static std::string GetKVPath(ConsoleType type, QWidget *parent = 0);
 
+    // Asks for a keyvault and runs `resign` with it. Warns when nothing is
+    // selected and shows an error when resigning fails, so a backend
+    // std::string can never escape into the Qt event loop.
+    template <typename ResignFn>
+    static bool ResignWithKV(ConsoleType type, QWidget *parent, ResignFn &&resign)
+    {
+        const std::string kvPath = GetKVPath(type, parent);
+        if (kvPath.empty())
+        {
+            QMessageBox::warning(parent, QObject::tr("No KeyVault"),
+                    QObject::tr("No keyvault was selected, so the package was not resigned.\n\n"
+                                "A console may refuse to load it."));
+            return false;
+        }
+
+        try
+        {
+            resign(kvPath);
+            return true;
+        }
+        catch (const std::string &error)
+        {
+            QMessageBox::critical(parent, QObject::tr("Resign Failed"),
+                    QObject::tr("The package could not be resigned.\n\n%1")
+                            .arg(QString::fromStdString(error)));
+        }
+        catch (const std::exception &error)
+        {
+            QMessageBox::critical(parent, QObject::tr("Resign Failed"),
+                    QObject::tr("The package could not be resigned.\n\n%1")
+                            .arg(QString::fromUtf8(error.what())));
+        }
+
+        return false;
+    }
+
     static bool ParseVersionString(QString version, Version *out);
 
     static QString ExecutingDirectory();

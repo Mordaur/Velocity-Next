@@ -372,8 +372,8 @@ void MainWindow::PluginFinished()
 
     // rehash/resign
     args->package->Rehash();
-    args->package->Resign(QtHelpers::GetKVPath(args->package->metaData->certificate.ownerConsoleType,
-            this));
+    QtHelpers::ResignWithKV(args->package->metaData->certificate.ownerConsoleType, this,
+            [&](const std::string &kv) { args->package->Resign(kv); });
 
     // dispose everything if it's not from the package viewer
     if (!args->fromPackageViewer)
@@ -510,10 +510,11 @@ void MainWindow::LoadFiles(QList<QUrl> &filePaths)
                                 package->Rehash();
                                 if (fileMagic == CON)
                                 {
-                                    package->Resign(QtHelpers::GetKVPath(package->metaData->certificate.ownerConsoleType, this));
+                                    QtHelpers::ResignWithKV(package->metaData->certificate.ownerConsoleType,
+                                            this, [&](const std::string &kv) { package->Resign(kv); });
                                 }
 
-                                ui->statusBar->showMessage("STFS package rehashed and resigned successfully.", 3000);
+                                ui->statusBar->showMessage("STFS package rehashed.", 3000);
                             }
                         }
                         else
@@ -531,9 +532,10 @@ void MainWindow::LoadFiles(QList<QUrl> &filePaths)
                             else if (action == RehashAndResign)
                             {
                                 package->Rehash();
-                                package->Resign(QtHelpers::GetKVPath(package->metaData->certificate.ownerConsoleType, this));
+                                QtHelpers::ResignWithKV(package->metaData->certificate.ownerConsoleType, this,
+                                        [&](const std::string &kv) { package->Resign(kv); });
 
-                                ui->statusBar->showMessage("STFS package rehashed and resigned successfully.", 3000);
+                                ui->statusBar->showMessage("STFS package rehashed.", 3000);
                             }
                             else
                             {

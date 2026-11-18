@@ -194,7 +194,8 @@ void CreationWizard::onFinished(int status)
         // fix the pacakge
         package.Rehash();
         if (package.metaData->magic == CON)
-            package.Resign(QtHelpers::GetKVPath(package.metaData->certificate.ownerConsoleType, this));
+            QtHelpers::ResignWithKV(package.metaData->certificate.ownerConsoleType, this,
+                    [&package](const std::string &kv) { package.Resign(kv); });
     }
     catch (string error)
     {

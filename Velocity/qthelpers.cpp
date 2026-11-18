@@ -1,5 +1,7 @@
 #include "qthelpers.h"
 
+#include <QFileInfo>
+
 QString QtHelpers::ByteArrayToString(BYTE *buffer, DWORD len, bool spacesBetween)
 {
     if (spacesBetween)
@@ -87,23 +89,45 @@ std::string QtHelpers::GetKVPath(ConsoleType type, QWidget *parent)
     else
         kvName += "D.bin";
 
-    if (!QFile::exists(QString::fromStdString(kvName)))
+    const auto isKeyvault = [](const QString &path)
     {
-        // Use nullptr as parent to prevent dialog from closing when parent closes
-        QFileDialog dialog(nullptr, "KV Location", DefaultLocation() + "/KV.bin");
+        const QFileInfo info(path);
+        return info.isFile() && info.isReadable() &&
+               (info.size() == 0x4000 || info.size() == 0x4010);
+    };
+
+    const QString bundledKv = QString::fromStdString(kvName);
+    if (!isKeyvault(bundledKv))
+    {
+        // A bundled file with the wrong size is not a keyvault; say so instead
+        // of handing it to the resigner, which would fail halfway through.
+        if (QFile::exists(bundledKv))
+        {
+            QMessageBox::warning(parent, QObject::tr("Invalid KeyVault"),
+                    QObject::tr("%1 exists but is not a keyvault "
+                                "(expected 0x4000 or 0x4010 bytes).\n\n"
+                                "Select a keyvault file instead.").arg(bundledKv));
+        }
+
+        QFileDialog dialog(parent, QObject::tr("Select KeyVault"), DefaultLocation() + "/KV.bin");
         dialog.setFileMode(QFileDialog::ExistingFile);
         dialog.setViewMode(QFileDialog::Detail);
         dialog.setWindowModality(Qt::ApplicationModal);
+        dialog.setNameFilter(QObject::tr("KeyVault (*.bin);;All files (*)"));
 
-        if (dialog.exec() == QFileDialog::Accepted)
+        if (dialog.exec() != QFileDialog::Accepted || dialog.selectedFiles().isEmpty())
+            return std::string();
+
+        const QString selected = dialog.selectedFiles().at(0);
+        if (!isKeyvault(selected))
         {
-            QStringList files = dialog.selectedFiles();
-
-            if(files.size() > 0)
-                kvName = files.at(0).toStdString();
+            QMessageBox::critical(parent, QObject::tr("Invalid KeyVault"),
+                    QObject::tr("%1 is not a keyvault "
+                                "(expected 0x4000 or 0x4010 bytes).").arg(selected));
+            return std::string();
         }
-        else
-            kvName = "";
+
+        return selected.toStdString();
     }
 
     return kvName;

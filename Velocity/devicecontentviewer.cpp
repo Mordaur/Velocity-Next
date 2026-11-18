@@ -766,10 +766,12 @@ void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStrin
                     std::memcpy(content->metaData->profileID, profile.GetProfileID(), 8);
                     content->metaData->FixHeaderHash();
 
-                    const std::string kvPath = QtHelpers::GetKVPath(
-                            content->metaData->certificate.ownerConsoleType, this);
-                    content->metaData->ResignHeader(kvPath);
-                    content->metaData->WriteMetaData();
+                    QtHelpers::ResignWithKV(content->metaData->certificate.ownerConsoleType, this,
+                            [content](const std::string &kv)
+                            {
+                                content->metaData->ResignHeader(kv);
+                                content->metaData->WriteMetaData();
+                            });
                 }
             }
         }

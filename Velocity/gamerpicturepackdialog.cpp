@@ -461,7 +461,8 @@ void GamerPicturePackDialog::on_btnCreatePack_clicked()
 
         // fix the package
         picturePack.Rehash();
-        picturePack.Resign(QtHelpers::GetKVPath(Retail, this));
+        QtHelpers::ResignWithKV(Retail, this,
+                [&picturePack](const std::string &kv) { picturePack.Resign(kv); });
 
         statusBar->showMessage("Successfully created your picture pack", 3000);
         ui->tabWidget->setEnabled(true);

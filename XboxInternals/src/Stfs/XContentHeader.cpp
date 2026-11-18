@@ -618,6 +618,9 @@ void XContentHeader::WriteVolumeDescriptor()
 
 void XContentHeader::ResignHeader(string kvPath)
 {
+    if (kvPath.empty())
+        throw string("XContentHeader: No keyvault was supplied.\n");
+
     FileIO kvIo(kvPath);
     ResignHeader(kvIo);
 }
@@ -632,8 +635,15 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
 {
     kvIo.SetPosition(0, ios_base::end);
 
+    // A console keyvault is 0x4000 bytes (0x4010 with the extra header word).
+    // Reject anything else before reading fields at fixed offsets; otherwise a
+    // short/foreign file fails halfway through with an opaque I/O error.
+    const UINT64 kvSize = kvIo.GetPosition();
+    if (kvSize != 0x4000 && kvSize != 0x4010)
+        throw string("XContentHeader: Invalid keyvault size (expected 0x4000 or 0x4010 bytes).\n");
+
     DWORD adder = 0;
-    if (kvIo.GetPosition() == 0x4000)
+    if (kvSize == 0x4000)
         adder = 0x10;
 
     DWORD headerStart, size, hashLoc, toSignLoc, consoleIDLoc;

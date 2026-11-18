@@ -255,17 +255,35 @@ void SvodDialog::on_btnResign_clicked()
         return;
 
     // open kv
-    FileIO kvIO(kvPath.toStdString());
-    kvIO.SetPosition(0, ios_base::end);
-
-    // read in the console id of the certificate in the kv
+    BYTE consoleID[5] = {};
     DWORD adder = 0;
-    if (kvIO.GetPosition() == 0x4000)
-        adder = 0x10;
-    kvIO.SetPosition(0x9BA + adder);
-    BYTE consoleID[5];
-    kvIO.ReadBytes(consoleID, 5);
-    kvIO.Close();
+    try
+    {
+        FileIO kvIO(kvPath.toStdString());
+        kvIO.SetPosition(0, ios_base::end);
+
+        const UINT64 kvSize = kvIO.GetPosition();
+        if (kvSize != 0x4000 && kvSize != 0x4010)
+            throw string("The selected file is not a keyvault "
+                         "(expected 0x4000 or 0x4010 bytes).\n");
+
+        // read in the console id of the certificate in the kv
+        if (kvSize == 0x4000)
+            adder = 0x10;
+        kvIO.SetPosition(0x9BA + adder);
+        kvIO.ReadBytes(consoleID, 5);
+        kvIO.Close();
+    }
+    catch (const string &error)
+    {
+        QMessageBox::critical(this, "Invalid KeyVault", QString::fromStdString(error));
+        return;
+    }
+    catch (const std::exception &error)
+    {
+        QMessageBox::critical(this, "Invalid KeyVault", QString(error.what()));
+        return;
+    }
 
     // make sure the console ids match
     if (memcmp(consoleID, svod->metadata->certificate.ownerConsoleID, 5) != 0)
