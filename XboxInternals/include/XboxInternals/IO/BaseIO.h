@@ -56,6 +56,17 @@ public:
     INT64 ReadInt64();
     UINT64 ReadUInt64();
     UINT64 ReadMultiByte(size_t size);
+
+    // Read `width` bytes (1, 2, 4 or 8) and convert them through the enum's
+    // EnumTraits specialization. Every enum read from a file goes through this,
+    // so an out-of-range value is mapped to the enum's Unknown sentinel (or
+    // rejected by the caller) instead of being cast blindly.
+    template <typename E>
+    E ReadEnum(int width)
+    {
+        return EnumTraits<E>::FromRaw(ReadMultiByte(static_cast<size_t>(width)));
+    }
+
     float ReadFloat();
     double ReadDouble();
     string ReadString(int len = -1, char nullTerminator = 0, bool forceInclude0 = true,

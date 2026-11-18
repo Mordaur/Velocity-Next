@@ -318,8 +318,9 @@ XBOXINTERNALS_EXPORT string ContentTypeToString(ContentType type)
             return string("Xbox360 Title");
         case XNA:
             return string("XNA");
+        case ContentTypeUnknown:
         default:
-            throw string("STFS: Invalid 'ContentType' value.\n");
+            return string("Unknown");
     }
 }
 

@@ -82,8 +82,8 @@ SettingEntry GpdBase::readSettingEntry(XdbfEntry entry)
     io->SetPosition(entryAddr + 8);
 
     // read the setting entry type
-    toReturn.type = (SettingEntryType)io->ReadByte();
-    if (toReturn.type < 0 || toReturn.type > 7)
+    toReturn.type = io->ReadEnum<SettingEntryType>(1);
+    if (toReturn.type == SettingEntryTypeUnknown)
         throw string("Xdbf: Error reading setting entry. Invalid setting entry type.\n");
 
     // skip past the nonsense

@@ -56,8 +56,26 @@ enum ConsoleLanguage
 enum XboxLiveServiceProvider
 {
     LiveDisabled = 0,
+    ServiceProviderUnknown = 1,
     ProductionNet = 0x50524F44,	// PROD
     PartnerNet = 0x50415254		// PART
+};
+
+template <>
+struct EnumTraits<XboxLiveServiceProvider>
+{
+    static XboxLiveServiceProvider FromRaw(UINT64 raw)
+    {
+        switch (raw)
+        {
+            case LiveDisabled:
+            case ProductionNet:
+            case PartnerNet:
+                return static_cast<XboxLiveServiceProvider>(raw);
+            default:
+                return ServiceProviderUnknown;
+        }
+    }
 };
 
 struct AccountInfo

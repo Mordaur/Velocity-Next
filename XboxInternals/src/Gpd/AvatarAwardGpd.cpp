@@ -57,7 +57,7 @@ AvatarAwardData AvatarAwardGpd::readAvatarAwardEntry(XdbfEntry entry)
     award.unlockTimeMilliseconds = XdbfHelpers::FILETIMEtoMilliseconds(time);
 
     // read the rest of the entry
-    award.subcategory = (AssetSubcategory)io->ReadDword();
+    award.subcategory = io->ReadEnum<AssetSubcategory>(4);
     award.colorizable = io->ReadDword();
     award.name = io->ReadWString();
     award.unlockedDescription = io->ReadWString();

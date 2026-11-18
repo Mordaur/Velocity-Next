@@ -20,7 +20,8 @@ enum EntryType
     Setting,
     Title,
     String,
-    AvatarAward
+    AvatarAward,
+    EntryTypeUnknown = 0xFF
 };
 
 struct XdbfHeader
@@ -79,6 +80,7 @@ struct XdbfEntryGroup
 
 enum SettingEntryType
 {
+    SettingEntryTypeUnknown = 0xFF,
     Context,
     Int32,
     Int64,
@@ -87,6 +89,24 @@ enum SettingEntryType
     Float,
     Binary,
     TimeStamp
+};
+
+template <>
+struct EnumTraits<EntryType>
+{
+    static EntryType FromRaw(UINT64 raw)
+    {
+        return raw <= AvatarAward ? static_cast<EntryType>(raw) : EntryTypeUnknown;
+    }
+};
+
+template <>
+struct EnumTraits<SettingEntryType>
+{
+    static SettingEntryType FromRaw(UINT64 raw)
+    {
+        return raw <= TimeStamp ? static_cast<SettingEntryType>(raw) : SettingEntryTypeUnknown;
+    }
 };
 
 struct SettingEntry

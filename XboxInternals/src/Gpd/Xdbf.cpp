@@ -564,7 +564,7 @@ void Xdbf::readEntryGroup(XdbfEntryGroup *group, EntryType type)
         else
             group->entries.push_back(entry);
 
-        entry.type = (EntryType)io->ReadInt16();
+        entry.type = io->ReadEnum<EntryType>(2);
         entry.id = io->ReadUInt64();
         entry.addressSpecifier = io->ReadDword();
         entry.length = io->ReadDword();
@@ -580,7 +580,7 @@ void Xdbf::readEntryGroup(vector<XdbfEntry> *group, EntryType type)
 
     while (true)
     {
-        entry.type = (EntryType)io->ReadInt16();
+        entry.type = io->ReadEnum<EntryType>(2);
         entry.id = io->ReadUInt64();
         entry.addressSpecifier = io->ReadDword();
         entry.length = io->ReadDword();

@@ -57,7 +57,7 @@ void Account::parseFile()
     io->SetPosition(0x28);
     account.xuid = io->ReadUInt64();
     account.cachedUserFlags = io->ReadDword();
-    account.serviceProvider = (XboxLiveServiceProvider)io->ReadDword();
+    account.serviceProvider = io->ReadEnum<XboxLiveServiceProvider>(4);
 
     io->SetPosition(0x38);
     account.passcode[0] = io->ReadByte();

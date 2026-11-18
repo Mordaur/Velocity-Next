@@ -27,6 +27,7 @@ enum XContentFlags
 
 enum OnlineContentResumeState
 {
+    ResumeStateUnknown = 0,
     FileHeadersNotReady = 0x46494C48,
     NewFolder = 0x666F6C64,
     NewFolderResum_Attempt1 = 0x666F6C31,
@@ -39,7 +40,37 @@ enum FileSystem
 {
     FileSystemSTFS = 0,
     FileSystemSVOD,
-    FileSystemFATX
+    FileSystemFATX,
+    FileSystemUnknown
+};
+
+template <>
+struct EnumTraits<FileSystem>
+{
+    static FileSystem FromRaw(UINT64 raw)
+    {
+        return raw <= FileSystemFATX ? static_cast<FileSystem>(raw) : FileSystemUnknown;
+    }
+};
+
+template <>
+struct EnumTraits<OnlineContentResumeState>
+{
+    static OnlineContentResumeState FromRaw(UINT64 raw)
+    {
+        switch (raw)
+        {
+            case FileHeadersNotReady:
+            case NewFolder:
+            case NewFolderResum_Attempt1:
+            case NewFolderResumeAttempt2:
+            case NewFolderResumeAttemptUnknown:
+            case NewFolderResumeAttemptSpecific:
+                return static_cast<OnlineContentResumeState>(raw);
+            default:
+                return ResumeStateUnknown;
+        }
+    }
 };
 
 class XBOXINTERNALS_EXPORT XContentHeader
@@ -75,7 +106,7 @@ public:
     bool VerifyPackageSignature();
     ~XContentHeader();
 
-    Magic magic;
+    Magic magic = Unknown;
 
     // only console signed
     Certificate certificate;

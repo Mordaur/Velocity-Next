@@ -8,10 +8,28 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <initializer_list>
 #include <memory>
 #include <vector>
 
 namespace fs = std::filesystem;
+
+namespace
+{
+    // Ratings are single bytes in the file and the enums have gaps. Reading an
+    // arbitrary byte into the enum and then comparing it is UB, so validate
+    // against the known values and fall back to the "unrated" sentinel.
+    template <typename Enum>
+    Enum RatingOrUnrated(BYTE value, std::initializer_list<Enum> valid, Enum unrated)
+    {
+        for (Enum candidate : valid)
+        {
+            if (static_cast<BYTE>(candidate) == value)
+                return candidate;
+        }
+        return unrated;
+    }
+}
 
 Xex::Xex(BaseIO *io) :
     io(io), firstResourceFileAddr(0xFFFFFFFF),
@@ -621,7 +639,10 @@ void Xex::Parse()
         // the bottom 4 bits are the type, the rest are the size of the entry in pages
         DWORD entryInfo = io->ReadDword();
 
-        entry.type = (XexSectionType)(entryInfo & 0x0F);
+        const DWORD sectionType = entryInfo & 0x0F;
+        entry.type = (sectionType >= XexSectionCode && sectionType <= XexSectionReadOnlyData)
+                         ? static_cast<XexSectionType>(sectionType)
+                         : XexSectionUnknown;
         entry.totalSize = (entryInfo >> 4) * pageSize;
 
         io->ReadBytes(entry.hash, 0x14);
@@ -634,26 +655,27 @@ void Xex::ParseOptionalHeaderEntry(int index)
     // seek to the beginning of the entry
     io->SetPosition(XEX_HEADER_SIZE + index * XEX_OPTIONAL_HEADER_ENTRY_SIZE);
 
-    XexOptionalHeaderEntry headerEntry;
-    headerEntry.id = (XexOptionHeaderEntryID)io->ReadDword();
-    headerEntry.data = io->ReadDword();
+    // Switch on the raw id: casting an arbitrary file value to the enum would
+    // create an out-of-range enumerator (UB) for unknown optional headers.
+    const DWORD headerId = io->ReadDword();
+    const DWORD headerData = io->ReadDword();
 
-    switch (headerEntry.id)
+    switch (headerId)
     {
         case SystemImportLibraries:
-            ParseSystemImportLibraryTable(headerEntry.data);
+            ParseSystemImportLibraryTable(headerData);
             break;
         case RatingInformation:
-            ParseRatingInformation(headerEntry.data);
+            ParseRatingInformation(headerData);
             break;
         case StaticLibraries:
-            ParseStaticLibraryTable(headerEntry.data);
+            ParseStaticLibraryTable(headerData);
             break;
         case OriginalPEImageName:
-            ParseOriginalPEImageName(headerEntry.data);
+            ParseOriginalPEImageName(headerData);
             break;
         case ResourceInfo:
-            ParseResourceFileTable(headerEntry.data);
+            ParseResourceFileTable(headerData);
             break;
         case ChecksumInformation:
         case TLSData:
@@ -664,34 +686,34 @@ void Xex::ParseOptionalHeaderEntry(int index)
             // These optional headers are not currently processed
             break;
         case BaseFileDescriptor:
-            ParseBaseFileDescriptor(headerEntry.data);
+            ParseBaseFileDescriptor(headerData);
             break;
         case ExecutionInfo:
-            ParseExecutionInfo(headerEntry.data);
+            ParseExecutionInfo(headerData);
             break;
         case LANKey:
-            ParseLANKey(headerEntry.data);
+            ParseLANKey(headerData);
             break;
         case ImageBaseAddress:
-            imageBaseAddress = headerEntry.data;
+            imageBaseAddress = headerData;
             break;
         case EntryPoint:
-            entryPoint = headerEntry.data;
+            entryPoint = headerData;
             break;
         case OriginalBaseAddress:
-            originalBaseAddress = headerEntry.data;
+            originalBaseAddress = headerData;
             break;
         case DefaultStackSize:
-            defaultStackSize = headerEntry.data;
+            defaultStackSize = headerData;
             break;
         case DefaultFileSystemCacheSize:
-            defaultFileSystemCacheSize = headerEntry.data;
+            defaultFileSystemCacheSize = headerData;
             break;
         case DefaultHeapSize:
-            defaultHeapSize = headerEntry.data;
+            defaultHeapSize = headerData;
             break;
         case TitleWorkspaceSize:
-            titleWorkspaceSize = headerEntry.data;
+            titleWorkspaceSize = headerData;
             break;
     }
 }
@@ -715,17 +737,26 @@ void Xex::ParseRatingInformation(DWORD address)
 {
     io->SetPosition(address);
 
-    esrbRating = (ESRBRating)io->ReadByte();
-    pegiRating = (PEGIRating)io->ReadByte();
-    pegifiRating = (PEGIFIRating)io->ReadByte();
-    pegiptRating = (PEGIPTRating)io->ReadByte();
-    pegibbfcRating = (PEGIBBFCRating)io->ReadByte();
+    esrbRating = RatingOrUnrated<ESRBRating>(io->ReadByte(),
+            { ESRB_EC, ESRB_E, ESRB_10, ESRB_T, ESRB_M, ESRB_RP }, ESRB_RP);
+    pegiRating = RatingOrUnrated<PEGIRating>(io->ReadByte(),
+            { PEGI_3, PEGI_7, PEGI_12, PEGI_16, PEGI_18, PEGI_Unrated }, PEGI_Unrated);
+    pegifiRating = RatingOrUnrated<PEGIFIRating>(io->ReadByte(),
+            { PEGIFI_3, PEGIFI_7, PEGIFI_11, PEGIFI_15, PEGIFI_18, PEGIFI_Unrated }, PEGIFI_Unrated);
+    pegiptRating = RatingOrUnrated<PEGIPTRating>(io->ReadByte(),
+            { PEGIPT_4, PEGIPT_6, PEGIPT_12, PEGIPT_16, PEGIPT_18, PEGIPT_Unrated }, PEGIPT_Unrated);
+    pegibbfcRating = RatingOrUnrated<PEGIBBFCRating>(io->ReadByte(),
+            { PEGIBBFC_3, PEGIBBFC_4, PEGIBBFC_7, PEGIBBFC_8, PEGIBBFC_12, PEGIBBFC_15,
+              PEGIBBFC_16, PEGIBBFC_18, PEGIBBF_Unrated }, PEGIBBF_Unrated);
 
     /*Cero*/	io->ReadByte();
     /*USK*/		io->ReadByte();
 
-    oflcAURating = (OFLCAURating)io->ReadByte();
-    oflcNZRating = (OFLCNZRating)io->ReadByte();
+    oflcAURating = RatingOrUnrated<OFLCAURating>(io->ReadByte(),
+            { OFLCAU_G, OFLCAU_PG, OFLCAU_M, OFLCAU_MA15_PLUS, OFLCAU_UNRATED }, OFLCAU_UNRATED);
+    oflcNZRating = RatingOrUnrated<OFLCNZRating>(io->ReadByte(),
+            { OFLCNZ_G, OFLCNZ_PG, OFLCNZ_M, OFLCNZ_MA15_PLUS, OFLCNZ_R16, OFLCNZ_UNRATED },
+            OFLCNZ_UNRATED);
 
     // there are more
 }
@@ -789,7 +820,10 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
         throw std::string("XEX: Invalid base file descriptor size.\n");
 
     encrypted = !!(io->ReadWord());
-    compressionState = (XexCompressionState)io->ReadWord();
+    const WORD compression = io->ReadWord();
+    if (compression > XexDeltaCompressed)
+        throw std::string("XEX: Unknown compression state.\n");
+    compressionState = static_cast<XexCompressionState>(compression);
 
     // Type 1 (raw/zero-based) uses 8-byte blocks. Type 2 uses a digest-chained
     // 24-byte layout whose per-block sizes/digests live in the blocks

@@ -13,6 +13,7 @@ using std::string;
 enum LicenseType
 {
     Unused = 0x0000,
+    LicenseTypeUnknown = 0x0001,
     Unrestricted = 0xFFFF,
     ConsoleProfileLicense = 0x0009,
     WindowsProfileLicense = 0x0003,
@@ -98,6 +99,29 @@ XBOXINTERNALS_EXPORT string MagicToString(Magic magic);
 XBOXINTERNALS_EXPORT string ContentTypeToString(ContentType type);
 
 XBOXINTERNALS_EXPORT string ConsoleTypeToString(ConsoleType type);
+
+template <>
+struct EnumTraits<LicenseType>
+{
+    static LicenseType FromRaw(UINT64 raw)
+    {
+        switch (raw)
+        {
+            case Unused:
+            case Unrestricted:
+            case ConsoleProfileLicense:
+            case WindowsProfileLicense:
+            case ConsoleLicense:
+            case MediaFlags:
+            case KeyVaultPrivileges:
+            case HyperVisorFlags:
+            case UserPrivileges:
+                return static_cast<LicenseType>(raw);
+            default:
+                return LicenseTypeUnknown;
+        }
+    }
+};
 
 XBOXINTERNALS_EXPORT string ByteSizeToString(UINT64 bytes);
 

@@ -39,6 +39,7 @@ enum ConsoleTypeFlags
 
 enum Magic
 {
+    Unknown = 0,
     CON = 0x434F4E20,
     LIVE = 0x4C495645,
     PIRS = 0x50495253
@@ -52,6 +53,7 @@ enum FileEntryFlags
 
 enum InstallerType
 {
+    InstallerTypeUnknown = -1,
     None = 0,
     SystemUpdate = 0x53555044,
     TitleUpdate = 0x54555044,
@@ -62,6 +64,7 @@ enum InstallerType
 
 enum ContentType
 {
+    ContentTypeUnknown = 0,
     ArcadeGame = 0xD0000,
     AvatarAssetPack = 0x8000,
     AvatarItem = 0x9000,
@@ -94,6 +97,35 @@ enum ContentType
     Xbox360Title = 0x1000,
     XNA = 0xE0000,
     IndieGame = XNA
+};
+
+template <>
+struct EnumTraits<ContentType>
+{
+    static ContentType FromRaw(UINT64 raw)
+    {
+        return raw <= CommunityGame ? static_cast<ContentType>(raw) : ContentTypeUnknown;
+    }
+};
+
+template <>
+struct EnumTraits<InstallerType>
+{
+    static InstallerType FromRaw(UINT64 raw)
+    {
+        switch (raw)
+        {
+            case None:
+            case SystemUpdate:
+            case TitleUpdate:
+            case SystemUpdateProgressCache:
+            case TitleUpdateProgressCache:
+            case TitleContentProgressCache:
+                return static_cast<InstallerType>(raw);
+            default:
+                return InstallerTypeUnknown;
+        }
+    }
 };
 
 enum BlockStatusLevelZero

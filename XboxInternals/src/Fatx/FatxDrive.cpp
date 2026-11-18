@@ -433,7 +433,7 @@ void FatxDrive::GetFileEntryMagic(FatxFileEntry *entry)
     if (entry->fileSize >= 0x3AD)
     {
         io->SetPosition(FatxIO::ClusterToOffset(entry->partition, entry->startingCluster) + 0x3AC);
-        entry->fileSystem = (FileSystem)io->ReadByte();
+        entry->fileSystem = io->ReadEnum<FileSystem>(1);
     }
 }
 

@@ -54,6 +54,8 @@ void MemoryIO::ReadBytes(BYTE *outBuffer, DWORD len)
 
 void MemoryIO::WriteBytes(BYTE *buffer, DWORD len)
 {
+    if (pos + len > length)
+        throw std::string("MemoryIO: Cannot write beyond the end of the stream\n");
     memcpy(memory + pos, buffer, len);
     pos += len;
 }

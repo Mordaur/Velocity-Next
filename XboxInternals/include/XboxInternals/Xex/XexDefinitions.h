@@ -268,6 +268,7 @@ struct XexSecurityInfo
 
 enum XexSectionType
 {
+    XexSectionUnknown = 0,
     XexSectionCode = 1,
     XexSectionData = 2,
     XexSectionReadOnlyData = 3

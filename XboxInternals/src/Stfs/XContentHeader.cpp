@@ -185,17 +185,20 @@ void XContentHeader::readMetadata()
 
     if ((flags & MetadataIsPEC) == 0)
     {
-        magic = (Magic)io->ReadDword();
+        // Read as an integer first: casting an arbitrary DWORD to Magic creates
+        // an out-of-range enum value, which is UB before it is even compared.
+        const DWORD magicValue = io->ReadDword();
+        if (magicValue != CON && magicValue != LIVE && magicValue != PIRS)
+        {
+            except << "XContentHeader: Content signature type 0x" << hex << magicValue << " is invalid.\n";
+            throw except.str();
+        }
+        magic = static_cast<Magic>(magicValue);
 
         if (magic == CON)
             ReadCertificateEx(&certificate, io, 4);
         else if (magic == LIVE || magic == PIRS)
             io->ReadBytes(packageSignature, 0x100);
-        else
-        {
-            except << "XContentHeader: Content signature type 0x" << hex << (DWORD)magic << " is invalid.\n";
-            throw except.str();
-        }
 
         io->SetPosition(0x22C);
 
@@ -203,7 +206,7 @@ void XContentHeader::readMetadata()
         for(int i = 0; i < 0x10; i++)
         {
             UINT64 tempYo = io->ReadUInt64();
-            licenseData[i].type = (LicenseType)(tempYo >> 48);
+            licenseData[i].type = EnumTraits<LicenseType>::FromRaw(tempYo >> 48);
             licenseData[i].data = (tempYo & 0xFFFFFFFFFFFF);
             licenseData[i].bits = io->ReadDword();
             licenseData[i].flags = io->ReadDword();
@@ -231,7 +234,7 @@ void XContentHeader::readMetadata()
         headerSize = io->ReadDword();
 
         // to do: make sure it's a valid type
-        contentType = (ContentType)io->ReadDword();
+        contentType = io->ReadEnum<ContentType>(4);
 
         metaDataVersion = io->ReadDword();
         contentSize = io->ReadUInt64();
@@ -249,8 +252,8 @@ void XContentHeader::readMetadata()
 
         // read the file system type
         io->SetPosition(0x3A9);
-        fileSystem = (FileSystem)io->ReadDword();
-        if (fileSystem > 1)
+        fileSystem = io->ReadEnum<FileSystem>(4);
+        if (fileSystem != FileSystemSTFS && fileSystem != FileSystemSVOD)
             throw string("XContentHeader: Invalid file system. Only STFS and SVOD are supported.\n");
 
         // read volume descriptor
@@ -271,19 +274,19 @@ void XContentHeader::readMetadata()
             io->SetPosition(0x3D9);
             io->SwapEndian();
 
-            subCategory = (AssetSubcategory)io->ReadDword();
+            subCategory = io->ReadEnum<AssetSubcategory>(4);
             colorizable = io->ReadDword();
 
             io->SwapEndian();
 
             io->ReadBytes(guid, 0x10);
-            skeletonVersion = (SkeletonVersion)io->ReadByte();
+            skeletonVersion = io->ReadEnum<SkeletonVersion>(1);
 
             // Retail PIRS avatar items exist with skeleton version 0
             // (legacy/unknown). This range is corpus-derived: neither the
             // kernel, XAM nor the public XDK headers define a validator for the
             // content-header skeleton byte.
-            if (skeletonVersion > 3)
+            if (skeletonVersion == SkeletonVersionUnknown)
                 throw string("XContentHeader: Invalid skeleton version.");
         }
         else if (contentType == Video) // there may be other content types with this metadata
@@ -330,7 +333,10 @@ void XContentHeader::readMetadata()
         if (((headerSize + 0xFFF) & 0xFFFFF000) - 0x971A < 0x15F4)
             return;
 
-        installerType = (InstallerType)io->ReadDword();
+        installerType = io->ReadEnum<InstallerType>(4);
+        if (installerType == InstallerTypeUnknown)
+            throw string("XContentHeader: Invalid Installer Type value.");
+
         switch (installerType)
         {
             case SystemUpdate:
@@ -354,7 +360,7 @@ void XContentHeader::readMetadata()
             case TitleUpdateProgressCache:
             case TitleContentProgressCache:
             {
-                resumeState = (OnlineContentResumeState)io->ReadDword();
+                resumeState = io->ReadEnum<OnlineContentResumeState>(4);
                 currentFileIndex = io->ReadDword();
                 currentFileOffset = io->ReadUInt64();
                 bytesProcessed = io->ReadUInt64();

@@ -5,6 +5,7 @@
 
 enum AssetSubcategory
 {
+    AssetSubcategoryUnknown = 0,
     CarryableCarryable = 0x44c,
     CarryableFirst = 0x44c,
     CarryableLast = 0x44c,
@@ -95,6 +96,7 @@ enum AssetSubcategory
 
 enum BinaryAssetType
 {
+    BinaryAssetTypeUnknown = 0,
     Component = 1,
     Texture = 2,
     ShapeOverride = 3,
@@ -104,6 +106,7 @@ enum BinaryAssetType
 
 enum SkeletonVersion
 {
+    SkeletonVersionUnknown = 0xFF,
     Nxe = 1,
     Natal,
     NxeAndNatal
@@ -111,6 +114,7 @@ enum SkeletonVersion
 
 enum AssetGender
 {
+    GenderUnknown = 0,
     Male = 1,
     Female,
     Both
@@ -145,6 +149,57 @@ enum STRRBBlockId
     STRBShapeOverrides = 4,
     STRBSkeleton = 5,
     STRBTexture = 2
+};
+
+template <>
+struct EnumTraits<AssetSubcategory>
+{
+    static AssetSubcategory FromRaw(UINT64 raw)
+    {
+        return raw <= 0x44C ? static_cast<AssetSubcategory>(raw) : AssetSubcategoryUnknown;
+    }
+};
+
+template <>
+struct EnumTraits<AssetGender>
+{
+    static AssetGender FromRaw(UINT64 raw)
+    {
+        return (raw >= Male && raw <= Both) ? static_cast<AssetGender>(raw) : GenderUnknown;
+    }
+};
+
+template <>
+struct EnumTraits<BinaryAssetType>
+{
+    static BinaryAssetType FromRaw(UINT64 raw)
+    {
+        return (raw >= Component && raw <= ShapeOverridePost)
+                   ? static_cast<BinaryAssetType>(raw)
+                   : BinaryAssetTypeUnknown;
+    }
+};
+
+template <>
+struct EnumTraits<SkeletonVersion>
+{
+    static SkeletonVersion FromRaw(UINT64 raw)
+    {
+        return raw <= 3 ? static_cast<SkeletonVersion>(raw) : SkeletonVersionUnknown;
+    }
+};
+
+template <>
+struct EnumTraits<STRRBBlockId>
+{
+    static STRRBBlockId FromRaw(UINT64 raw)
+    {
+        if (raw == 0xFFFFFFFFull)
+            return STRBEof;
+        if (raw >= STRBAnimation && raw <= STRBAssetMetadataVersioned)
+            return static_cast<STRRBBlockId>(raw);
+        return STRBInvalid;
+    }
 };
 
 struct AssetMetadata

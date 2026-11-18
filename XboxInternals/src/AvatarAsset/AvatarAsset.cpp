@@ -71,7 +71,7 @@ void AvatarAsset::readBlocks()
         STRBBlock block;
 
         // read the block header
-        block.id = (STRRBBlockId)io->ReadMultiByte(header.blockIDSize);
+        block.id = io->ReadEnum<STRRBBlockId>(static_cast<int>(header.blockIDSize));
         block.dataLength = prevDataLen = (int)io->ReadMultiByte(header.blockSpanSize);
         block.fieldSize = (int)io->ReadMultiByte(header.blockSpanSize);
 
@@ -106,10 +106,10 @@ void AvatarAsset::parseMetadataLegacyV1(DWORD pos)
 
     // read in the metadata
     metadata.metadataVersion = 1;
-    metadata.gender = (AssetGender)io->ReadByte();
-    metadata.type = (BinaryAssetType)io->ReadDword();
+    metadata.gender = io->ReadEnum<AssetGender>(1);
+    metadata.type = io->ReadEnum<BinaryAssetType>(4);
     metadata.assetTypeDetails = io->ReadDword();
-    metadata.category = (AssetSubcategory)io->ReadInt32();
+    metadata.category = io->ReadEnum<AssetSubcategory>(4);
     metadata.skeletonVersion = Nxe;
 
     // set the endian back
@@ -132,11 +132,11 @@ void AvatarAsset::parseMetadata(DWORD pos)
             io->SetEndian(LittleEndian);
 
             // read in the metadata
-            metadata.gender = (AssetGender)io->ReadByte();
-            metadata.type = (BinaryAssetType)io->ReadInt32();
+            metadata.gender = io->ReadEnum<AssetGender>(1);
+            metadata.type = io->ReadEnum<BinaryAssetType>(4);
             metadata.assetTypeDetails = io->ReadDword();
-            metadata.category = (AssetSubcategory)io->ReadInt32();
-            metadata.skeletonVersion = (SkeletonVersion)io->ReadByte();
+            metadata.category = io->ReadEnum<AssetSubcategory>(4);
+            metadata.skeletonVersion = io->ReadEnum<SkeletonVersion>(1);
 
             // set the endian back
             io->SetEndian(byteOrder);

@@ -45,6 +45,11 @@ struct WINFILETIME {
     DWORD dwLowDateTime;
 };
 
+// Enums read from files specialize this next to their definition. ReadEnum()
+// uses it, so a raw value can never be turned into an unchecked enumerator.
+template <typename E>
+struct EnumTraits;
+
 // Compile-time size verification
 static_assert(sizeof(BYTE) == 1, "BYTE must be 1 byte");
 static_assert(sizeof(WORD) == 2, "WORD must be 2 bytes");
