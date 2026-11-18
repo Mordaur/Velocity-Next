@@ -104,7 +104,7 @@ target_link_libraries(XboxInternals
     $<$<PLATFORM_ID:Windows>:shlwapi>
 )
 
-# Organize in IDE (Visual Studio solution explorer)
+# Organize in the IDE tree (Qt Creator, VS Code, ...)
 set_target_properties(XboxInternals PROPERTIES FOLDER "Libraries")
 
 # Create alias target for namespaced access (modern CMake pattern)

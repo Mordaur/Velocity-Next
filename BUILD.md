@@ -184,6 +184,40 @@ cmake --preset windows-mingw-release -DBUILD_XBOXINTERNALS_STATIC=ON
 cmake --preset windows-mingw-release -DBOTAN_VERSION=3.14.1
 ```
 
+### Sanitizer and Fuzzer Builds
+
+Runtime instrumentation is behind `-DSANITIZERS` (empty by default, so release
+builds are unchanged):
+
+```bash
+# AddressSanitizer + UndefinedBehaviorSanitizer, with the in-tree smoke test
+cmake -S . -B build/sanitize -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DSANITIZERS=address,undefined \
+  -DQT_FIND_PRIVATE_MODULES=ON
+cmake --build build/sanitize --target xbi_smoke -j
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
+  ctest --test-dir build/sanitize --output-on-failure
+
+# ThreadSanitizer uses the same switch: -DSANITIZERS=thread
+
+# libFuzzer (Clang only). The library needs coverage instrumentation, so the
+# fuzzer runtime itself is only added on the target.
+cmake -S . -B build/fuzz -G Ninja -DCMAKE_CXX_COMPILER=clang++ \
+  -DSANITIZERS=address,undefined -DBUILD_FUZZERS=ON \
+  -DCMAKE_CXX_FLAGS="-fsanitize=fuzzer-no-link"
+cmake --build build/fuzz --target lzx_fuzz xex_fuzz -j
+./build/fuzz/tests/lzx_fuzz -runs=50000 -max_len=8192
+./build/fuzz/tests/xex_fuzz -dict=tests/fuzz/xex.dict -runs=200000 -max_len=8192
+```
+
+`xex_fuzz` parses arbitrary input as a complete XEX through `MemoryIO`, including
+the optional-header, section and rating tables. `lzx_fuzz` feeds the LZX decoder.
+
+`tests/` in this repository contains only the smoke target and the LZX fuzzer
+that CI can run on a bare runner. The corpus, differential and mutation harness
+lives outside the checkout.
+
 ## Platform-Specific Notes
 
 ### Windows
@@ -236,6 +270,121 @@ chmod +x deploy_mac.sh
 ### Linux
 - **Standard**: Creates standard Linux executable
 - **Output**: Velocity binary
+
+## Editor Setup (VS Code / clangd)
+
+The build is plain CMake + Ninja, so any editor that consumes a compile database
+works. Dropping MSVC does not cost IntelliSense or debugging: VS Code drives an
+editor-side parser (the C/C++ extension or clangd) and GDB/LLDB, none of which
+needs `cl.exe`.
+
+### Compile database
+
+`CMAKE_EXPORT_COMPILE_COMMANDS` is already on, so configuring a preset writes
+`compile_commands.json` into its build directory:
+
+| Platform | Database |
+|---|---|
+| Windows | `out/build/windows-mingw-release/compile_commands.json` |
+| macOS | `out/build/macos-release/compile_commands.json` |
+| Linux | `out/build/linux-release/compile_commands.json` |
+
+If you configure outside the checkout (for example `-B build/linux-release` from
+a parent directory), point the editor at that directory instead.
+
+**Option A — Microsoft C/C++ extension** (`.vscode/c_cpp_properties.json`):
+
+```jsonc
+{
+  "version": 4,
+  "configurations": [
+    {
+      "name": "Windows (MinGW)",
+      "compileCommands": "${workspaceFolder}/out/build/windows-mingw-release/compile_commands.json",
+      "intelliSenseMode": "windows-gcc-x64"
+    },
+    {
+      "name": "Linux (GCC)",
+      "compileCommands": "${workspaceFolder}/out/build/linux-release/compile_commands.json",
+      "intelliSenseMode": "linux-gcc-x64"
+    },
+    {
+      "name": "macOS (Clang)",
+      "compileCommands": "${workspaceFolder}/out/build/macos-release/compile_commands.json",
+      "intelliSenseMode": "macos-clang-arm64"
+    }
+  ]
+}
+```
+
+**Option B — clangd**, usually more accurate on a large C++ tree. It searches
+upwards from each source file for `compile_commands.json`; when the database
+lives in the build tree, add a `.clangd` at the repository root:
+
+```yaml
+CompileFlags:
+  CompilationDatabase: out/build/linux-release
+```
+
+(or pass `--compile-commands-dir=` to clangd).
+
+Two things that cause phantom editor errors:
+
+- **Use the same toolchain the database was generated with.** An MSVC database
+  against a MinGW build (or the reverse) evaluates different `_WIN32`/`_MSC_VER`
+  branches; MSVC is not a supported toolchain here.
+- **Configure with `-DQT_FIND_PRIVATE_MODULES=ON`.** Without it
+  `${Qt6Core_PRIVATE_INCLUDE_DIRS}` is empty, so `Velocity/zipviewer.cpp`
+  (which includes `qzipreader_p.h`) shows a missing header in the editor even
+  though a correctly configured build succeeds.
+
+Re-run CMake after adding or removing source files so the database stays current.
+
+### Debugging
+
+Use GDB on Windows/Linux and LLDB (or GDB) on macOS. On Windows, use the GDB that
+matches the Qt MinGW kit (`mingw1310_64`) and put its `bin` directory on `PATH`
+so `libstdc++-6.dll`, `libgcc_s_seh-1.dll` and `libwinpthread-1.dll` resolve
+when the debugger launches.
+
+`.vscode/launch.json` (Windows example; adjust the Qt paths to your kit):
+
+```jsonc
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "VelocityNext (MinGW + gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/out/build/windows-mingw-release/VelocityNext/VelocityNext.exe",
+      "cwd": "${workspaceFolder}/out/build/windows-mingw-release/VelocityNext",
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/Qt/Tools/mingw1310_64/bin/gdb.exe",
+      "environment": [
+        {
+          "name": "PATH",
+          "value": "C:/Qt/6.10.3/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${env:PATH}"
+        }
+      ],
+      "setupCommands": [
+        { "text": "-enable-pretty-printing", "ignoreFailures": true }
+      ]
+    }
+  ]
+}
+```
+
+Qt Creator works with the same kit (Qt MinGW + CMake + GDB) and has better Qt
+integration if you prefer a full IDE.
+
+### What is still MSVC-only
+
+`/analyze`, the Visual Studio profiler/PIX integration and `cppvsdbg` belong to
+the MSVC toolchain, not to VS Code; they are not part of this project's toolchain
+any more. Static analysis comes from clang-tidy/clangd, runtime checks from the
+Linux sanitizer CI job, and Windows behaviour from manual runs on the built
+binary (MinGW's ASan/UBSan support is uneven).
 
 ## Troubleshooting
 

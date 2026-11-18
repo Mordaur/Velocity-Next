@@ -196,7 +196,7 @@ target_compile_definitions(VelocityNext
 # App requires C++20
 target_compile_features(VelocityNext PUBLIC cxx_std_20)
 
-# Organize in IDE (Visual Studio solution explorer)
+# Organize in the IDE tree (Qt Creator, VS Code, ...)
 set_target_properties(VelocityNext PROPERTIES FOLDER "Applications")
 
 # Post-build: keep the device helper next to the GUI for portable deployment.
