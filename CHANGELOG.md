@@ -1,5 +1,56 @@
 # Changelog
 
+## Velocity-Next v0.3.1 - 2026-11-18
+
+### 📀 Disc images
+
+- **ISO/XGD directory enumeration**: a multi-sector directory no longer stops
+  at the first sector tail. The walk now follows the kernel's
+  `OdfxGdfFindNextDirectoryEntry` rule (0xFFFFFFFF end marker → next sector,
+  unmarked corrupt tail → stop). On a retail XGD2 image this restores 33 files
+  in `Shaders\_ps` and 7 in `AlbumJackets`, and all six retail XGD2/XGD3 test
+  images now match a record-level parser (13,376 files).
+- **GOD/SVOD directory enumeration**: the same fix for the GDF volume inside a
+  GOD package. A complete 30-part GOD package lists 1576 files (previously
+  1536) and previously invisible files open and extract.
+- **SVOD verification**: the root hash is checked at open and `Verify()` walks
+  every data block, level-0 table and the master chain. Verified on a complete
+  30-part package.
+- ISO 2352-byte Mode 1/2 dumps are detected; XGD1 and 2352-byte images are
+  labelled **experimental** in the UI and README.
+
+### 🎮 XEX
+
+- **XCompress/LZX (compression type 2) extraction is implemented.** Retail XEXs
+  now decode to the full `imageSize` instead of an empty file. The image key is
+  selected from the signed block-0 SHA-1, the digest chain is verified per
+  block, and every chunk is decoded with a standalone LZX decoder.
+- Delta compression (type 3) remains an explicit unsupported error.
+
+### 🔐 STFS / signatures
+
+- **LIVE/PIRS package signatures are verified**: RSA-2048 PKCS#1 v1.5/SHA-1
+  over `[0x22C,0x344)` with the signature byte-reversed. All four corpus PIRS
+  packages verify against the retail key.
+- Avatar items with skeleton version 0 (retail PIRS) open again and the
+  metadata editor preserves the value instead of rewriting it to 1.
+- SVOD `dataBlockCount`/`dataBlockOffset` are read big-endian as u24, matching
+  the kernel.
+
+### 🖥️ Device and content
+
+- Content tree and device UI crash fixes: the tree is enabled when devices
+  finish loading, SVOD ownership is not freed twice, and profile/title export
+  to local disk no longer segfaults.
+- Background device loading with an overlay and status-bar progress; the
+  overlay is non-dismissible and closing the window waits for the loader.
+- Profiles and titles export as folder trees or flat files.
+- Device reads are cached in aligned 64 KiB windows, with correct handling of
+  reads at or past the device end.
+- The Qt 6.10 private-include build path is fixed and the tree is warning-free
+  on GCC, Clang and MSVC.
+
+---
 ## Velocity-Next v0.3.0 - 2026-11-11
 
 ### 🔐 Device Access
