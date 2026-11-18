@@ -276,7 +276,10 @@ void XContentHeader::readMetadata()
             io->ReadBytes(guid, 0x10);
             skeletonVersion = (SkeletonVersion)io->ReadByte();
 
-            // Retail PIRS avatar items exist with skeleton version 0 (legacy/unknown).
+            // Retail PIRS avatar items exist with skeleton version 0
+            // (legacy/unknown). This range is corpus-derived: neither the
+            // kernel, XAM nor the public XDK headers define a validator for the
+            // content-header skeleton byte.
             if (skeletonVersion > 3)
                 throw string("XContentHeader: Invalid skeleton version.");
         }

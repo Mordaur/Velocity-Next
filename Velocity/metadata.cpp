@@ -206,11 +206,15 @@ Metadata::Metadata(QStatusBar *statusBar, XContentHeader *header, bool pec, QWid
 
             // set the skeleton version combobox
             cmbxSkeletonVersion = new QComboBox(this);
+            cmbxSkeletonVersion->addItem("Unknown (0)");
             cmbxSkeletonVersion->addItem("Nxe");
             cmbxSkeletonVersion->addItem("Natal");
             cmbxSkeletonVersion->addItem("Both");
 
-            cmbxSkeletonVersion->setCurrentIndex(header->skeletonVersion - 1);
+            // Retail PIRS avatar items exist with 0; keep it selectable instead
+            // of showing an empty combo and silently rewriting the value.
+            cmbxSkeletonVersion->setCurrentIndex(
+                    qBound(0, static_cast<int>(header->skeletonVersion), 3));
             ui->tableWidget->setCellWidget(22, 0, cmbxSkeletonVersion);
 
             offset = 4;
@@ -624,7 +628,7 @@ void Metadata::on_pushButton_clicked()
             header->subCategory = subcategoryStructs[cmbxSubcategory->currentIndex()].value;
             header->colorizable = ui->tableWidget->item(20, 0)->text().toULong();
             QtHelpers::ParseHexStringBuffer(ui->tableWidget->item(21, 0)->text(), header->guid, 0x10);
-            header->skeletonVersion = (SkeletonVersion)(cmbxSkeletonVersion->currentIndex() + 1);
+            header->skeletonVersion = (SkeletonVersion)cmbxSkeletonVersion->currentIndex();
         }
         else if (header->contentType == Video)
         {
