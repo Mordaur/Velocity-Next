@@ -65,12 +65,24 @@ jobs:
         run: |
           tag="${{ steps.tag.outputs.tag }}"
           version="${tag#v}"
-          awk -v ver="$version" '
-            $0 ~ "^## Velocity-Next v" ver " " {found=1; next}
-            found && /^## / {exit}
-            found {print}
-          ' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then
+          {
+            echo "## Velocity-Next ${tag}"
+            echo
+            echo "### Which download?"
+            echo
+            echo "- **Windows:** \`Velocity-Next-Windows.zip\`"
+            echo "- **Linux:** \`Velocity-Next-Linux.tar.gz\`"
+            echo "- **macOS:** \`Velocity-Next.dmg\`"
+            echo
+            awk -v ver="$version" '
+              $0 ~ "^## Velocity-Next v" ver " " {found=1; next}
+              found && /^## / {exit}
+              found {print}
+            ' CHANGELOG.md | sed -E 's/^###[[:space:]]+[^A-Za-z0-9]+/### /'
+            echo
+            echo "See \`CHANGELOG.md\` for the full list."
+          } > release-notes.md
+          if [ "$(grep -c '^### ' release-notes.md)" -le 1 ]; then
             echo "No CHANGELOG section for $tag; GitHub will generate the notes." >&2
             rm -f release-notes.md
           fi
