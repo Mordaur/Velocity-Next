@@ -100,8 +100,10 @@ Velocity-Next is a cross-platform Xbox 360 file management application built wit
 - **STFS** - Game saves, profiles, DLC packages (CON/LIVE/PIRS)
 - **GPD** - Gamer profile data (achievements, avatar awards, settings)
 - **XDBF** - Xbox database files
-- **ISO** - Disc images (GDF, XGD3, Redump formats) with file extraction
-- **XEX** - Xbox executables with metadata parsing
+- **ISO** - Disc images with file extraction; XGD2/XGD3 are tested on retail
+  images, while XGD1 and 2352-byte raw dumps are **experimental**
+- **XEX** - Xbox executables with metadata parsing; retail XCompress/LZX
+  (compression type 2) extraction is not implemented yet
 - **SVOD** - Secure Video on Demand packages
 - **YTGR** - Avatar asset packages
 - **XUIZ** - Dashboard package files, with extraction

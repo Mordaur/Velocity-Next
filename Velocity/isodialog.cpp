@@ -169,7 +169,12 @@ void IsoDialog::loadIsoContents(const QString& path) {
 
     const auto& info = iso_->info();
     const QString fileName = QFileInfo(path).fileName();
-    const QString xgdVersion = QString::fromStdString(iso_->GetXGDVersion());
+    QString xgdVersion = QString::fromStdString(iso_->GetXGDVersion());
+
+    // XGD2/XGD3 are verified on retail images; XGD1 and 2352-byte dumps have
+    // only synthetic coverage so far.
+    if (xgdVersion == "XGD1" || info.sectorStride == 2352)
+        xgdVersion += " (experimental)";
     const QString sizeStr = formatSize(info.imageSize);
     const QString titleName = QString::fromStdWString(iso_->GetTitleName());
 
