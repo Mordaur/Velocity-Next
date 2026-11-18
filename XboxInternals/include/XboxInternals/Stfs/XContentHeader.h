@@ -68,6 +68,11 @@ public:
 
     // Description: Write all of the metadata
     void WriteMetaData();
+
+    // Verify the 0x100-byte LIVE/PIRS package signature at 0x004 (RSA-2048
+    // PKCS#1 v1.5/SHA-1 over [0x22C,0x344)). Returns false for CON packages or
+    // when no candidate public key validates.
+    bool VerifyPackageSignature();
     ~XContentHeader();
 
     Magic magic;
