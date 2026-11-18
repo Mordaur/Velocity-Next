@@ -259,6 +259,9 @@ void XContentHeader::readMetadata()
         else if (fileSystem == FileSystemSVOD)
             ReadSvodVolumeDescriptorEx(&svodVolumeDescriptor, io);
 
+        // These follow the 0x24-byte volume descriptor (0x379..0x39D). Seek
+        // explicitly so a descriptor change cannot silently shift them.
+        io->SetPosition(0x39D);
         dataFileCount = io->ReadDword();
         dataFileCombinedSize = io->ReadUInt64();
 
@@ -477,6 +480,8 @@ void XContentHeader::WriteMetaData()
 
         WriteVolumeDescriptor();
 
+        // Fixed position: the volume descriptor always ends at 0x39D.
+        io->SetPosition(0x39D);
         io->Write(dataFileCount);
         io->Write(dataFileCombinedSize);
 
