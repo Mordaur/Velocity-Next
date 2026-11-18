@@ -28,7 +28,9 @@ enum Operation
 
 struct StfsExtractEntry
 {
-    StfsFileEntry *entry;
+    // Owned copy: the extraction dialog runs on a worker thread and outlives
+    // the caller's temporary file-entry list.
+    StfsFileEntry entry;
     QString path;
 };
 

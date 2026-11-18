@@ -1,7 +1,9 @@
 #include "multiprogressdialog.h"
 #include "ui_multiprogressdialog.h"
 #include <QTimer>
+#include <QFileInfo>
 #include <QMutexLocker>
+#include <memory>
 
 // ExtractionWorker implementation
 ExtractionWorker::ExtractionWorker(MultiProgressDialog *dialog)
@@ -30,8 +32,9 @@ void ExtractionWorker::run()
                 case FileSystemSTFS:
                 {
                     StfsExtractEntry *entry = reinterpret_cast<StfsExtractEntry*>(dialog_->internalFiles.at(i));
-                    
-                    emit windowTitleUpdate("Extracting " + QString::fromStdString(entry->entry->name));
+                    std::unique_ptr<StfsExtractEntry> entryOwner(entry);
+
+                    emit windowTitleUpdate("Extracting " + QString::fromStdString(entry->entry.name));
 
                     try
                     {
@@ -44,19 +47,24 @@ void ExtractionWorker::run()
                             QDir saveDir(dirPath);
                             if (!saveDir.exists())
                                 saveDir.mkpath(dirPath);
-                            dirPathStd += entry->entry->name;
+                            dirPathStd += entry->entry.name;
+                        }
+                        else if (QFileInfo(dirPath).isDir())
+                        {
+                            // The file dialog can return an existing directory
+                            // for a single-file extraction; write the file
+                            // inside it instead of failing with "is a directory".
+                            dirPathStd += "/" + entry->entry.name;
                         }
 
                         StfsPackage *package = reinterpret_cast<StfsPackage*>(dialog_->device);
-                        package->ExtractFile(entry->entry, dirPathStd, updateProgress, dialog_);
-                        
-                        delete entry;
+                        package->ExtractFile(&entry->entry, dirPathStd, updateProgress, dialog_);
                     }
                     catch (const std::exception& e)
                     {
                         emit extractionComplete(false, 
                             QString("Error extracting '%1': %2")
-                                .arg(QString::fromStdString(entry->entry->name))
+                                .arg(QString::fromStdString(entry->entry.name))
                                 .arg(e.what()));
                         return;
                     }
@@ -64,7 +72,7 @@ void ExtractionWorker::run()
                     {
                         emit extractionComplete(false, 
                             QString("Error extracting '%1': %2")
-                                .arg(QString::fromStdString(entry->entry->name))
+                                .arg(QString::fromStdString(entry->entry.name))
                                 .arg(QString::fromStdString(error)));
                         return;
                     }
@@ -72,7 +80,7 @@ void ExtractionWorker::run()
                     {
                         emit extractionComplete(false, 
                             QString("Unknown error extracting '%1'")
-                                .arg(QString::fromStdString(entry->entry->name)));
+                                .arg(QString::fromStdString(entry->entry.name)));
                         return;
                     }
                     break;
@@ -221,11 +229,11 @@ void MultiProgressDialog::start()
         case FileSystemSTFS:
             for (int i = 0; i < internalFiles.size(); i++)
             {
-                StfsFileEntry *entry = reinterpret_cast<StfsFileEntry*>(internalFiles.at(i));
-                if (entry->blocksForFile == 0)
+                StfsExtractEntry *entry = reinterpret_cast<StfsExtractEntry*>(internalFiles.at(i));
+                if (entry->entry.blocksForFile == 0)
                     overallProgressTotal++;
                 else
-                    overallProgressTotal += entry->blocksForFile;
+                    overallProgressTotal += entry->entry.blocksForFile;
             }
             break;
         case FileSystemSVOD:
@@ -326,8 +334,9 @@ void MultiProgressDialog::operateOnNextFile()
         {
             // get the file entry
             StfsExtractEntry *entry = reinterpret_cast<StfsExtractEntry*>(internalFiles.at(fileIndex++));
+            std::unique_ptr<StfsExtractEntry> entryOwner(entry);
 
-            setWindowTitle("Extracting " + QString::fromStdString(entry->entry->name));
+            setWindowTitle("Extracting " + QString::fromStdString(entry->entry.name));
 
             try
             {
@@ -342,13 +351,15 @@ void MultiProgressDialog::operateOnNextFile()
                     if (!saveDir.exists())
                         saveDir.mkpath(dirPath);
 
-                    dirPathStd += entry->entry->name;
+                    dirPathStd += entry->entry.name;
+                }
+                else if (QFileInfo(dirPath).isDir())
+                {
+                    dirPathStd += "/" + entry->entry.name;
                 }
 
                 StfsPackage *package = reinterpret_cast<StfsPackage*>(device);
-                package->ExtractFile(entry->entry, dirPathStd, updateProgress, this);
-
-                delete entry;
+                package->ExtractFile(&entry->entry, dirPathStd, updateProgress, this);
             }
             catch (string error)
             {

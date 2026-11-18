@@ -37,6 +37,18 @@
 - SVOD `dataBlockCount`/`dataBlockOffset` are read big-endian as u24, matching
   the kernel.
 
+### 🐞 Extraction
+
+- **Saved-game extraction no longer crashes with `std::bad_alloc`.** The
+  extraction dialog runs on a worker thread and outlives the caller, but the
+  "Extract Selected" path kept pointers into a temporary `QList<StfsFileEntry>`;
+  the worker then read freed entries. File entries are now owned by value, and
+  the progress calculation no longer reinterprets the wrong entry type (#11).
+- Choosing a folder as the destination for a single file now writes the file
+  inside it instead of failing with "is a directory".
+- A file whose size exceeds its allocated block count is rejected with a clear
+  error instead of overrunning the extraction buffer.
+
 ### 🖥️ Device and content
 
 - Content tree and device UI crash fixes: the tree is enabled when devices

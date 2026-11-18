@@ -421,7 +421,7 @@ void PackageViewer::GetSubFilesStfs(StfsFileListing *parent, QList<void *> &entr
     for (size_t i = 0; i < parent->fileEntries.size(); i++)
     {
         StfsExtractEntry *exEntry = new StfsExtractEntry;
-        exEntry->entry = &parent->fileEntries.at(i);
+        exEntry->entry = parent->fileEntries.at(i);
         exEntry->path = currentPath;
         entries.push_back(exEntry);
     }
@@ -497,7 +497,6 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
 
 
         QList<void*> outFiles;
-        QList<StfsFileEntry> sillyNess;
         for (int i = 0; i < totalCount; i++)
         {
             QString packagePath;
@@ -505,9 +504,7 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
 
             StfsExtractEntry *entry = new StfsExtractEntry;
             entry->path = "";
-
-            sillyNess.append(package->GetFileEntry(packagePath.toStdString()));
-            entry->entry = const_cast<StfsFileEntry*>(&sillyNess.at(i));
+            entry->entry = package->GetFileEntry(packagePath.toStdString());
             outFiles.append(const_cast<void*>((void*)entry));
         }
 

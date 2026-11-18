@@ -515,6 +515,18 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
         throw;
     }
 
+    // A corrupt file table can claim more bytes than the entry's block chain
+    // can hold; the contiguous read path below sizes its buffer from the block
+    // count, so reject the mismatch instead of overrunning it.
+    if (entry->blocksForFile != 0 &&
+        (static_cast<UINT64>(entry->blocksForFile) << 0xC) < entry->fileSize)
+    {
+        except.str(std::string());
+        except << "STFS: File '" << entry->name.c_str()
+               << "' is larger than its allocated blocks.\n";
+        throw except.str();
+    }
+
     // create/truncate our out file
     FileIO outFile(outPath, true);
 
@@ -584,6 +596,11 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
         // pick up the change at the beginning, until we hit a hash table
         if ((DWORD)entry->blocksForFile <= blockCount)
         {
+            // The buffer holds exactly one hash-table group (0xAA blocks); a
+            // larger size here would mean the block-count arithmetic is wrong.
+            if (entry->fileSize > buffer.size())
+                throw std::string("STFS: File size exceeds the contiguous read buffer.\n");
+
             io->ReadBytes(buffer.data(), entry->fileSize);
             outFile.Write(buffer.data(), entry->fileSize);
 
@@ -2233,9 +2250,15 @@ void StfsPackage::GenerateBlockChain(StfsFileEntry *entry, bool forceRefresh)
         return;
 
     std::unordered_set<INT24> visitedBlocks;
+    const DWORD maxBlocks = metaData->stfsVolumeDescriptor.allocatedBlockCount;
 
     while (currentBlock != INT24_MAX)
     {
+        // A cross-linked or corrupt chain cannot hold more blocks than the
+        // volume allocates; stop before the vector can grow without bound.
+        if (entry->blockChain.size() >= maxBlocks)
+            break;
+
         if (!visitedBlocks.insert(currentBlock).second)
             break;
 

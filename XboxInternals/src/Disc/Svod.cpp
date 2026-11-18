@@ -390,7 +390,7 @@ bool SVOD::VerifyRoot()
     BYTE master[0x1000];
     BYTE digest[0x14];
 
-    io->SetPosition(0, 0);
+    io->SetPosition(static_cast<DWORD>(0), 0);
     io->ReadBytes(master, 0x1000);
     HashBlock(master, digest);
 
@@ -412,7 +412,7 @@ bool SVOD::Verify()
 
     for (DWORD part = 0; part < partCount; ++part)
     {
-        io->SetPosition(0, static_cast<int>(part));
+        io->SetPosition(static_cast<DWORD>(0), static_cast<int>(part));
         io->ReadBytes(master, 0x1000);
         HashBlock(master, digest);
 
