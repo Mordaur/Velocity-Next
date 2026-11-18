@@ -189,27 +189,27 @@ void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sect
         const DWORD sectorIndex = sector + static_cast<DWORD>(offset / ISO_SECTOR_SIZE);
         const DWORD inSector = static_cast<DWORD>(offset % ISO_SECTOR_SIZE);
 
-        // A directory can span several sectors. When fewer than 14 bytes remain
-        // in the current sector the run is padded and the listing continues at
-        // the start of the next sector; it is *not* the end of the directory.
-        if (inSector > kDirRecordLimit) {
-            offset = (offset / ISO_SECTOR_SIZE + 1) * ISO_SECTOR_SIZE;
-            continue;
-        }
-
         const UINT64 address = SectorToAddress(sectorIndex) + inSector;
         if (address > length || length - address < kDirRecordHeader)
             break;
 
         impl_->io->SetPosition(address);
 
+        // The kernel reads the first dword before any bounds check. An all-ones
+        // dword is the sector end marker, so the walk continues at the start of
+        // the next sector; a directory is a contiguous run of sectors. This is
+        // the normal padding path and it is not end-of-directory.
         const DWORD marker = impl_->io->ReadDword();
         if (marker == 0xFFFFFFFF) {
-            // End marker: skip the remainder of this sector and continue with
-            // the next one (the kernel does not treat it as end-of-directory).
             offset = (offset / ISO_SECTOR_SIZE + 1) * ISO_SECTOR_SIZE;
             continue;
         }
+
+        // A tail that carries no end marker and cannot hold a 14-byte header is
+        // corrupt in the kernel (STATUS_DISK_CORRUPT_ERROR); stop rather than
+        // invent entries.
+        if (inSector > kDirRecordLimit)
+            break;
 
         GdfxFileEntry current{};
         current.unknown = marker;
@@ -219,21 +219,16 @@ void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sect
         current.nameLen = impl_->io->ReadByte();
 
         // The 14-byte header and the name must stay inside one 2048-byte
-        // sector; GDFX records never straddle a sector boundary. If the tail of
-        // this sector is too small, it is padding and the next sector follows.
-        if (inSector + current.nameLen > kDirRecordLimit) {
-            if (inSector == 0)
-                break; // a record cannot be larger than a sector
-            offset = (offset / ISO_SECTOR_SIZE + 1) * ISO_SECTOR_SIZE;
-            continue;
-        }
-
-        if (address > length ||
-            length - address < kDirRecordHeader + current.nameLen)
+        // sector; a record never straddles a sector boundary. The kernel treats
+        // a record that would cross as STATUS_DISK_CORRUPT_ERROR.
+        if (inSector + current.nameLen > kDirRecordLimit)
             break;
 
-        // An unused slot (no name) is not an entry. Skip its aligned record
-        // header instead of pushing an empty-named file.
+        if (length - address < kDirRecordHeader + current.nameLen)
+            break;
+
+        // An unused slot (no name) is not a usable entry; skip its aligned
+        // record header instead of pushing an empty-named file.
         if (current.nameLen == 0) {
             offset += (kDirRecordHeader + 3) & ~static_cast<UINT64>(3);
             continue;
