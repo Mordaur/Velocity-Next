@@ -14,11 +14,13 @@
 #include <XboxInternals/Stfs/XContentHeader.h>
 #include <XboxInternals/Xex/XexLzxDecoder.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -242,6 +244,66 @@ namespace
         }
     }
 
+    void testResignFailureLeavesPackageIntact()
+    {
+        // A CON package with a valid console type, plus an all-zero keyvault
+        // (right size, no usable RSA key). The resign must fail without writing
+        // anything: a failed resign used to poison the in-memory certificate,
+        // which a later rehash then wrote to disk, leaving the package
+        // unreadable ("Invalid console type").
+        const std::size_t size = 0xC000;
+
+        std::vector<BYTE> package(size, 0);
+        package[0] = 'C'; package[1] = 'O'; package[2] = 'N'; package[3] = ' ';
+        putBE32(package, 0x4 + 0x18, 1);                          // console type: DevKit
+        putBE32(package, 0x340, static_cast<std::uint32_t>(size)); // headerSize
+        putBE32(package, 0x344, 1);                               // contentType: SavedGame
+        putBE32(package, 0x3A9, 0);                               // fileSystem: STFS
+
+        MemoryIO io(package.data(), package.size());
+
+        std::unique_ptr<XContentHeader> metadata;
+        try
+        {
+            metadata = std::make_unique<XContentHeader>(&io);
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (synthetic CON parse threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (synthetic CON parse threw: %s)\n", e.what());
+        }
+
+        check(metadata != nullptr, "synthetic CON header parses");
+        if (!metadata)
+            return;
+
+        const std::vector<BYTE> before = package;
+
+        std::vector<BYTE> kv(0x4000, 0);
+        check(throws([&] { metadata->ResignHeader(kv.data(), kv.size()); }),
+              "resign with a zero keyvault throws");
+
+        bool unchanged = (package == before);
+        if (!unchanged)
+        {
+            std::size_t first = 0;
+            while (first < package.size() && package[first] == before[first])
+                ++first;
+            std::fprintf(stderr, "  (first byte changed at 0x%zX)\n", first);
+        }
+        check(unchanged, "failed resign leaves the package byte-for-byte intact");
+
+        // A later rehash writes the metadata back; it must not resurrect the
+        // rejected keyvault's certificate either.
+        metadata->WriteMetaData();
+        check(std::equal(package.begin() + 0x4, package.begin() + 0x22C,
+                         before.begin() + 0x4),
+              "rehash after a failed resign keeps the original certificate");
+    }
+
     void testCorruptXdbf()
     {
         namespace fs = std::filesystem;
@@ -352,6 +414,7 @@ int main()
     testLzxGarbage();
     testLzxRegression();
     testCorruptStfsHeaders();
+    testResignFailureLeavesPackageIntact();
     testCorruptXdbf();
     testGarbageImages();
 

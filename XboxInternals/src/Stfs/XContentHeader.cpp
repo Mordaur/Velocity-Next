@@ -672,29 +672,37 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
     calculated = (io->GetPosition() < calculated) ? (DWORD)io->GetPosition() : calculated;
     DWORD realHeaderSize = calculated - headerStart;
 
+    // Parse the keyvault into locals. Nothing here may touch the package or
+    // this object: a wrong or damaged keyvault has to leave the package
+    // byte-for-byte intact, even if the user later rehashes it.
+    Certificate kvCertificate = certificate;
+
     // read the certificate header verbatim (part number + reserved + privileges)
     kvIo.SetPosition(0x9B8 + adder);
-    certificate.publicKeyCertificateSize = kvIo.ReadWord();
-    kvIo.ReadBytes(certificate.ownerConsoleID, 5);
+    kvCertificate.publicKeyCertificateSize = kvIo.ReadWord();
+    kvIo.ReadBytes(kvCertificate.ownerConsoleID, 5);
 
     char tempPartNum[0x15] = {0};
     kvIo.ReadBytes((BYTE*)tempPartNum, 0x11);
-    certificate.ownerConsolePartNumber.assign(tempPartNum, 0x11);
+    kvCertificate.ownerConsolePartNumber.assign(tempPartNum, 0x11);
 
     // console type is a big-endian dword at certificate offset 0x18
     kvIo.SetPosition(0x9B8 + adder + 0x18);
     DWORD consoleType = kvIo.ReadDword();
-    certificate.ownerConsoleType = static_cast<ConsoleType>(consoleType & 3);
-    certificate.consoleTypeFlags = static_cast<ConsoleTypeFlags>(consoleType & 0xFFFFFFFC);
+    kvCertificate.ownerConsoleType = static_cast<ConsoleType>(consoleType & 3);
+    kvCertificate.consoleTypeFlags = static_cast<ConsoleTypeFlags>(consoleType & 0xFFFFFFFC);
+
+    if (kvCertificate.ownerConsoleType != DevKit && kvCertificate.ownerConsoleType != Retail)
+        throw string("XContentHeader: Invalid console type in keyvault.\n");
 
     kvIo.SetPosition(0x9B8 + adder + 0x1C);
     char tempGenDate[9] = {0};
     kvIo.ReadBytes((BYTE*)tempGenDate, 8);
-    certificate.dateGeneration = string(tempGenDate);
+    kvCertificate.dateGeneration = string(tempGenDate);
 
-    certificate.publicExponent = kvIo.ReadDword();
-    kvIo.ReadBytes(certificate.publicModulus, 0x80);
-    kvIo.ReadBytes(certificate.certificateSignature, 0x100);
+    kvCertificate.publicExponent = kvIo.ReadDword();
+    kvIo.ReadBytes(kvCertificate.publicModulus, 0x80);
+    kvIo.ReadBytes(kvCertificate.certificateSignature, 0x100);
 
     // read the keys for signing
     BYTE nData[0x80];
@@ -721,43 +729,61 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
         Botan::AutoSeeded_RNG rng;
         Botan::RSA_PrivateKey pkey(p, q, 0x10001, 0, n);
 
-        // Write the console id
-        io->SetPosition(consoleIDLoc);
-        io->Write(certificate.ownerConsoleID, 5);
+        // Build the new header in memory: patch the console id, hash it, patch
+        // the hash into the signed region and sign that. Writing only after the
+        // signature exists keeps a failed resign from corrupting the package.
+        std::vector<BYTE> headerImage(realHeaderSize);
+        io->SetPosition(headerStart);
+        io->ReadBytes(headerImage.data(), realHeaderSize);
 
-        // read the data to hash
-    std::vector<BYTE> buffer(realHeaderSize);
-    io->SetPosition(headerStart);
-    io->ReadBytes(buffer.data(), realHeaderSize);
+        if (consoleIDLoc < headerStart || consoleIDLoc - headerStart + 5 > realHeaderSize)
+            throw string("XContentHeader: Console id falls outside the package header.\n");
 
-    // hash the header
-    const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
-    sha1->update(buffer.data(), realHeaderSize);
-    sha1->final(headerHash);
+        memcpy(headerImage.data() + (consoleIDLoc - headerStart), kvCertificate.ownerConsoleID, 5);
 
-        io->SetPosition(hashLoc);
-        io->Write(headerHash, 0x14);
+        BYTE newHeaderHash[0x14];
+        const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
+        sha1->update(headerImage.data(), realHeaderSize);
+        sha1->final(newHeaderHash);
 
+        std::vector<BYTE> dataToSign(size);
         io->SetPosition(toSignLoc);
+        io->ReadBytes(dataToSign.data(), size);
 
-    std::vector<BYTE> dataToSign(size);
-    io->ReadBytes(dataToSign.data(), size);
+        // For CON the header hash is inside the signed region; for PEC it sits
+        // before it and is written but not signed.
+        if (hashLoc >= toSignLoc && hashLoc - toSignLoc + 0x14 <= size)
+            memcpy(dataToSign.data() + (hashLoc - toSignLoc), newHeaderHash, 0x14);
 
         Botan::PK_Signer signer(pkey, rng, "EMSA3(SHA-1)");
 
-    auto signature = signer.sign_message(reinterpret_cast<const unsigned char*>(dataToSign.data()), size,
+        auto signature = signer.sign_message(reinterpret_cast<const unsigned char*>(dataToSign.data()), size,
                 rng);
 
-    // 8 byte swap the new signature
-    XeCrypt::BnQw_SwapDwQwLeBe(signature.data(), 0x80);
+        // 8 byte swap the new signature
+        XeCrypt::BnQw_SwapDwQwLeBe(signature.data(), 0x80);
 
         // reverse the new signature every 8 bytes
         for (int i = 0; i < 0x10; i++)
             FileIO::ReverseGenericArray(&signature[i * 8], 1, 8);
 
-        // Write the certficate
-        memcpy(certificate.signature, signature.data(), 0x80);
+        // Everything succeeded: commit the new certificate and header.
+        memcpy(kvCertificate.signature, signature.data(), 0x80);
+        certificate = kvCertificate;
+        memcpy(headerHash, newHeaderHash, 0x14);
+
+        io->SetPosition(consoleIDLoc);
+        io->Write(certificate.ownerConsoleID, 5);
+
+        io->SetPosition(hashLoc);
+        io->Write(headerHash, 0x14);
+
         WriteCertificate();
+        io->Flush();
+    }
+    catch (const string&)
+    {
+        throw;
     }
     catch (const std::exception& e)
     {
