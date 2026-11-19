@@ -83,7 +83,9 @@ else()
     # See if we can heuristically detect the version of botan
     if(EXISTS ${botan_upstream_SOURCE_DIR}/news.rst)
         file(READ ${botan_upstream_SOURCE_DIR}/news.rst BOTAN_NEWSFILE)
-        string(REGEX MATCH "[0-9]\\.[0-9]\\.[0-9]" BOTAN_REPOVERSION "${BOTAN_NEWSFILE}")
+        # Multi-digit components (3.14.1) must match as a whole; the old pattern
+        # stopped at the first single-digit triple it could find in news.rst.
+        string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" BOTAN_REPOVERSION "${BOTAN_NEWSFILE}")
 
         # If user didn't provide a required version
         if(Botan_VERSION_STRING STREQUAL "..")
