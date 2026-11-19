@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <ctime>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -163,6 +164,45 @@ namespace
         buffer[offset + 1] = static_cast<BYTE>(value >> 16);
         buffer[offset + 2] = static_cast<BYTE>(value >> 8);
         buffer[offset + 3] = static_cast<BYTE>(value);
+    }
+
+    void testMSTimeRoundTrip()
+    {
+        // FATX directory entries store FAT-style date/time pairs, and the
+        // helpers are also used for STFS metadata timestamps. The year used to
+        // be offset by -4 and masked with 0xEF, which broke 1996, 2028, 2030:
+        // a year with bit 4 set came back 16 years later.
+        const int years[] = {1980, 1996, 2012, 2024, 2028, 2030, 2044, 2050};
+
+        for (int year : years)
+        {
+            std::tm tm{};
+            tm.tm_year = year - 1900;
+            tm.tm_mon = 5;
+            tm.tm_mday = 15;
+            tm.tm_hour = 13;
+            tm.tm_min = 37;
+            tm.tm_sec = 20;
+            tm.tm_isdst = -1;
+
+            const std::time_t t = std::mktime(&tm);
+            const MSTime back = DWORDToMSTime(MSTimeToDWORD(TimetToMSTime(t)));
+
+            check(back.year == year && back.month == 6 && back.monthDay == 15 &&
+                  back.hours == 13 && back.minutes == 37 && back.seconds == 20,
+                  "MSTime/FAT date-time round-trip");
+        }
+
+        // FAT stores seconds in two-second units: 21 must come back as 20.
+        MSTime odd{};
+        odd.year = 2024;
+        odd.month = 6;
+        odd.monthDay = 15;
+        odd.hours = 13;
+        odd.minutes = 37;
+        odd.seconds = 21;
+        check(DWORDToMSTime(MSTimeToDWORD(odd)).seconds == 20,
+              "FAT timestamp rounds seconds down to two-second units");
     }
 
     void testCorruptStfsHeaders()
@@ -414,6 +454,7 @@ int main()
     testLzxGarbage();
     testLzxRegression();
     testCorruptStfsHeaders();
+    testMSTimeRoundTrip();
     testResignFailureLeavesPackageIntact();
     testCorruptXdbf();
     testGarbageImages();

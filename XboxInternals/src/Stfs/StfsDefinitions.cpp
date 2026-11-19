@@ -95,12 +95,13 @@ XBOXINTERNALS_EXPORT string ByteSizeToString(UINT64 bytes)
 XBOXINTERNALS_EXPORT DWORD MSTimeToDWORD(MSTime time)
 {
     DWORD toReturn = 0;
-    toReturn |= ((time.year - 1980) & 0xEF) << 25;
+    toReturn |= ((time.year - 1980) & 0x7F) << 25;
     toReturn |= (time.month & 0xF) << 21;
     toReturn |= (time.monthDay & 0x1F) << 16;
     toReturn |= (time.hours & 0x1F) << 11;
     toReturn |= (time.minutes & 0x3F) << 5;
-    toReturn |= time.seconds & 0x1F;
+    // FAT-style timestamps store seconds in two-second units.
+    toReturn |= (time.seconds >> 1) & 0x1F;
 
     return toReturn;
 }
@@ -114,7 +115,7 @@ XBOXINTERNALS_EXPORT MSTime DWORDToMSTime(DWORD winTime)
     time.monthDay = (winTime & 0x1F0000) >> 16;
     time.hours = (winTime & 0xF800) >> 11;
     time.minutes = (winTime & 0x7E0) >> 5;
-    time.seconds = winTime & 0x1F;
+    time.seconds = (winTime & 0x1F) * 2;
 
     return time;
 }
@@ -124,7 +125,7 @@ XBOXINTERNALS_EXPORT MSTime TimetToMSTime(time_t time)
     struct tm *timeInfo = localtime(&time);
 
     MSTime toReturn;
-    toReturn.year = timeInfo->tm_year - 4;
+    toReturn.year = timeInfo->tm_year + 1900;
     toReturn.month = timeInfo->tm_mon + 1;
     toReturn.monthDay = timeInfo->tm_mday;
     toReturn.hours = timeInfo->tm_hour;

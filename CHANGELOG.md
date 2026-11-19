@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### 🕒 FATX
+
+- Written file timestamps match the console codec again. The FAT date/time
+  encoder used `tm_year - 4` and masked the year with `0xEF`, so years whose
+  `(year - 1980)` has bit 4 set (1996, 2028, 2030, ...) were stored and read
+  back 16 years later; it also wrote plain seconds where the kernel stores
+  two-second units. The encoder/decoder now match `FatxFatTimestampToTime` /
+  `FatxTimeToFatTimestamp` (and the identical STFS pair), verified against the
+  16547 kernel and covered by a 1980..2050 round-trip test in
+  `tests/smoke.cpp`.
+
 ### 🧩 XEX
 
 - The LZX decoder takes the window size from the XEX base-file descriptor
