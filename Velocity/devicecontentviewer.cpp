@@ -880,8 +880,13 @@ void DeviceContentViewer::startContentLoad(const QList<XContentDevice *> &candid
 
 void DeviceContentViewer::setScanning(bool scanning)
 {
-    if (scanning == scanOverlay->isVisible())
+    // Track the state ourselves: while the dialog is hidden or minimised
+    // scanOverlay->isVisible() is false even after show(), so comparing
+    // against it could skip the matching hide() and leave the bar running.
+    if (scanning == this->scanning)
         return;
+
+    this->scanning = scanning;
 
     if (scanning)
     {
@@ -897,6 +902,7 @@ void DeviceContentViewer::setScanning(bool scanning)
     else
     {
         scanOverlay->hide();
+        scanOverlay->lower();
 
         progressBar->setVisible(false);
         progressBar->reset();

@@ -59,6 +59,11 @@ private:
     Ui::DeviceContentViewer *ui;
     QFutureWatcher<QList<XContentDevice *>> *loadWatcher = nullptr;
     QLabel *scanOverlay = nullptr;
+    // Drives the overlay/busy bar explicitly. Comparing against
+    // scanOverlay->isVisible() was wrong whenever the dialog itself was hidden
+    // (minimised, or detection arriving while it is not on screen): the hide
+    // branch then returned early, leaving the busy bar running.
+    bool scanning = false;
     QList<XContentDevice *> queuedContent;
     QStatusBar *statusBar;
     QList<XContentDevice*> devices;

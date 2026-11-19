@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### 🔑 KeyVault
+
+- A failed resign no longer damages the package. The certificate, header hash
+  and signature are built in memory and only written once signing succeeds; a
+  wrong or unusable keyvault now throws with the file untouched. Previously the
+  failed resign left the rejected keyvault's empty certificate in memory, the
+  next rehash wrote it to disk, and the package could no longer be opened
+  (`STFS: Invalid console type`).
+- Cancelling the keyvault picker in the Package Viewer reports
+  "No KeyVault ... the package was not resigned" instead of announcing a
+  successful rehash.
+
+### 🔍 Device Content Viewer
+
+- The "Scanning for content..." overlay and the busy bar track their own state,
+  so opening the viewer while it is hidden or minimised no longer leaves them
+  running.
+
 ## Velocity-Next v0.3.2 - 2026-11-18
 
 ### 🐞 Extraction

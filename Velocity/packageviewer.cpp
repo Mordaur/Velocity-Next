@@ -279,24 +279,13 @@ void PackageViewer::on_btnFix_clicked()
                 "Failed to rehash the package.\n\n" + QString::fromStdString(error));
     }
 
-    if (package->metaData->magic == CON || package->IsPEC())
+    if (success && (package->metaData->magic == CON || package->IsPEC()))
     {
-        try
-        {
-            string path = QtHelpers::GetKVPath(package->metaData->certificate.ownerConsoleType, this);
-
-            if (path != "")
-            {
-                package->Resign(path);
-                resigned = true;
-            }
-        }
-        catch (string error)
-        {
-            success = false;
-            QMessageBox::critical(this, "Error",
-                    "Failed to resign the package.\n\n" + QString::fromStdString(error));
-        }
+        // ResignWithKV warns when the picker is cancelled or the chosen file is
+        // not a keyvault, and reports backend failures itself.
+        resigned = QtHelpers::ResignWithKV(package->metaData->certificate.ownerConsoleType, this,
+                [&](const std::string &kv) { package->Resign(kv); });
+        success = resigned;
     }
 
     if (success)
@@ -305,6 +294,12 @@ void PackageViewer::on_btnFix_clicked()
         statusBar->showMessage("Rehashed" + resignedStr + " successfully", 3000);
         QMessageBox::information(this, "Success",
                 "The package has successfully been rehashed" + resignedStr + ".");
+    }
+    else if (package->metaData->magic == CON || package->IsPEC())
+    {
+        // The rehash itself was applied, but the package was not resigned; do
+        // not claim a full success.
+        statusBar->showMessage("Rehashed, not resigned", 3000);
     }
 }
 
