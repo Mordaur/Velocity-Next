@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### 🧩 XEX
+
+- The LZX decoder takes the window size from the XEX base-file descriptor
+  instead of assuming 32 KiB. Retail 17559 `xam.xex` and `dash.xex` use a 1 MiB
+  window and 42 position slots (instead of 30); they now decompress to valid
+  PE32 images, verified byte-for-byte against an independent decoder.
+
+### 🧍 Avatar assets
+
+- Creating an avatar award package no longer fails at the final rehash. The
+  creation, theme, gamer-picture and profile wizards now use the new
+  `StfsPackage::RebuildHashes()`, which is also allowed for the LIVE/PIRS
+  packages we create ourselves; `Rehash()` keeps refusing retail LIVE/PIRS
+  content so its signature is never silently invalidated.
+- The package skeleton version now reports "both" when both asset versions are
+  injected, instead of always "Natal". The per-asset value inside the STRB is
+  unchanged and remains the value the SDK and the console validate.
+
 ### 🔑 KeyVault
 
 - A failed resign no longer damages the package. The certificate, header hash
