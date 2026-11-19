@@ -25,13 +25,13 @@ namespace
     // precomputes base - 2 in its context (ctx+3016, see sub_801589F8).
     struct PositionBaseTable
     {
-        DWORD base[XexLzxDecoder::NumPositionSlots];
+        DWORD base[XexLzxDecoder::MaxNumPositionSlots];
 
         constexpr PositionBaseTable() : base()
         {
             DWORD sum = 0;
 
-            for (DWORD i = 0; i < XexLzxDecoder::NumPositionSlots; i++)
+            for (DWORD i = 0; i < XexLzxDecoder::MaxNumPositionSlots; i++)
             {
                 base[i] = sum;
                 sum += 1u << ExtraBits(static_cast<int>(i));
@@ -214,7 +214,9 @@ int XexLzxDecoder::Huffman::Decode(BitReader &bits) const
 // Decoder
 // ---------------------------------------------------------------------------
 XexLzxDecoder::XexLzxDecoder() :
-    window(), windowPosition(0), totalOutput(0), repeatOffsets(), mainCodeLengths(),
+    window(DefaultWindowSize, 0), windowSize(DefaultWindowSize), windowMask(DefaultWindowSize - 1),
+    numPositionSlots(30), mainSymbols(256 + 8 * 30), windowPosition(0), totalOutput(0),
+    repeatOffsets(), mainCodeLengths(),
     lengthCodeLengths(), alignedCodeLengths(), mainTree(), lengthTree(), alignedTree(),
     blockType(0), previousBlockType(0), blockLength(0), blockRemaining(0), previousBlockLength(0),
     headerRead(false), intelStarted(false), intelFileSize(0), chunkCount(0),
@@ -225,9 +227,47 @@ XexLzxDecoder::XexLzxDecoder() :
     repeatOffsets[2] = 1;
 }
 
+void XexLzxDecoder::SetWindowSize(DWORD bytes)
+{
+    if (bytes < DefaultWindowSize || bytes > MaxWindowSize || (bytes & (bytes - 1)) != 0)
+        Throw("Invalid LZX window size.");
+
+    DWORD bits = 0;
+    while ((1u << bits) < bytes)
+        ++bits;
+
+    DWORD slots;
+    switch (bits)
+    {
+        case 15: slots = 30; break;
+        case 16: slots = 32; break;
+        case 17: slots = 34; break;
+        case 18: slots = 36; break;
+        case 19: slots = 38; break;
+        case 20:
+        case 21: slots = 42; break;
+        default:
+            Throw("Unsupported LZX window size.");
+    }
+
+    windowSize = bytes;
+    windowMask = bytes - 1;
+    numPositionSlots = slots;
+    mainSymbols = 256 + 8 * slots;
+
+    // A size change invalidates any partially decoded history.
+    window.assign(bytes, 0);
+    windowPosition = 0;
+}
+
+DWORD XexLzxDecoder::GetWindowSize() const
+{
+    return windowSize;
+}
+
 void XexLzxDecoder::Reset()
 {
-    window.fill(0);
+    window.assign(windowSize, 0);
     windowPosition = 0;
     totalOutput = 0;
 
@@ -311,7 +351,7 @@ void XexLzxDecoder::DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBu
 
         if (blockType == 3)
         {
-            if (windowPosition + toProduce > WindowSize)
+            if (windowPosition + toProduce > windowSize)
                 Throw("stored block crosses the frame boundary");
 
             const size_t sourceOffset = bits.GetConsumedBytes();
@@ -343,7 +383,7 @@ void XexLzxDecoder::DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBu
     lastConsumedBytes = bits.GetConsumedBytes();
     lastLeftoverBits = bits.GetLeftoverBits();
 
-    if (windowPosition == WindowSize)
+    if (windowPosition == windowSize)
         windowPosition = 0;
 }
 
@@ -397,9 +437,9 @@ void XexLzxDecoder::ReadBlockHeader(BitReader &bits)
     if (blockType == 1 || blockType == 2)
     {
         ReadCodeLengths(bits, mainCodeLengths.data(), 0, 256);
-        ReadCodeLengths(bits, mainCodeLengths.data(), 256, static_cast<int>(mainCodeLengths.size()));
+        ReadCodeLengths(bits, mainCodeLengths.data(), 256, static_cast<int>(mainSymbols));
 
-        if (!mainTree.Build(mainCodeLengths.data(), static_cast<int>(mainCodeLengths.size())))
+        if (!mainTree.Build(mainCodeLengths.data(), static_cast<int>(mainSymbols)))
             Throw("invalid main tree");
 
         if (mainTree.empty)
@@ -433,7 +473,7 @@ void XexLzxDecoder::ReadBlockHeader(BitReader &bits)
                                    (static_cast<DWORD>(entry[2]) << 8) |
                                    static_cast<DWORD>(entry[3]);
 
-                if (repeatOffsets[i] > WindowSize)
+                if (repeatOffsets[i] > windowSize)
                     Throw("stored block repeated offset out of range");
             }
         }
@@ -520,7 +560,7 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
 
         if (symbol < 256)
         {
-            if (windowPosition >= WindowSize)
+            if (windowPosition >= windowSize)
                 Throw("literal past the frame boundary");
 
             window[windowPosition++] = static_cast<BYTE>(symbol);
@@ -549,7 +589,7 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
             Throw("match length out of range");
 
         const int slot = element >> 3;
-        if (slot >= static_cast<int>(NumPositionSlots))
+        if (slot >= static_cast<int>(numPositionSlots))
             Throw("position slot out of range");
 
         DWORD matchOffset;
@@ -596,20 +636,20 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
             repeatOffsets[0] = matchOffset;
         }
 
-        if (matchOffset == 0 || matchOffset > WindowSize)
+        if (matchOffset == 0 || matchOffset > windowSize)
             Throw("match offset out of range");
 
-        if (windowPosition + matchLength > WindowSize)
+        if (windowPosition + matchLength > windowSize)
             Throw("match crosses the frame boundary");
 
         // Overlapping copies are byte-by-byte; the source is masked per byte,
         // which is the equivalent of the kernel's 261-byte window mirror.
-        const DWORD source = (windowPosition - matchOffset) & (WindowSize - 1);
+        const DWORD source = (windowPosition - matchOffset) & windowMask;
 
         for (DWORD i = 0; i < matchLength; i++)
         {
-            window[(windowPosition + i) & (WindowSize - 1)] =
-                window[(source + i) & (WindowSize - 1)];
+            window[(windowPosition + i) & windowMask] =
+                window[(source + i) & windowMask];
         }
 
         windowPosition += matchLength;

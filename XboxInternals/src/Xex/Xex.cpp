@@ -1052,6 +1052,10 @@ void Xex::ExtractCompressedData(std::string path)
     }
 
     XexLzxDecoder decoder;
+    // The base-file descriptor's blockSize is the LZX window size: dashboard
+    // binaries (xam.xex, dash.xex) declare 1 MiB, which needs 42 position
+    // slots instead of the 30 used by the 32 KiB XEXs.
+    decoder.SetWindowSize(compressedBlockSize);
 
     std::vector<BYTE> block;
     std::vector<BYTE> chunkOutput(XexLzxDecoder::FrameSize);

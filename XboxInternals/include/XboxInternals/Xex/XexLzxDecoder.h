@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 /* LZX decoder for XEX compression type 2 ("XCompress"/"basic" compression,
  * XexpLoadCompressedImage 0x800A5938).
@@ -29,11 +30,20 @@
 class XBOXINTERNALS_EXPORT XexLzxDecoder
 {
 public:
-    static constexpr DWORD WindowSize = 0x8000;
+    static constexpr DWORD DefaultWindowSize = 0x8000;
+    static constexpr DWORD MaxWindowSize = 0x200000; // LZX limit: 21 window bits
     static constexpr DWORD FrameSize = 0x8000;
-    static constexpr DWORD NumPositionSlots = 30;
+    static constexpr DWORD MaxNumPositionSlots = 50;
+    static constexpr int MaxMainSymbols = 256 + 8 * static_cast<int>(MaxNumPositionSlots);
 
     XexLzxDecoder();
+
+    // Set the LZX window size from the XEX base-file descriptor's blockSize.
+    // The frame size stays 0x8000; only the history window and the position
+    // slot count change (16 -> 32 slots, 20 -> 42 slots, ...). Call before the
+    // first DecodeChunk(); a different size after that is a programming error.
+    void SetWindowSize(DWORD bytes);
+    DWORD GetWindowSize() const;
 
     // Forget all decode state (start of a new image).
     void Reset();
@@ -79,7 +89,7 @@ private:
     struct Huffman
     {
         static constexpr int MaxCodeLength = 16;
-        static constexpr int MaxSymbols = 496;
+        static constexpr int MaxSymbols = MaxMainSymbols;
 
         Huffman();
 
@@ -98,13 +108,17 @@ private:
     void DecodeSymbols(BitReader &bits, size_t end, size_t &produced);
     void ApplyE8Translation(BYTE *data, size_t length);
 
-    std::array<BYTE, WindowSize> window;
+    std::vector<BYTE> window;
+    DWORD windowSize;
+    DWORD windowMask;
+    DWORD numPositionSlots;
+    DWORD mainSymbols;
     DWORD windowPosition;
     UINT64 totalOutput;
 
     DWORD repeatOffsets[3];
 
-    std::array<BYTE, Huffman::MaxSymbols> mainCodeLengths;
+    std::array<BYTE, MaxMainSymbols> mainCodeLengths;
     std::array<BYTE, 249> lengthCodeLengths;
     std::array<BYTE, 8> alignedCodeLengths;
 
