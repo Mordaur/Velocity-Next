@@ -107,6 +107,12 @@ public:
     // Description: fix all the hashes used in the file
     void Rehash();
 
+    // Description: same as Rehash(), but also for LIVE/PIRS packages this
+    // application created itself (e.g. avatar assets for a JTAG/RGH console).
+    // Their 0x100-byte package signature cannot be recomputed, so this
+    // invalidates it by design; never use it on retail content.
+    void RebuildHashes();
+
     // Description: reload the top hash table from disk after Rehash/Resign operations
     void ReloadHashTable();
 

@@ -192,7 +192,7 @@ void CreationWizard::onFinished(int status)
         package.metaData->WriteMetaData();
 
         // fix the pacakge
-        package.Rehash();
+        package.RebuildHashes();
         if (package.metaData->magic == CON)
             QtHelpers::ResignWithKV(package.metaData->certificate.ownerConsoleType, this,
                     [&package](const std::string &kv) { package.Resign(kv); });

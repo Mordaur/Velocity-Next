@@ -460,7 +460,7 @@ void GamerPicturePackDialog::on_btnCreatePack_clicked()
         }
 
         // fix the package
-        picturePack.Rehash();
+        picturePack.RebuildHashes();
         QtHelpers::ResignWithKV(Retail, this,
                 [&picturePack](const std::string &kv) { picturePack.Resign(kv); });
 

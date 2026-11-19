@@ -212,7 +212,7 @@ void ProfileCleanerWizard::clean()
     qDebug() << "Deletion complete";
 
     // fix the profile
-    newProfile.Rehash();
+    newProfile.RebuildHashes();
     QtHelpers::ResignWithKV(newProfile.metaData->certificate.ownerConsoleType, this,
             [&newProfile](const std::string &kv) { newProfile.Resign(kv); });
 

@@ -982,9 +982,16 @@ void StfsPackage::Rehash()
     // Rehash rewrites the header hash. LIVE/PIRS packages carry a 0x100-byte
     // package signature over that hash which cannot be recomputed without
     // Microsoft's key, so the operation would silently invalidate the package.
+    // Packages we created ourselves (avatar assets for a JTAG/RGH console) use
+    // RebuildHashes() instead, which is allowed to invalidate that signature.
     if (metaData->magic != CON && (flags & StfsPackagePEC) == 0)
         throw string("STFS: Rehash is only supported for console-signed (CON) packages.\n");
 
+    RebuildHashes();
+}
+
+void StfsPackage::RebuildHashes()
+{
     // Invalidate the cached hash table since we're rebuilding everything
     cached.trueBlockNumber = 0xFFFFFFFF;
     

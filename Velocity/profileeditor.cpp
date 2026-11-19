@@ -608,7 +608,18 @@ void ProfileEditor::onAssetsDoneDownloading()
         newAsset.metaData->colorizable = award->colorizable;
         QtHelpers::ParseHexStringBuffer(downloader->GetGUID().replace("-", "").toUpper(),
                                         newAsset.metaData->guid, 0x10);
-        newAsset.metaData->skeletonVersion = (downloader->GetV2TempPath() != "") ? Natal : Nxe;
+
+        // The header describes the assets actually injected: a v1 asset is NXE,
+        // a v2 asset is Natal, and both at once is NxeAndNatal (3), matching
+        // retail LIVE packages. The STRB keeps its own per-asset value; this
+        // byte is only the package-level hint.
+        const bool hasV1 = !downloader->GetV1TempPath().isEmpty();
+        const bool hasV2 = !downloader->GetV2TempPath().isEmpty();
+        if (!hasV1 && !hasV2)
+            throw string("The avatar asset download produced no asset files.");
+
+        newAsset.metaData->skeletonVersion =
+                (hasV1 && hasV2) ? NxeAndNatal : (hasV2 ? Natal : Nxe);
         newAsset.metaData->WriteMetaData();
 
         try
@@ -650,7 +661,10 @@ void ProfileEditor::onAssetsDoneDownloading()
         }
         newAsset.metaData->titleThumbnailImageSize = static_cast<DWORD>(newAsset.metaData->titleThumbnailImage.size());
 
-        newAsset.Rehash();
+        // We created this package ourselves, so rebuilding the hashes is safe
+        // even though PIRS signatures cannot be recomputed; Rehash() would
+        // refuse and leave the file with a stale header hash.
+        newAsset.RebuildHashes();
 
         delete downloader;
 

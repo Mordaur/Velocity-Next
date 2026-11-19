@@ -75,7 +75,7 @@ void ThemeCreationWizard::onFinished(int status)
     theme->metaData->titleThumbnailImageSize = static_cast<DWORD>(theme->metaData->titleThumbnailImage.size());
 
         theme->metaData->WriteMetaData();
-        theme->Rehash();
+        theme->RebuildHashes();
 
         // inject the wallpapers
         injectImage(theme, &wallpaper1, "Wallpaper1");
@@ -114,7 +114,7 @@ void ThemeCreationWizard::onFinished(int status)
         theme->InjectFile(dashStyleFilePath.toStdString(), "DashStyle");
 
         // fix the package
-        theme->Rehash();
+        theme->RebuildHashes();
         QtHelpers::ResignWithKV(theme->metaData->certificate.ownerConsoleType, this,
                 [theme](const std::string &kv) { theme->Resign(kv); });
 
