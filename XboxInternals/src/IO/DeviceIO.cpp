@@ -17,6 +17,7 @@
 #include <winioctl.h>
 #else
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #if __APPLE__
@@ -340,7 +341,7 @@ UINT64 DeviceIO::Length()
     DWORD bytesReturned;
 
     memset(&geometry, 0, sizeof(DISK_GEOMETRY));
-    DeviceIoControl(
+    const BOOL geometryOk = DeviceIoControl(
         impl->deviceHandle,			// Device to get the geometry from
         IOCTL_DISK_GET_DRIVE_GEOMETRY,	// Action we're taking (getting the geometry)
         NULL,							// Not used since this requires no input data
@@ -354,17 +355,35 @@ UINT64 DeviceIO::Length()
             geometry.Cylinders.LowPart; // Convert the BIG_INTEGER to UINT64
     length = cylinders * (UINT64)geometry.TracksPerCylinder	* (UINT64)geometry.SectorsPerTrack *
              (UINT64)geometry.BytesPerSector;
+
+    // The geometry ioctl fails for a regular file; fall back to its size so an
+    // image file can be used as a device.
+    if (!geometryOk || length == 0)
+    {
+        LARGE_INTEGER fileSize;
+        if (GetFileSizeEx(impl->deviceHandle, &fileSize))
+            length = (UINT64)fileSize.QuadPart;
+    }
 #else
     UINT64 numberOfSectors = 0;
     int device = impl->device;
 
-    ioctl(device, SECTOR_COUNT, &numberOfSectors);
+    const int countResult = ioctl(device, SECTOR_COUNT, &numberOfSectors);
 
     UINT64 sectorSize = 0;
-    ioctl(device, SECTOR_SIZE, &sectorSize);
+    const int sizeResult = ioctl(device, SECTOR_SIZE, &sectorSize);
 
     // calculate the length in bytes
     length = (UINT64)numberOfSectors * (UINT64)sectorSize;
+
+    // Block ioctls fail on a regular file; fall back to its size so an image
+    // file can be used as a device.
+    if (countResult != 0 || sizeResult != 0 || length == 0)
+    {
+        struct stat st;
+        if (fstat(device, &st) == 0 && S_ISREG(st.st_mode))
+            length = (UINT64)st.st_size;
+    }
 #endif
 
     return length;

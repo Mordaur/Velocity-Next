@@ -1,6 +1,7 @@
 #include <XboxInternals/Account/Account.h>
 
 #include <cstdlib>
+#include <botan_all.h>
 
 namespace
 {

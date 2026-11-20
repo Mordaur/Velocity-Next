@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### 🧱 Build and IO
+
+- `DeviceIO::Length()` now falls back to the file size when the block-geometry
+  ioctl fails, so an image file can be used as a device without a loop device
+  (`fstat` on POSIX, `GetFileSizeEx` on Windows).
+- `Account.h` no longer includes `<botan_all.h>`; the public header compiles
+  without the Botan build include path.
+
 ### 📦 STFS
 
 - Package name lookup now mirrors the kernel: `StfsLookupElementNameInDirectory`

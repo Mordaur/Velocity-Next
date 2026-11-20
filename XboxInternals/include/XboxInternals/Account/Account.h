@@ -11,9 +11,6 @@
 #include <XboxInternals/Gpd/XdbfDefinitions.h>
 #include <XboxInternals/Stfs/StfsConstants.h>
 
-// botan
-#include <botan_all.h>
-
 #include <XboxInternals/Export.h>
 
 using std::string;
