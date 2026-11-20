@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### 📦 STFS
+
+- Package name lookup now mirrors the kernel: `StfsLookupElementNameInDirectory`
+  uses `IoIsNameInExpression`, so matching is case-insensitive and accepts
+  `*`/`?`. Internal lookups (`GetFileEntry`, `FileExists`, directory listing)
+  use the new `StfsPackage::MatchesFileName`.
+- Added the kernel's block geometry inverse,
+  `StfsPackage::ComputeNumberOfDataBlocks` (and
+  `ComputeAllocatedBlocksForSize`), matching `StfsComputeNumberOfDataBlocks`
+  for male volumes; the kernel skips this conversion for female volumes.
+
 ### 🕒 FATX
 
 - Written file timestamps match the console codec again. The FAT date/time

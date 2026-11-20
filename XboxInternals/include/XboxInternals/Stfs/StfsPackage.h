@@ -104,6 +104,18 @@ public:
     // Description: check if the file exists
     bool FileExists(string pathInPackage);
 
+    // Description: case-insensitive name match with '*' and '?', mirroring the
+    // kernel's IoIsNameInExpression use in StfsLookupElementNameInDirectory.
+    static bool MatchesFileName(const std::string &pattern, const std::string &name);
+
+    // Description: number of 4 KiB data blocks that fit in a block budget once
+    // STFS hash blocks are reserved (kernel StfsComputeNumberOfDataBlocks,
+    // male volumes; the kernel skips the inverse for female volumes).
+    static DWORD ComputeNumberOfDataBlocks(UINT64 blocks);
+
+    // Description: ceil(sizeBytes / 0x1000) run through ComputeNumberOfDataBlocks.
+    static DWORD ComputeAllocatedBlocksForSize(UINT64 sizeBytes);
+
     // Description: fix all the hashes used in the file
     void Rehash();
 

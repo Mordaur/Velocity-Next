@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <memory>
+#include <cctype>
 #include <iostream>
 #include <iomanip>
 #include <unordered_set>
@@ -790,7 +791,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
     {
         // find the file
         for (DWORD i = 0; i < start->fileEntries.size(); i++)
-            if (start->fileEntries.at(i).name == locationOfFile.at(0))
+            if (MatchesFileName(locationOfFile.at(0), start->fileEntries.at(i).name))
             {
                 // update the entry
                 if (updateEntry)
@@ -812,7 +813,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
         {
             // find the file
             for (DWORD i = 0; i < start->folderEntries.size(); i++)
-                if (start->folderEntries.at(i).folder.name == locationOfFile.at(0))
+                if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name))
                 {
                     // update the entry
                     if (updateEntry)
@@ -834,7 +835,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
     {
         // find the next folder
         for (DWORD i = 0; i < start->folderEntries.size(); i++)
-            if (start->folderEntries.at(i).folder.name == locationOfFile.at(0))
+            if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name))
             {
                 // erase the found folder from the vector
                 locationOfFile.erase(locationOfFile.begin());
@@ -1772,7 +1773,7 @@ void StfsPackage::FindDirectoryListing(vector<string> locationOfDirectory, StfsF
     bool finalLoop = (locationOfDirectory.size() == 1);
     for (DWORD i = 0; i < start->folderEntries.size(); i++)
     {
-        if (start->folderEntries.at(i).folder.name == locationOfDirectory.at(0))
+        if (MatchesFileName(locationOfDirectory.at(0), start->folderEntries.at(i).folder.name))
         {
             locationOfDirectory.erase(locationOfDirectory.begin());
             if (finalLoop)
@@ -2334,4 +2335,76 @@ StfsPackage::~StfsPackage(void)
     Cleanup();
 }
 
+bool StfsPackage::MatchesFileName(const std::string &pattern, const std::string &name)
+{
+    // Kernel StfsLookupElementNameInDirectory compares with
+    // IoIsNameInExpression(..., TRUE): case-insensitive, '*' and '?'.
+    const auto lower = [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); };
 
+    size_t p = 0, n = 0;
+    size_t star = std::string::npos;
+    size_t mark = 0;
+
+    while (n < name.size())
+    {
+        if (p < pattern.size() && (pattern[p] == '?' || lower(pattern[p]) == lower(name[n])))
+        {
+            ++p;
+            ++n;
+        }
+        else if (p < pattern.size() && pattern[p] == '*')
+        {
+            star = p++;
+            mark = n;
+        }
+        else if (star != std::string::npos)
+        {
+            p = star + 1;
+            n = ++mark;
+        }
+        else
+            return false;
+    }
+
+    while (p < pattern.size() && pattern[p] == '*')
+        ++p;
+
+    return p == pattern.size();
+}
+
+DWORD StfsPackage::ComputeNumberOfDataBlocks(UINT64 blocks)
+{
+    // Kernel StfsComputeNumberOfDataBlocks (xboxkrnl 16547, 0x800DFA40). The
+    // 0xAC/0x723A steps are the male volume geometry; the kernel does not run
+    // this conversion for female volumes.
+    if (blocks >= 0x4BDA85ULL)
+        return 0x4AF768;
+
+    DWORD n = static_cast<DWORD>(blocks);
+
+    if (n >= 0x723A)
+    {
+        n = (n <= 0x7240) ? 0x723A : n - 2;
+
+        DWORD remainder = n % 0x723A;
+        if (remainder <= 4)
+            n -= remainder;
+
+        n -= 2 * ((n + 0x7239) / 0x723A);
+    }
+    else if (n >= 0xAC)
+    {
+        n = (n <= 0xB0) ? 0xAC : n - 2;
+    }
+
+    DWORD remainder = n % 0xAC;
+    if (remainder <= 2)
+        n -= remainder;
+
+    return n - 2 * ((n + 0xAB) / 0xAC);
+}
+
+DWORD StfsPackage::ComputeAllocatedBlocksForSize(UINT64 sizeBytes)
+{
+    return ComputeNumberOfDataBlocks((sizeBytes + 0xFFF) / 0x1000);
+}

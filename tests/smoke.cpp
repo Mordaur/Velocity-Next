@@ -166,6 +166,39 @@ namespace
         buffer[offset + 3] = static_cast<BYTE>(value);
     }
 
+    void testStfsNameMatchingAndGeometry()
+    {
+        // Kernel StfsLookupElementNameInDirectory uses IoIsNameInExpression
+        // with ignore-case: '*' and '?' patterns, case-insensitive.
+        check(StfsPackage::MatchesFileName("SAVEGAME.BIN", "savegame.bin"),
+              "STFS name match is case-insensitive");
+        check(StfsPackage::MatchesFileName("*.bin", "SaveGame.BIN"),
+              "STFS name match supports '*'");
+        check(StfsPackage::MatchesFileName("s?ve*", "savegame.bin"),
+              "STFS name match supports '?'");
+        check(!StfsPackage::MatchesFileName("save", "savegame.bin"),
+              "STFS name match requires the whole name");
+        check(!StfsPackage::MatchesFileName("a?c", "ac"),
+              "STFS '?' requires one character");
+        check(StfsPackage::MatchesFileName("*", ""), "STFS '*' matches empty");
+
+        // Kernel StfsComputeNumberOfDataBlocks (male geometry, 0x800DFA40).
+        struct Case { UINT64 blocks; DWORD expected; };
+        const Case cases[] = {
+            {0x0, 0x0}, {0xAA, 0xA8}, {0xAC, 0xAA}, {0x723A, 0x70E4},
+            {0xE000, 0xDD5E}, {0x4AF767, 0x4A16EF}, {0x4AF768, 0x4A16F0},
+            {0x4BDA85, 0x4AF768}, {0x100000, 0xFD016},
+        };
+        for (const auto &c : cases)
+        {
+            check(StfsPackage::ComputeNumberOfDataBlocks(c.blocks) == c.expected,
+                  "STFS data-block geometry matches the kernel formula");
+        }
+
+        check(StfsPackage::ComputeAllocatedBlocksForSize(0x1000ull * 0xAC) == 0xAA,
+              "STFS size helper rounds up to 4 KiB blocks");
+    }
+
     void testMSTimeRoundTrip()
     {
         // FATX directory entries store FAT-style date/time pairs, and the
@@ -455,6 +488,7 @@ int main()
     testLzxRegression();
     testCorruptStfsHeaders();
     testMSTimeRoundTrip();
+    testStfsNameMatchingAndGeometry();
     testResignFailureLeavesPackageIntact();
     testCorruptXdbf();
     testGarbageImages();
