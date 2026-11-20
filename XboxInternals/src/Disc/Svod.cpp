@@ -36,6 +36,17 @@ bool SvodNameEquals(const std::string &a, const std::string &b)
 
     return true;
 }
+
+bool SvodIsEnhanced(const XContentHeader &header)
+{
+    return XboxInternals::SvodLayout::IsEnhanced(header.svodVolumeDescriptor.flags);
+}
+
+DWORD SvodDataBlockOffset(const XContentHeader &header)
+{
+    return XboxInternals::SvodLayout::DataBlockOffset(
+            header.svodVolumeDescriptor.dataBlockOffset, SvodIsEnhanced(header));
+}
 } // namespace
 
 std::vector<std::string> SVOD::GetDataFilePaths(const std::string &rootDescriptorPath)
@@ -79,9 +90,18 @@ SVOD::SVOD(string rootPath, FatxDrive *drive, bool readFileListing)
     metaDataOwner = std::make_unique<XContentHeader>(rootFile.get());
     metaData = metaDataOwner.get();
 
-    const bool enhanced = metaData->svodVolumeDescriptor.flags != 0;
-    baseAddress = enhanced ? 0x2000 : 0x12000;
-    offset = enhanced ? 0x2000 : 0x1000;
+    const bool enhanced = SvodIsEnhanced(*metaData);
+    const DWORD dataBlockOffset = SvodDataBlockOffset(*metaData);
+
+    // SvodRead reads volume block 16 after the dataBlockOffset/enhanced shift,
+    // except for enhanced packages whose prefix covers it: those alias it onto
+    // data block 0.
+    DWORD headerBlock = 0;
+    if (!XboxInternals::SvodLayout::GdfHeaderBlock(dataBlockOffset, enhanced, &headerBlock))
+        throw string("SVOD: The GDF volume descriptor is inside the skipped prefix.\n");
+
+    baseAddress = static_cast<DWORD>(XboxInternals::SvodLayout::DataBlockAddress(headerBlock));
+    offset = static_cast<DWORD>(XboxInternals::SvodLayout::DataBlockAddress(0));
 
     if (metaData->fileSystem != FileSystemSVOD)
         throw string("SVOD: Invalid file system header.\n");
@@ -140,10 +160,8 @@ void SVOD::Resign(string kvPath)
 
 void SVOD::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex)
 {
-    if (!XboxInternals::SvodLayout::Map(sector,
-            metaData->svodVolumeDescriptor.dataBlockOffset,
-            metaData->svodVolumeDescriptor.flags != 0,
-            addressInDataFile, dataFileIndex))
+    if (!XboxInternals::SvodLayout::Map(sector, SvodDataBlockOffset(*metaData),
+            SvodIsEnhanced(*metaData), addressInDataFile, dataFileIndex))
         throw string("SVOD: Sector outside the data volume.\n");
 }
 
@@ -203,8 +221,8 @@ void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT6
         return;
     }
 
-    const bool enhanced = metaData->svodVolumeDescriptor.flags != 0;
-    const DWORD dataBlockOffset = metaData->svodVolumeDescriptor.dataBlockOffset;
+    const bool enhanced = SvodIsEnhanced(*metaData);
+    const DWORD dataBlockOffset = SvodDataBlockOffset(*metaData);
 
     io->SetEndian(LittleEndian);
     UINT64 offset = 0;
@@ -399,7 +417,12 @@ bool SVOD::VerifyRoot()
 
 bool SVOD::Verify()
 {
-    const DWORD totalDataBlocks = metaData->svodVolumeDescriptor.dataBlockCount;
+    // SvodCreateDevice counts dataBlockCount + 1 data blocks for enhanced
+    // packages: data block 0 holds the GDF descriptor copy when the skipped
+    // prefix covers volume block 16.
+    const bool enhanced = SvodIsEnhanced(*metaData);
+    const DWORD totalDataBlocks = metaData->svodVolumeDescriptor.dataBlockCount +
+            (enhanced ? 1 : 0);
     const DWORD partCount = metaData->dataFileCount;
     constexpr DWORD blocksPerPart = 41412;
     constexpr DWORD blocksPerGroup = 204;

@@ -10,6 +10,20 @@
 - `Account.h` no longer includes `<botan_all.h>`; the public header compiles
   without the Botan build include path.
 
+### 💿 SVOD / GOD
+
+- Enhanced packages are detected by flag bit `0x40` again (the kernel rejects
+  bits 0..5 and treats `0x80` as down-level-only), `dataBlockOffset` is a
+  single byte unless the package is enhanced, and the one-block shift is
+  applied before the data-block index is split into parts. A package whose
+  skipped prefix covers the GDF volume descriptor now uses the kernel's alias
+  (volume block 16 -> data block 0); previously the whole enhanced mapping
+  drifted by one block at every 204-block group and part boundary.
+- The GDF volume descriptor is located from `dataBlockOffset` and the enhanced
+  flag instead of being hardcoded at `0x12000`/`0x2000`, and `SvodIO` sizes its
+  contiguous reads from the level-0 hash-block stride rather than a per-part
+  data-start constant.
+
 ### 📦 STFS
 
 - Package name lookup now mirrors the kernel: `StfsLookupElementNameInDirectory`

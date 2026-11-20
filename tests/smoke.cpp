@@ -8,6 +8,7 @@
  */
 
 #include <XboxInternals/Disc/ISO.h>
+#include <XboxInternals/Disc/SvodLayout.h>
 #include <XboxInternals/Gpd/Xdbf.h>
 #include <XboxInternals/IO/MemoryIO.h>
 #include <XboxInternals/Stfs/StfsPackage.h>
@@ -197,6 +198,91 @@ namespace
 
         check(StfsPackage::ComputeAllocatedBlocksForSize(0x1000ull * 0xAC) == 0xAA,
               "STFS size helper rounds up to 4 KiB blocks");
+    }
+
+    void testSvodLayout()
+    {
+        using namespace XboxInternals::SvodLayout;
+
+        check(!IsEnhanced(0x00) && IsEnhanced(0x40) && !IsEnhanced(0x80) &&
+              IsEnhanced(0xC0), "SVOD enhanced flag is bit 6 only");
+
+        check(DataBlockOffset(0x123456, false) == 0x56,
+              "legacy SVOD uses one byte of dataBlockOffset");
+        check(DataBlockOffset(0x123456, true) == 0x123456,
+              "enhanced SVOD uses 24 bits of dataBlockOffset");
+
+        // SvodReadBackingBlocks: data block b -> b + b/204 + 2 blocks.
+        check(DataBlockAddress(0) == 0x2000, "SVOD data block 0 is at 0x2000");
+        check(DataBlockAddress(203) == 0xCD000, "SVOD last block of group 0");
+        check(DataBlockAddress(204) == 0xCF000, "SVOD first block of group 1");
+        check(DataBlockAddress(41411) == 0xA28F000, "SVOD last data block of a part");
+
+        // GDF volume descriptor (volume block 16) after the skip and the
+        // enhanced one-block shift; the kernel aliases it to data block 0 once
+        // the skipped prefix covers it.
+        DWORD header = 0;
+        check(GdfHeaderBlock(0, false, &header) && header == 16, "legacy GDF header block");
+        check(GdfHeaderBlock(4, false, &header) && header == 12, "legacy GDF header after skip");
+        check(!GdfHeaderBlock(17, false, &header), "legacy GDF header inside the prefix");
+        check(GdfHeaderBlock(0, true, &header) && header == 17, "enhanced GDF header block");
+        check(GdfHeaderBlock(16, true, &header) && header == 1, "enhanced header at 17-D");
+        check(GdfHeaderBlock(17, true, &header) && header == 0, "enhanced header alias");
+        check(GdfHeaderBlock(20, true, &header) && header == 0, "enhanced header still aliased");
+
+        struct MapCase
+        {
+            DWORD sector;
+            DWORD dataBlockOffset;
+            bool enhanced;
+            bool valid;
+            DWORD address;
+            DWORD part;
+        };
+
+        const DWORD partSectors = static_cast<DWORD>(kSectorsPerPart); // 0x14388
+        const MapCase cases[] = {
+            // Legacy: sector 0 is data block 0, no shift.
+            {0, 0, false, true, 0x2000, 0},
+            {0x198, 0, false, true, 0xCF000, 0},               // block 204, group 1
+            {partSectors - 2, 0, false, true, 0xA28F000, 0},   // last block of part 0
+            {partSectors - 1, 0, false, true, 0xA28F800, 0},   // second half of it
+            {partSectors, 0, false, true, 0x2000, 1},          // first block of part 1
+            // Enhanced: one block of shift, applied before the part split.
+            {0, 0, true, true, 0x3000, 0},
+            {0x198, 0, true, true, 0xD0000, 0},                // block 205, group 1
+            {partSectors - 4, 0, true, true, 0xA28F000, 0},    // block 41411, last of part 0
+            {partSectors - 3, 0, true, true, 0xA28F800, 0},
+            {partSectors - 2, 0, true, true, 0x2000, 1},       // block 41412 opens part 1
+            // dataBlockOffset skips sectors, and enhanced volume block 16 is
+            // aliased onto data block 0 when the prefix covers it.
+            {7, 4, false, false, 0, 0},
+            {8, 4, false, true, 0x2000, 0},
+            {31, 17, true, false, 0, 0},                       // zero-filled prefix
+            {32, 17, true, true, 0x2000, 0},                   // volume block 16 -> block 0
+            {33, 17, true, true, 0x2800, 0},
+            {34, 17, true, true, 0x3000, 0},                   // volume block 17 -> block 1
+        };
+
+        for (const auto &c : cases)
+        {
+            DWORD address = 0, part = 0;
+            const bool ok = XboxInternals::SvodLayout::Map(
+                    c.sector, c.dataBlockOffset, c.enhanced, &address, &part);
+
+            check(ok == c.valid, "SVOD map validity matches the kernel");
+            if (ok && c.valid)
+            {
+                check(address == c.address, "SVOD map address matches the kernel");
+                check(part == c.part, "SVOD map part matches the kernel");
+            }
+        }
+
+        check(BytesUntilHashBlock(0x2000) == 0xCC000, "SVOD chunk starts a group");
+        check(BytesUntilHashBlock(0xCDFFF) == 1, "SVOD chunk ends before the hash block");
+        check(BytesUntilHashBlock(0xCE000) == 0, "SVOD level-0 block is not data");
+        check(BytesUntilHashBlock(0xCF000) == 0xCC000, "SVOD chunk restarts after a hash block");
+        check(BytesUntilHashBlock(0xA28F000) == 0x1000, "SVOD chunk stops at the part end");
     }
 
     void testMSTimeRoundTrip()
@@ -489,6 +575,7 @@ int main()
     testCorruptStfsHeaders();
     testMSTimeRoundTrip();
     testStfsNameMatchingAndGeometry();
+    testSvodLayout();
     testResignFailureLeavesPackageIntact();
     testCorruptXdbf();
     testGarbageImages();

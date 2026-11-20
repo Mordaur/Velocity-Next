@@ -2,10 +2,33 @@
 #include <XboxInternals/IO/FileIO.h>
 #include <XboxInternals/Disc/SvodLayout.h>
 
+namespace
+{
+    bool IsEnhanced(const XContentHeader *metadata)
+    {
+        return XboxInternals::SvodLayout::IsEnhanced(metadata->svodVolumeDescriptor.flags);
+    }
+
+    DWORD DataBlockOffset(const XContentHeader *metadata)
+    {
+        return XboxInternals::SvodLayout::DataBlockOffset(
+                metadata->svodVolumeDescriptor.dataBlockOffset, IsEnhanced(metadata));
+    }
+
+    UINT64 ChunkUntilHashBlock(DWORD addressInFile)
+    {
+        const UINT64 available = XboxInternals::SvodLayout::BytesUntilHashBlock(addressInFile);
+        if (available == 0)
+            throw std::string("SvodIO: Invalid data address.\n");
+
+        return available;
+    }
+}
+
 SvodIO::SvodIO(XContentHeader *metadata, GdfxFileEntry entry, IndexableMultiFileIO *io) :
     BaseIO(), io(io), metadata(metadata), fileEntry(entry), pos(0)
 {
-    offset = (metadata->svodVolumeDescriptor.flags != 0) ? 0x2000 : 0x1000;
+    offset = static_cast<DWORD>(XboxInternals::SvodLayout::DataBlockAddress(0));
 
     // seek to the file's beginning
     DWORD addr, index;
@@ -20,10 +43,8 @@ SvodIO::~SvodIO()
 
 void SvodIO::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex)
 {
-    if (!XboxInternals::SvodLayout::Map(sector,
-            metadata->svodVolumeDescriptor.dataBlockOffset,
-            metadata->svodVolumeDescriptor.flags != 0,
-            addressInDataFile, dataFileIndex))
+    if (!XboxInternals::SvodLayout::Map(sector, DataBlockOffset(metadata),
+            IsEnhanced(metadata), addressInDataFile, dataFileIndex))
         throw std::string("SvodIO: Sector outside the data volume.\n");
 }
 
@@ -69,15 +90,7 @@ void SvodIO::ReadBytes(BYTE *outBuffer, DWORD len)
         DWORD addressInFile = 0, index = 0;
         io->GetPosition(&addressInFile, &index);
 
-        const UINT64 dataStart = XboxInternals::SvodLayout::DataStartBytes(
-                metadata->svodVolumeDescriptor.flags != 0);
-        if (addressInFile < dataStart)
-            throw std::string("SvodIO: Invalid data address.\n");
-
-        const UINT64 offsetInGroup = (addressInFile - dataStart) % 0xCD000;
-        UINT64 chunk = 0xCC000 - offsetInGroup;
-        if (chunk == 0)
-            chunk = 0xCC000;
+        UINT64 chunk = ChunkUntilHashBlock(addressInFile);
         if (chunk > len)
             chunk = len;
 
@@ -101,15 +114,7 @@ void SvodIO::WriteBytes(BYTE *buffer, DWORD len)
         DWORD addressInFile = 0, index = 0;
         io->GetPosition(&addressInFile, &index);
 
-        const UINT64 dataStart = XboxInternals::SvodLayout::DataStartBytes(
-                metadata->svodVolumeDescriptor.flags != 0);
-        if (addressInFile < dataStart)
-            throw std::string("SvodIO: Invalid data address.\n");
-
-        const UINT64 offsetInGroup = (addressInFile - dataStart) % 0xCD000;
-        UINT64 chunk = 0xCC000 - offsetInGroup;
-        if (chunk == 0)
-            chunk = 0xCC000;
+        UINT64 chunk = ChunkUntilHashBlock(addressInFile);
         if (chunk > len)
             chunk = len;
 
