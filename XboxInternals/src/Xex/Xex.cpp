@@ -38,7 +38,7 @@ Xex::Xex(BaseIO *io) :
     oflcAURating(OFLCAU_UNRATED), oflcNZRating(OFLCNZ_UNRATED),
     imageBaseAddress(0), entryPoint(0), originalBaseAddress(0), defaultStackSize(0),
     defaultFileSystemCacheSize(0), defaultHeapSize(0), titleWorkspaceSize(0),
-    encrypted(false), encryptionState(Decrypted), compressionState(XexDecompressed),
+    encrypted(false), headerHashValid(false), encryptionState(Decrypted), compressionState(XexDecompressed),
     compressedBlockSize(0), compressedBlock0Size(0), compressedBlock0Sha1()
 {
     Parse();
@@ -51,7 +51,7 @@ Xex::Xex(std::string fileName) :
     oflcAURating(OFLCAU_UNRATED), oflcNZRating(OFLCNZ_UNRATED),
     imageBaseAddress(0), entryPoint(0), originalBaseAddress(0), defaultStackSize(0),
     defaultFileSystemCacheSize(0), defaultHeapSize(0), titleWorkspaceSize(0),
-    encrypted(false), encryptionState(Decrypted), compressionState(XexDecompressed),
+    encrypted(false), headerHashValid(false), encryptionState(Decrypted), compressionState(XexDecompressed),
     compressedBlockSize(0), compressedBlock0Size(0), compressedBlock0Sha1()
 {
     io = ownedIO.get();
@@ -318,6 +318,8 @@ void Xex::ExtractDecompressedData(std::string path)
     // seek to the beginning of the data
     io->SetPosition(header.dataAddress);
 
+    DWORD produced = 0;
+
     // decompress the data
     for (DWORD i = 0; i < compressionBlocks.size(); i++)
     {
@@ -369,6 +371,28 @@ void Xex::ExtractDecompressedData(std::string path)
                 bytesToCopy = block.nullSize % XEX_COPY_BUFFER_SIZE;
 
             outFile.WriteBytes(copyBuffer.data(), bytesToCopy);
+        }
+
+        produced += block.size;
+        produced += block.nullSize;
+    }
+
+    // The block table only covers the initialised part of the image; the
+    // kernel zeroes the rest of the destination (XexpLoadRawImage). Title
+    // images can stop short of imageSize (Default.xex: 32 KiB).
+    if (produced > securityInfo.imageSize)
+        throw std::string("XEX: The compression block table exceeds the image size.\n");
+
+    if (produced < securityInfo.imageSize)
+    {
+        std::fill(copyBuffer.begin(), copyBuffer.end(), 0);
+        UINT64 remaining = securityInfo.imageSize - produced;
+        while (remaining > 0)
+        {
+            const DWORD chunk = static_cast<DWORD>(
+                    std::min<UINT64>(remaining, copyBuffer.size()));
+            outFile.WriteBytes(copyBuffer.data(), chunk);
+            remaining -= chunk;
         }
     }
 
@@ -430,8 +454,29 @@ void Xex::ExtractData2(std::string path)
             bytesToCopy = dataSize % XEX_COPY_BUFFER_SIZE;
 
         // copy the bytes to the out file
-    plaintextDataIO->ReadBytes(copyBuffer.data(), bytesToCopy);
-    outFile.Write(copyBuffer.data(), bytesToCopy);
+        plaintextDataIO->ReadBytes(copyBuffer.data(), bytesToCopy);
+        outFile.Write(copyBuffer.data(), bytesToCopy);
+    }
+
+    // Same tail rule as ExtractDecompressedData: the block table stops at the
+    // last initialised byte and the kernel zeroes the remainder.
+    if (!compressionBlocks.empty())
+    {
+        if (dataSize > securityInfo.imageSize)
+            throw std::string("XEX: The compression block table exceeds the image size.\n");
+
+        if (dataSize < securityInfo.imageSize)
+        {
+            std::fill(copyBuffer.begin(), copyBuffer.end(), 0);
+            UINT64 remaining = securityInfo.imageSize - dataSize;
+            while (remaining > 0)
+            {
+                const DWORD chunk = static_cast<DWORD>(
+                        std::min<UINT64>(remaining, copyBuffer.size()));
+                outFile.Write(copyBuffer.data(), chunk);
+                remaining -= chunk;
+            }
+        }
     }
 
     // cleanup handled by unique_ptr wrappers
@@ -470,6 +515,11 @@ BYTE *Xex::GetKey()
 BYTE *Xex::GetHeaderHash()
 {
     return securityInfo.headerHash;
+}
+
+bool Xex::IsHeaderHashValid() const
+{
+    return headerHashValid;
 }
 
 BYTE *Xex::GetLANKey()
@@ -584,6 +634,10 @@ void Xex::Parse()
     io->ReadBytes(securityInfo.headerHash, 0x14);
     securityInfo.regions = io->ReadDword();
     securityInfo.allowedMediaTypes = io->ReadDword();
+
+    // XexpVerifyXexHeaders. The header hash does not depend on the image key,
+    // so it also verifies images whose data uses an unsupported key.
+    headerHashValid = VerifyHeaderHash();
 
     // Always try to determine which encryption key is used
     // Note: Some XEX files have encrypted=0 in BaseFileDescriptor but are still encrypted!
@@ -959,6 +1013,35 @@ void Xex::ComputeSha1(const BYTE *data, size_t length, BYTE *outHash)
     const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
     sha1->update(data, length);
     sha1->final(outHash);
+}
+
+bool Xex::VerifyHeaderHash()
+{
+    const UINT64 fileLength = io->Length();
+    const UINT64 securityOffset = header.headerAddress;
+    const UINT64 headerSize = header.dataAddress;
+
+    // XexpVerifyXexHeaders hashes the part of the header after the RSA-signed
+    // block and then the part before it; the signed block itself (which holds
+    // the hash field) is skipped.
+    if (headerSize > fileLength || securityOffset + 0x17C > headerSize)
+        return false;
+
+    const size_t headLength = static_cast<size_t>(securityOffset + 8);
+    const size_t tailLength = static_cast<size_t>(headerSize - securityOffset - 0x17C);
+
+    const UINT64 resume = io->GetPosition();
+
+    std::vector<BYTE> buffer(headLength + tailLength);
+    io->SetPosition(securityOffset + 0x17C);
+    io->ReadBytes(buffer.data(), static_cast<DWORD>(tailLength));
+    io->SetPosition(0);
+    io->ReadBytes(buffer.data() + tailLength, static_cast<DWORD>(headLength));
+    io->SetPosition(resume);
+
+    BYTE digest[0x14];
+    ComputeSha1(buffer.data(), buffer.size(), digest);
+    return memcmp(digest, securityInfo.headerHash, sizeof(digest)) == 0;
 }
 
 void Xex::ComputeImageKey(const BYTE *masterKey, BYTE *imageKey) const

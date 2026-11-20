@@ -48,6 +48,16 @@
 
 ### 🧩 XEX
 
+- Type 1 (raw/zero-based) extraction now zero-pads the block runs to
+  `imageSize`, matching `XexpLoadRawImage`. A title image whose runs stop short
+  (`Default.xex`: 32 KiB) no longer produces a truncated file; verified on the
+  two type 1 samples (29.5 MB encrypted, 71.4 MB plain).
+- LZX stored blocks (type 3) work again: the stored path never advanced the
+  output counter, so a stored block looped and then failed with "zero block
+  length". No corpus image uses stored blocks; `tests/smoke.cpp` now builds one.
+- `Xex::IsHeaderHashValid()` verifies the header digest the way
+  `XexpVerifyXexHeaders` does, over all 24 corpus modules. It is independent of
+  the image key, so it also validates headers whose data cannot be decrypted.
 - The LZX decoder takes the window size from the XEX base-file descriptor
   instead of assuming 32 KiB. Retail 17559 `xam.xex` and `dash.xex` use a 1 MiB
   window and 42 position slots (instead of 30); they now decompress to valid

@@ -359,6 +359,7 @@ void XexLzxDecoder::DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBu
             std::memcpy(window.data() + windowPosition, data + sourceOffset, toProduce);
 
             windowPosition += static_cast<DWORD>(toProduce);
+            produced += toProduce;
         }
         else
         {

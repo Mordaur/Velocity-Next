@@ -97,6 +97,11 @@ public:
 
     BYTE* GetHeaderHash();
 
+    // XexpVerifyXexHeaders: SHA-1 over [securityOffset + 0x17C, headerSize)
+    // followed by [0, securityOffset + 8), compared with the header hash that
+    // follows the RSA-signed block. Covers the header, not the image.
+    bool IsHeaderHashValid() const;
+
     BYTE* GetLANKey();
 
     DWORD GetTitleID() const;
@@ -148,6 +153,7 @@ private:
 
     XexSecurityInfo securityInfo;
     bool encrypted;
+    bool headerHashValid;
     XexEncryptionState encryptionState;
     XexCompressionState compressionState;
     std::vector<XexCompressionBlock> compressionBlocks;
@@ -203,6 +209,7 @@ private:
     // comparing it with the SHA-1 in the base-file descriptor. Returns the key
     // to use for the image key derivation and updates encryptionState.
     const BYTE *SelectCompressedImageKey();
+    bool VerifyHeaderHash();
     static void ComputeSha1(const BYTE *data, size_t length, BYTE *outHash);
 
 

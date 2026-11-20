@@ -536,6 +536,39 @@ namespace
         check(true, "LZX pretree-delta regression input is rejected safely");
     }
 
+    void testLzxStoredBlock()
+    {
+        // LZX stored block (type 3) with no corpus coverage: 1-bit intel flag,
+        // 3-bit type, 24-bit length, word-aligned 12-byte repeat offsets, then
+        // the raw bytes (the kernel's XexpLoadCompressedImage path).
+        BYTE input[24] = {};
+        // words are read little-endian but bits are taken MSB-first
+        input[0] = 0x00; input[1] = 0x30; // 0 011 0000... (type 3, length high 0)
+        input[2] = 0x80; input[3] = 0x00; // length low 8 at bits 20..27
+        input[4 + 3] = 1;                 // R0 = 1, big-endian
+        input[4 + 7] = 1;                 // R1 = 1
+        input[4 + 11] = 1;                // R2 = 1
+
+        const BYTE payload[8] = {'S', 'T', 'O', 'R', 'E', 'D', '!', '!'};
+        std::memcpy(input + 16, payload, sizeof(payload));
+
+        XexLzxDecoder decoder;
+        BYTE output[sizeof(payload)] = {};
+
+        bool decoded = false;
+        try
+        {
+            decoder.DecodeChunk(input, sizeof(input), output, sizeof(output));
+            decoded = true;
+        }
+        catch (...)
+        {
+        }
+
+        check(decoded && std::memcmp(output, payload, sizeof(payload)) == 0,
+              "LZX stored block copies raw bytes");
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -576,6 +609,7 @@ int main()
     testMSTimeRoundTrip();
     testStfsNameMatchingAndGeometry();
     testSvodLayout();
+    testLzxStoredBlock();
     testResignFailureLeavesPackageIntact();
     testCorruptXdbf();
     testGarbageImages();
