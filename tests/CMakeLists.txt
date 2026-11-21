@@ -17,20 +17,31 @@ set_tests_properties(device_policy_test PROPERTIES TIMEOUT 30)
 
 # Argument hard-fail tests for the privileged helper. These only assert that
 # malformed invocations exit before binding/waiting; they do not need root.
+# The wrapper checks both the documented exit code (2) and the diagnostic, so
+# a helper that prints the message and then crashes still fails.
+set(HELPER_ARG_TEST ${CMAKE_CURRENT_SOURCE_DIR}/expect_helper_exit.cmake)
 add_test(NAME device_helper_rejects_missing_pid
-         COMMAND $<TARGET_FILE:velocity-device-helper> --endpoint test)
-set_tests_properties(device_helper_rejects_missing_pid PROPERTIES
-        PASS_REGULAR_EXPRESSION "usage:" TIMEOUT 10)
+         COMMAND ${CMAKE_COMMAND}
+                 "-DHELPER=$<TARGET_FILE:velocity-device-helper>"
+                 "-DARGS=--endpoint;test"
+                 "-DEXPECT=usage:"
+                 -P ${HELPER_ARG_TEST})
+set_tests_properties(device_helper_rejects_missing_pid PROPERTIES TIMEOUT 10)
 add_test(NAME device_helper_rejects_zero_pid
-         COMMAND $<TARGET_FILE:velocity-device-helper> --endpoint test --client-pid 0)
-set_tests_properties(device_helper_rejects_zero_pid PROPERTIES
-        PASS_REGULAR_EXPRESSION "invalid --client-pid" TIMEOUT 10)
+         COMMAND ${CMAKE_COMMAND}
+                 "-DHELPER=$<TARGET_FILE:velocity-device-helper>"
+                 "-DARGS=--endpoint;test;--client-pid;0"
+                 "-DEXPECT=invalid --client-pid"
+                 -P ${HELPER_ARG_TEST})
+set_tests_properties(device_helper_rejects_zero_pid PROPERTIES TIMEOUT 10)
 if(UNIX)
     add_test(NAME device_helper_rejects_bad_endpoint
-             COMMAND $<TARGET_FILE:velocity-device-helper>
-                     --endpoint /tmp/velocity-bad.sock --client-pid 123)
-    set_tests_properties(device_helper_rejects_bad_endpoint PROPERTIES
-            PASS_REGULAR_EXPRESSION "invalid endpoint:" TIMEOUT 10)
+             COMMAND ${CMAKE_COMMAND}
+                     "-DHELPER=$<TARGET_FILE:velocity-device-helper>"
+                     "-DARGS=--endpoint;/tmp/velocity-bad.sock;--client-pid;123"
+                     "-DEXPECT=invalid endpoint:"
+                     -P ${HELPER_ARG_TEST})
+    set_tests_properties(device_helper_rejects_bad_endpoint PROPERTIES TIMEOUT 10)
 endif()
 
 if(BUILD_FUZZERS)
