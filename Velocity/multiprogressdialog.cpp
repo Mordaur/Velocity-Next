@@ -2,8 +2,10 @@
 #include "ui_multiprogressdialog.h"
 #include <QCloseEvent>
 #include <QTimer>
+#include <QDir>
 #include <QFileInfo>
 #include <QMutexLocker>
+#include <XboxInternals/Utils.h>
 #include <memory>
 
 namespace
@@ -13,6 +15,33 @@ namespace
     struct ExtractionCancelled
     {
     };
+
+    std::string SafeExtractTarget(const QString &outDir, const QString &relative, const char *what)
+    {
+        std::string target;
+        if (!Utils::SafeJoin(outDir.toStdString(), relative.toStdString(), target))
+            throw std::string(what) + ": Unsafe extraction path.\n";
+
+        const QString parent = QFileInfo(QString::fromStdString(target)).path();
+        if (!parent.isEmpty())
+            QDir().mkpath(parent);
+        return target;
+    }
+
+    QString FatxRelativePath(const QString &rootPath, const std::string &path,
+            const std::string &name)
+    {
+        QString relative = QString::fromStdString(path);
+        if (!rootPath.isEmpty() && relative.startsWith(rootPath))
+            relative = relative.mid(rootPath.size());
+        relative.replace('\\', '/');
+        while (relative.startsWith('/'))
+            relative.remove(0, 1);
+        if (!relative.isEmpty() && !relative.endsWith('/'))
+            relative += '/';
+        relative += QString::fromStdString(name);
+        return relative;
+    }
 }
 
 // ExtractionWorker implementation
@@ -49,27 +78,28 @@ void ExtractionWorker::run()
 
                     try
                     {
-                        // Make all the directories needed
-                        QString dirPath = QDir::toNativeSeparators(dialog_->outDir + entry->path).replace("\\", "/");
-                        std::string dirPathStd = dirPath.toStdString();
-
+                        std::string target;
                         if (dialog_->internalFiles.size() != 1)
                         {
-                            QDir saveDir(dirPath);
-                            if (!saveDir.exists())
-                                saveDir.mkpath(dirPath);
-                            dirPathStd += entry->entry.name;
+                            target = SafeExtractTarget(dialog_->outDir,
+                                    entry->path + QString::fromStdString(entry->entry.name), "STFS");
                         }
-                        else if (QFileInfo(dirPath).isDir())
+                        else if (QFileInfo(dialog_->outDir).isDir())
                         {
                             // The file dialog can return an existing directory
                             // for a single-file extraction; write the file
                             // inside it instead of failing with "is a directory".
-                            dirPathStd += "/" + entry->entry.name;
+                            target = SafeExtractTarget(dialog_->outDir,
+                                    QString::fromStdString(entry->entry.name), "STFS");
+                        }
+                        else
+                        {
+                            // The user chose the full file path in the dialog.
+                            target = dialog_->outDir.toStdString();
                         }
 
                         StfsPackage *package = reinterpret_cast<StfsPackage*>(dialog_->device);
-                        package->ExtractFile(&entry->entry, dirPathStd, updateProgress, dialog_);
+                        package->ExtractFile(&entry->entry, target, updateProgress, dialog_);
                     }
                     catch (const ExtractionCancelled&)
                     {
@@ -112,7 +142,9 @@ void ExtractionWorker::run()
 
                     try
                     {
-                        io.SaveFile(dialog_->outDir.toStdString() + entry->name, updateProgress, dialog_);
+                        const std::string target = SafeExtractTarget(dialog_->outDir,
+                            QString::fromStdString(entry->name), "SVOD");
+                        io.SaveFile(target, updateProgress, dialog_);
                         io.Close();
                     }
                     catch (const ExtractionCancelled&)
@@ -147,33 +179,22 @@ void ExtractionWorker::run()
 
                     try
                     {
-                        QString filePath;
-
+                        std::string target;
                         if (i < dialog_->relativePaths.size())
                         {
                             // The caller already chose the local layout.
                             QString relative = dialog_->relativePaths.at(i);
                             relative.replace('\\', '/');
-                            filePath = dialog_->outDir + relative;
-
-                            const QString dirPath = filePath.left(filePath.lastIndexOf('/'));
-                            QDir().mkpath(dirPath);
+                            target = SafeExtractTarget(dialog_->outDir, relative, "FATX");
                         }
                         else
                         {
-                            QString temp = QString::fromStdString(entry->path);
-                            // FATX paths use '\\', which is not a separator outside Windows
-                            QString dirPath = QDir::toNativeSeparators(dialog_->outDir +
-                                    temp.replace(dialog_->rootPath, "").replace('\\', '/'));
-                            QDir saveDir(dirPath);
-
-                            if (!saveDir.exists())
-                                saveDir.mkpath(dirPath);
-
-                            filePath = dirPath + QString::fromStdString(entry->name);
+                            target = SafeExtractTarget(dialog_->outDir,
+                                    FatxRelativePath(dialog_->rootPath, entry->path, entry->name),
+                                    "FATX");
                         }
 
-                        io.SaveFile(filePath.toStdString(), updateProgress, dialog_);
+                        io.SaveFile(target, updateProgress, dialog_);
                     }
                     catch (const ExtractionCancelled&)
                     {
@@ -419,26 +440,25 @@ void MultiProgressDialog::operateOnNextFile()
 
             try
             {
-                // make all the directories needed
-                QString dirPath = QDir::toNativeSeparators(outDir + entry->path).replace("\\", "/");
-                std::string dirPathStd = dirPath.toStdString();
-
+                std::string target;
                 if (internalFiles.size() != 1)
                 {
-                    QDir saveDir(dirPath);
-
-                    if (!saveDir.exists())
-                        saveDir.mkpath(dirPath);
-
-                    dirPathStd += entry->entry.name;
+                    target = SafeExtractTarget(outDir,
+                            entry->path + QString::fromStdString(entry->entry.name), "STFS");
                 }
-                else if (QFileInfo(dirPath).isDir())
+                else if (QFileInfo(outDir).isDir())
                 {
-                    dirPathStd += "/" + entry->entry.name;
+                    target = SafeExtractTarget(outDir,
+                            QString::fromStdString(entry->entry.name), "STFS");
+                }
+                else
+                {
+                    // The user chose the full file path in the dialog.
+                    target = outDir.toStdString();
                 }
 
                 StfsPackage *package = reinterpret_cast<StfsPackage*>(device);
-                package->ExtractFile(&entry->entry, dirPathStd, updateProgress, this);
+                package->ExtractFile(&entry->entry, target, updateProgress, this);
             }
             catch (string error)
             {
@@ -465,7 +485,9 @@ void MultiProgressDialog::operateOnNextFile()
             try
             {
                 // extract the file
-                io.SaveFile(outDir.toStdString() + entry->name, updateProgress, this);
+                const std::string target = SafeExtractTarget(outDir,
+                        QString::fromStdString(entry->name), "SVOD");
+                io.SaveFile(target, updateProgress, this);
                 io.Close();
             }
             catch (string error)
@@ -500,18 +522,10 @@ void MultiProgressDialog::operateOnNextFile()
 
                     try
                     {
-                        // make all the directories needed
-                        QString temp = QString::fromStdString(entry->path);
-                        // FATX paths use '\\', which is not a separator outside Windows
-                        QString dirPath = QDir::toNativeSeparators(outDir +
-                                temp.replace(rootPath, "").replace('\\', '/'));
-                        QDir saveDir(dirPath);
-
-                        if (!saveDir.exists())
-                            saveDir.mkpath(dirPath);
-
                         // extract the file
-                        io.SaveFile(dirPath.toStdString() + entry->name, updateProgress, this);
+                        const std::string target = SafeExtractTarget(outDir,
+                                FatxRelativePath(rootPath, entry->path, entry->name), "FATX");
+                        io.SaveFile(target, updateProgress, this);
                     }
                     catch (string error)
                     {

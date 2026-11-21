@@ -29,6 +29,14 @@ namespace Utils
     std::string GetTemporaryFileName();
 
     bool DeleteLocalFile(std::string path);
+
+    // True when `relative` is a non-empty relative path with no "."/".."
+    // component, drive/ADS separator or NUL. Backslashes are separators.
+    bool XBOXINTERNALS_EXPORT IsSafeRelativePath(const std::string &relative);
+
+    // Join `root` with a validated relative path. False when the path is unsafe.
+    bool XBOXINTERNALS_EXPORT SafeJoin(const std::string &root, const std::string &relative,
+            std::string &out);
 }
 
 #endif // UTILS_H

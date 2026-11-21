@@ -1,7 +1,8 @@
 #include <XboxInternals/Utils.h>
 
-#include <filesystem>
+#include <algorithm>
 #include <chrono>
+#include <filesystem>
 
 namespace fs = std::filesystem;
 
@@ -93,4 +94,39 @@ bool Utils::DeleteLocalFile(std::string path)
     } catch (const fs::filesystem_error&) {
         return false;
     }
+}
+
+bool Utils::IsSafeRelativePath(const std::string &relative)
+{
+    std::string normalized = relative;
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    // On Windows a leading '/' is root-relative rather than absolute, so
+    // is_absolute() alone would accept it.
+    if (normalized.empty() || normalized.front() == '/')
+        return false;
+
+    std::filesystem::path candidate(normalized);
+    if (candidate.is_absolute())
+        return false;
+
+    for (const auto &part : candidate)
+    {
+        const std::string name = part.string();
+        if (name.empty() || name == "." || name == "..")
+            return false;
+        if (name.find(':') != std::string::npos ||
+            name.find('\0') != std::string::npos)
+            return false;
+    }
+
+    return true;
+}
+
+bool Utils::SafeJoin(const std::string &root, const std::string &relative, std::string &out)
+{
+    if (!IsSafeRelativePath(relative))
+        return false;
+
+    out = (std::filesystem::path(root) / std::filesystem::path(relative)).string();
+    return true;
 }

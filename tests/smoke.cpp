@@ -14,6 +14,7 @@
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 #include <XboxInternals/Stfs/StfsPackage.h>
 #include <XboxInternals/Stfs/XContentHeader.h>
+#include <XboxInternals/Utils.h>
 #include <XboxInternals/Xex/XexLzxDecoder.h>
 
 #include <algorithm>
@@ -290,6 +291,28 @@ namespace
         check(BytesUntilHashBlock(0xCE000) == 0, "SVOD level-0 block is not data");
         check(BytesUntilHashBlock(0xCF000) == 0xCC000, "SVOD chunk restarts after a hash block");
         check(BytesUntilHashBlock(0xA28F000) == 0x1000, "SVOD chunk stops at the part end");
+    }
+
+    void testSafeExtractionPaths()
+    {
+        namespace fs = std::filesystem;
+
+        check(Utils::IsSafeRelativePath("a/b.txt"), "safe path accepts nested relative names");
+        check(!Utils::IsSafeRelativePath("../x"), "safe path rejects leading '..'");
+        check(!Utils::IsSafeRelativePath("a/../b"), "safe path rejects an inner '..'");
+        check(!Utils::IsSafeRelativePath("a/./b"), "safe path rejects an inner '.'");
+        check(!Utils::IsSafeRelativePath("/abs"), "safe path rejects absolute paths");
+        check(!Utils::IsSafeRelativePath("C:/x"), "safe path rejects drive/ADS separators");
+        check(!Utils::IsSafeRelativePath("a:b"), "safe path rejects ADS separators");
+        check(!Utils::IsSafeRelativePath(""), "safe path rejects empty names");
+
+        std::string joined;
+        check(Utils::SafeJoin("/tmp/out", "a/b.txt", joined),
+              "safe join accepts a relative path");
+        check(fs::path(joined) == (fs::path("/tmp/out") / "a" / "b.txt"),
+              "safe join keeps the root prefix");
+        check(!Utils::SafeJoin("/tmp/out", "../x", joined),
+              "safe join rejects traversal");
     }
 
     void testSvodDescriptorEndianness()
@@ -647,6 +670,7 @@ int main()
     testMSTimeRoundTrip();
     testStfsNameMatchingAndGeometry();
     testSvodLayout();
+    testSafeExtractionPaths();
     testSvodDescriptorEndianness();
     testLzxStoredBlock();
     testResignFailureLeavesPackageIntact();

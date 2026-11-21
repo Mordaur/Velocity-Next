@@ -2,6 +2,7 @@
 #include "XboxInternals/IO/FileIO.h"
 #include "XboxInternals/IO/IsoIO.h"
 #include "XboxInternals/Stfs/StfsPackage.h"
+#include "XboxInternals/Utils.h"
 #include <fstream>
 #include <vector>
 #include <system_error>
@@ -48,31 +49,6 @@ bool IsoNameEquals(const std::string &a, const std::string &b)
     return true;
 }
 
-// Reject absolute paths, drive/ADS separators and any "." / ".." component.
-bool SafeRelativePath(const std::string &relative, fs::path &out)
-{
-    std::string normalized = relative;
-    std::replace(normalized.begin(), normalized.end(), '\\', '/');
-    if (normalized.empty())
-        return false;
-
-    fs::path candidate(normalized);
-    if (candidate.is_absolute())
-        return false;
-
-    for (const auto &part : candidate)
-    {
-        const std::string name = part.string();
-        if (name.empty() || name == "." || name == "..")
-            return false;
-        if (name.find(':') != std::string::npos ||
-            name.find('\0') != std::string::npos)
-            return false;
-    }
-
-    out = candidate;
-    return true;
-}
 
 } // namespace
 
@@ -511,9 +487,9 @@ bool IsoImage::extractFile(const GdfxFileEntry& entry, const std::string& output
     
     std::replace(fullPathStr.begin(), fullPathStr.end(), '\\', '/');
 
-    fs::path relativePath;
-    if (!SafeRelativePath(fullPathStr, relativePath))
+    if (!Utils::IsSafeRelativePath(fullPathStr))
         return false;
+    fs::path relativePath(fullPathStr);
 
     fs::path fullPath = fs::path(outputDir) / relativePath;
     fs::path dir = fullPath.parent_path();

@@ -3,7 +3,10 @@
 #include <QtCore/private/qzipreader_p.h>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <XboxInternals/Utils.h>
 
 ZipViewer::ZipViewer(const QString &zipPath, const QString &fileName, QWidget *parent)
     : QDialog(parent), ui(new Ui::ZipViewer), zipPath(zipPath)
@@ -117,11 +120,15 @@ void ZipViewer::onExtractSelected()
         QString filePath = ui->tableWidget->item(row, 0)->text();
         QByteArray data = zip.fileData(filePath);
         
-        QString outputPath = outputDir + "/" + QFileInfo(filePath).fileName();
+        const QString name = QFileInfo(filePath).fileName();
+        if (name.isEmpty() || name == "." || name == "..")
+            continue;
+
+        QString outputPath = outputDir + "/" + name;
         QFile outFile(outputPath);
-        if (outFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        if (outFile.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+            outFile.write(data) == data.size())
         {
-            outFile.write(data);
             outFile.close();
             extractedCount++;
         }
@@ -137,16 +144,75 @@ void ZipViewer::onExtractAll()
     QString outputDir = QFileDialog::getExistingDirectory(this, "Select Output Directory");
     if (outputDir.isEmpty())
         return;
-    
+
+    // QZipReader::extractAll only strips leading "./" and "/" and also creates
+    // symlinks, so a crafted entry can escape the target directory. Validate
+    // every entry and write it ourselves.
     QZipReader zip(zipPath);
-    if (!zip.extractAll(outputDir))
+    constexpr qint64 kMaxTotalSize = 16LL * 1024 * 1024 * 1024; // 16 GiB
+    qint64 totalSize = 0;
+    bool failed = false;
+
+    const QList<QZipReader::FileInfo> files = zip.fileInfoList();
+    for (const QZipReader::FileInfo &info : files)
     {
-        QMessageBox::warning(this, "Error", "Failed to extract all files.");
-        zip.close();
-        return;
+        if (info.isSymLink)
+            continue;
+
+        std::string target;
+        if (!Utils::SafeJoin(outputDir.toStdString(), info.filePath.toStdString(), target))
+        {
+            QMessageBox::warning(this, "Error",
+                    "Refusing to extract an unsafe path:\n" + info.filePath);
+            failed = true;
+            break;
+        }
+
+        const QString targetPath = QString::fromStdString(target);
+        if (info.isDir)
+        {
+            if (!QDir().mkpath(targetPath))
+            {
+                QMessageBox::warning(this, "Error", "Could not create:\n" + targetPath);
+                failed = true;
+                break;
+            }
+            continue;
+        }
+
+        if (info.size > 0)
+            totalSize += info.size;
+        if (totalSize > kMaxTotalSize)
+        {
+            QMessageBox::warning(this, "Error",
+                    "Archive would expand to more than 16 GiB; extraction aborted.");
+            failed = true;
+            break;
+        }
+
+        const QString parent = QFileInfo(targetPath).path();
+        if (!parent.isEmpty() && !QDir().mkpath(parent))
+        {
+            QMessageBox::warning(this, "Error", "Could not create:\n" + parent);
+            failed = true;
+            break;
+        }
+
+        const QByteArray data = zip.fileData(info.filePath);
+        QFile outFile(targetPath);
+        if (!outFile.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+            outFile.write(data) != data.size())
+        {
+            QMessageBox::warning(this, "Error", "Could not write:\n" + targetPath);
+            failed = true;
+            break;
+        }
     }
-    
+
     zip.close();
-    QMessageBox::information(this, "Extraction Complete", 
+    if (failed)
+        return;
+
+    QMessageBox::information(this, "Extraction Complete",
                             QString("All files extracted to:\n%1").arg(outputDir));
 }
