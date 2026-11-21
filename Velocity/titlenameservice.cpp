@@ -54,6 +54,8 @@ TitleNameService &TitleNameService::instance()
 TitleNameService::TitleNameService(QObject *parent) : QObject(parent)
 {
     manager = new QNetworkAccessManager(this);
+
+    manager->setAutoDeleteReplies(true);
 }
 
 void TitleNameService::loadCache()

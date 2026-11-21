@@ -25,6 +25,8 @@ GamerPicturePackDialog::GamerPicturePackDialog(QStatusBar *statusBar, QWidget *p
             SLOT(showContextMenuPack(QPoint)));
 
     gpManager = new QNetworkAccessManager(this);
+
+    gpManager->setAutoDeleteReplies(true);
     connect(gpManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(gamerPictureDownloaded(QNetworkReply*)));
 
@@ -169,6 +171,8 @@ void GamerPicturePackDialog::findGamerPictures(QString titleID)
                SLOT(gamerPictureDownloaded(QNetworkReply*)));
     delete gpManager;
     gpManager = new QNetworkAccessManager(this);
+
+    gpManager->setAutoDeleteReplies(true);
     connect(gpManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(gamerPictureDownloaded(QNetworkReply*)));
 
@@ -512,6 +516,8 @@ void GamerPicturePackDialog::on_btnStopSearch_clicked()
                SLOT(gamerPictureDownloaded(QNetworkReply*)));
     delete gpManager;
     gpManager = new QNetworkAccessManager(this);
+
+    gpManager->setAutoDeleteReplies(true);
     connect(gpManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(gamerPictureDownloaded(QNetworkReply*)));
     QApplication::processEvents();

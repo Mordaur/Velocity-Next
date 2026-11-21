@@ -6,7 +6,7 @@ GpdUploader::GpdUploader(QStringList gamePaths, QStringList avatarPaths, QString
         bool deleteGpds, QObject *parent = 0) : QObject(parent), gamePaths(gamePaths),
     avatarPaths(avatarPaths), titleIDs(titleIDs), deleteGpds(deleteGpds)
 {
-    settings = new QSettings("Exetelek", "Velocity");
+    settings = new QSettings("Exetelek", "Velocity", this);
 
     // only if they selected to share data with Velocity
     if (settings->value("AnonData").toBool())
@@ -17,6 +17,8 @@ GpdUploader::GpdUploader(QStringList gamePaths, QStringList avatarPaths, QString
         currentIndex = 0;
 
         networkAccessManager = new QNetworkAccessManager(this);
+
+        networkAccessManager->setAutoDeleteReplies(true);
         connect(networkAccessManager, SIGNAL(finished(QNetworkReply*)), this, SLOT(reply(QNetworkReply*)));
 
         // begin the first upload

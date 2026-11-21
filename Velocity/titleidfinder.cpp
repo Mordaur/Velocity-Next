@@ -4,6 +4,8 @@ TitleIdFinder::TitleIdFinder(QString gameName, QObject* parent)
     : QObject(parent), gameName(gameName), isExactIdSearch(false) {
     // Initialize the network manager
     networkManager = new QNetworkAccessManager(this);
+
+    networkManager->setAutoDeleteReplies(true);
     connect(networkManager, &QNetworkAccessManager::finished, this, &TitleIdFinder::replyFinished);
 }
 

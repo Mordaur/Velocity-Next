@@ -55,14 +55,20 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
     ui->avatarAwardsList->header()->resizeSection(2, 125);
 
     gameBoxArtManager = new QNetworkAccessManager(this);
+
+    gameBoxArtManager->setAutoDeleteReplies(true);
     connect(gameBoxArtManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(replyFinishedBoxArt(QNetworkReply*)));
 
     awardBoxArtManager = new QNetworkAccessManager(this);
+
+    awardBoxArtManager->setAutoDeleteReplies(true);
     connect(awardBoxArtManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(replyFinishedAwBoxArt(QNetworkReply*)));
 
     awardThumbnailManager = new QNetworkAccessManager(this);
+
+    awardThumbnailManager->setAutoDeleteReplies(true);
     connect(awardThumbnailManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(replyFinishedAwImg(QNetworkReply*)));
 
@@ -578,7 +584,7 @@ void ProfileEditor::showAvatarContextMenu(QPoint point)
         if (assetSavePath == "")
             return;
 
-        downloader = new AvatarAssetDownloader(titleID, guid);
+        downloader = new AvatarAssetDownloader(titleID, guid, this);
         connect(downloader, SIGNAL(FinishedDownloading()), this, SLOT(onAssetsDoneDownloading()));
         downloader->BeginDownload();
         statusBar->showMessage("Requesting asset...", 3000);
@@ -672,7 +678,10 @@ void ProfileEditor::onAssetsDoneDownloading()
         // refuse and leave the file with a stale header hash.
         newAsset.RebuildHashes();
 
-        delete downloader;
+        // This slot runs from the downloader's own FinishedDownloading signal;
+        // deleting it here would destroy the sender mid-emit.
+        downloader->deleteLater();
+        downloader = nullptr;
 
         statusBar->showMessage("Asset downloaded successfully", 3000);
         QMessageBox::information(this, "Asset Downloaded", "Successfully downloaded the avatar asset.");

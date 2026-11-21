@@ -75,12 +75,16 @@ MainWindow::MainWindow(QList<QUrl> arguments, QWidget *parent) : QMainWindow(par
     // endpoint is retired; keep the manager for the slot until plugins carry
     // their own metadata.
     pluginManager = new QNetworkAccessManager(this);
+
+    pluginManager->setAutoDeleteReplies(true);
     connect(pluginManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(pluginVersionReplyFinished(QNetworkReply*)));
 
     firstUpdateCheck = true;
 
     manager = new QNetworkAccessManager(this);
+
+    manager->setAutoDeleteReplies(true);
     connect(manager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(versionReplyFinished(QNetworkReply*)));
     manager->get(githubReleaseRequest());

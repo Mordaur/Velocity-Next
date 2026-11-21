@@ -7,6 +7,8 @@ AvatarAssetDownloader::AvatarAssetDownloader(QString titleID, QString guid, QObj
     v1Done(false), v2Done(false)
 {
     manager = new QNetworkAccessManager(this);
+
+    manager->setAutoDeleteReplies(true);
     connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(onRequestFinished(QNetworkReply*)));
 
     /*http = new QHttp(this);

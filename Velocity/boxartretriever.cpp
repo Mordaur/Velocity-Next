@@ -4,6 +4,8 @@ BoxArtRetriever::BoxArtRetriever(QObject *parent) :
     QObject(parent)
 {
     manager = new QNetworkAccessManager(this);
+
+    manager->setAutoDeleteReplies(true);
     connect(manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(onNetworkManagerFinished(QNetworkReply*)));
 }
 

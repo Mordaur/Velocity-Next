@@ -18,7 +18,11 @@ GitHubCommitsDialog::GitHubCommitsDialog(QWidget *parent) :
 
     // create the objects needed
     commitsManager = new QNetworkAccessManager(this);
+
+    commitsManager->setAutoDeleteReplies(true);
     branchesManager = new QNetworkAccessManager(this);
+
+    branchesManager->setAutoDeleteReplies(true);
     label = new QLabel(this);
 
     // set the scroll area's widget to the label, so the user can scroll through the label's text
