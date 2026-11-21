@@ -267,13 +267,20 @@ std::vector<std::string> FatxDriveDetection::getLogicalDrives()
     };
 
 #ifdef __APPLE__
-    struct statfs *mounts = nullptr;
-    const int mountCount = getmntinfo(&mounts, MNT_NOWAIT);
-    for (int i = 0; i < mountCount; ++i)
+    // getmntinfo returns a shared buffer, and drive detection can run on both
+    // the GUI and the device-watcher thread. getfsstat fills caller storage.
+    const int mountCount = getfsstat(nullptr, 0, MNT_NOWAIT);
+    if (mountCount > 0)
     {
-        const char *type = mounts[i].f_fstypename;
-        if (strcmp(type, "msdos") == 0 || strcmp(type, "exfat") == 0)
-            addCandidate(mounts[i].f_mntonname);
+        std::vector<struct statfs> mounts(static_cast<std::size_t>(mountCount) + 8);
+        const int filled = getfsstat(mounts.data(),
+                static_cast<int>(mounts.size() * sizeof(struct statfs)), MNT_NOWAIT);
+        for (int i = 0; i < filled; ++i)
+        {
+            const char *type = mounts[static_cast<std::size_t>(i)].f_fstypename;
+            if (strcmp(type, "msdos") == 0 || strcmp(type, "exfat") == 0)
+                addCandidate(mounts[static_cast<std::size_t>(i)].f_mntonname);
+        }
     }
 
     // Fallback for systems where the mount table is unavailable.
@@ -299,12 +306,16 @@ std::vector<std::string> FatxDriveDetection::getLogicalDrives()
     if (mountTable != nullptr)
     {
         mountTableRead = true;
-        while (mntent *entry = getmntent(mountTable))
+        // getmntent uses a static result; drive detection also runs on the
+        // device-watcher thread, so use the reentrant variant.
+        struct mntent entry {};
+        char entryBuffer[4096];
+        while (getmntent_r(mountTable, &entry, entryBuffer, sizeof(entryBuffer)) != nullptr)
         {
-            const char *type = entry->mnt_type;
+            const char *type = entry.mnt_type;
             if (strcmp(type, "vfat") == 0 || strcmp(type, "exfat") == 0 ||
                 strcmp(type, "msdos") == 0)
-                addCandidate(entry->mnt_dir);
+                addCandidate(entry.mnt_dir);
         }
         endmntent(mountTable);
     }
