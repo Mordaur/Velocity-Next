@@ -694,7 +694,7 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
 
             if (changed)
             {
-                package->GetFileEntry(packagePath.toStdString(), true, &entry);
+                package->GetFileEntry(packagePath.toStdString(), true, &entry, false);
                 listing = package->GetFileListing();
 
                 items.at(0)->setText(0, QString::fromStdString(entry.name));

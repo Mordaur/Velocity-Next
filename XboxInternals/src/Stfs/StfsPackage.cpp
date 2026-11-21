@@ -745,12 +745,12 @@ DWORD StfsPackage::GetHashTableSkipSize(DWORD tableAddress)
 }
 
 StfsFileEntry StfsPackage::GetFileEntry(string pathInPackage, bool checkFolders,
-    StfsFileEntry* newEntry)
+    StfsFileEntry* newEntry, bool useWildcards)
 {
     StfsFileEntry entry;
     
     GetFileEntry(SplitString(pathInPackage, "\\"), &fileListing, &entry, newEntry, (newEntry != NULL),
-        checkFolders);
+        checkFolders, useWildcards);
 
     if (entry.nameLen == 0)
     {
@@ -774,15 +774,17 @@ StfsIO* StfsPackage::GetStfsIO(StfsFileEntry entry)
     return stfsIO;
 }
 
-bool StfsPackage::FileExists(string pathInPackage)
+bool StfsPackage::FileExists(string pathInPackage, bool useWildcards)
 {
     StfsFileEntry entry;
-    GetFileEntry(SplitString(pathInPackage, "\\"), &fileListing, &entry);
+    GetFileEntry(SplitString(pathInPackage, "\\"), &fileListing, &entry, NULL, false, false,
+        useWildcards);
     return (entry.nameLen != 0);
 }
 
 void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* start,
-    StfsFileEntry* out, StfsFileEntry* newEntry, bool updateEntry, bool checkFolders)
+    StfsFileEntry* out, StfsFileEntry* newEntry, bool updateEntry, bool checkFolders,
+    bool useWildcards)
 {
     bool found = false;
 
@@ -791,7 +793,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
     {
         // find the file
         for (DWORD i = 0; i < start->fileEntries.size(); i++)
-            if (MatchesFileName(locationOfFile.at(0), start->fileEntries.at(i).name))
+            if (MatchesFileName(locationOfFile.at(0), start->fileEntries.at(i).name, useWildcards))
             {
                 // update the entry
                 if (updateEntry)
@@ -813,7 +815,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
         {
             // find the file
             for (DWORD i = 0; i < start->folderEntries.size(); i++)
-                if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name))
+                if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name, useWildcards))
                 {
                     // update the entry
                     if (updateEntry)
@@ -835,13 +837,13 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
     {
         // find the next folder
         for (DWORD i = 0; i < start->folderEntries.size(); i++)
-            if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name))
+            if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name, useWildcards))
             {
                 // erase the found folder from the vector
                 locationOfFile.erase(locationOfFile.begin());
 
                 // recursively call GetFileEntry again with the updated vector, and break
-                GetFileEntry(locationOfFile, &start->folderEntries.at(i), out, newEntry, updateEntry, checkFolders);
+                GetFileEntry(locationOfFile, &start->folderEntries.at(i), out, newEntry, updateEntry, checkFolders, useWildcards);
                 found = true;
                 break;
             }
@@ -1562,7 +1564,7 @@ void StfsPackage::WriteFileEntry(StfsFileEntry* entry)
 
 void StfsPackage::RemoveFile(string pathInPackage)
 {
-    RemoveFile(GetFileEntry(pathInPackage));
+    RemoveFile(GetFileEntry(pathInPackage, false, NULL, false));
 }
 
 UINT24 StfsPackage::AllocateBlock()
@@ -1765,7 +1767,7 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
 }
 
 void StfsPackage::FindDirectoryListing(vector<string> locationOfDirectory, StfsFileListing* start,
-    StfsFileListing** out)
+    StfsFileListing** out, bool useWildcards)
 {
     if (locationOfDirectory.size() == 0)
         *out = start;
@@ -1773,7 +1775,7 @@ void StfsPackage::FindDirectoryListing(vector<string> locationOfDirectory, StfsF
     bool finalLoop = (locationOfDirectory.size() == 1);
     for (DWORD i = 0; i < start->folderEntries.size(); i++)
     {
-        if (MatchesFileName(locationOfDirectory.at(0), start->folderEntries.at(i).folder.name))
+        if (MatchesFileName(locationOfDirectory.at(0), start->folderEntries.at(i).folder.name, useWildcards))
         {
             locationOfDirectory.erase(locationOfDirectory.begin());
             if (finalLoop)
@@ -1781,7 +1783,7 @@ void StfsPackage::FindDirectoryListing(vector<string> locationOfDirectory, StfsF
             else
                 for (DWORD i = 0; i < start->folderEntries.size(); i++)
                     if (*out == NULL)
-                        FindDirectoryListing(locationOfDirectory, &start->folderEntries.at(i), out);
+                        FindDirectoryListing(locationOfDirectory, &start->folderEntries.at(i), out, useWildcards);
                     else
                         break;
 
@@ -1792,13 +1794,13 @@ void StfsPackage::FindDirectoryListing(vector<string> locationOfDirectory, StfsF
 
 void StfsPackage::UpdateEntry(string pathInPackage, StfsFileEntry entry)
 {
-    GetFileEntry(SplitString(pathInPackage, "\\"), &fileListing, NULL, &entry, true);
+    GetFileEntry(SplitString(pathInPackage, "\\"), &fileListing, NULL, &entry, true, false, false);
 }
 
 StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     void(*injectProgress)(void*, DWORD, DWORD), void* arg)
 {
-    if (FileExists(pathInPackage))
+    if (FileExists(pathInPackage, false))
         throw string("STFS: File already exists in the package.\n");
 
     // split the string and open a io
@@ -1814,7 +1816,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
         split.erase(split.begin() + (size - 1));
 
         // find the directory we'd like to inject to
-        FindDirectoryListing(split, &fileListing, &folder);
+        FindDirectoryListing(split, &fileListing, &folder, false);
         if (folder == NULL)
             throw string("STFS: The given folder could not be found.\n");
     }
@@ -1925,7 +1927,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
 StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPackage,
     void (*injectProgress)(void*, DWORD, DWORD), void* arg)
 {
-    if (FileExists(pathInPackage))
+    if (FileExists(pathInPackage, false))
         throw string("STFS: File already exists in the package.\n");
 
     // split the string and open a io
@@ -1941,7 +1943,7 @@ StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPac
         split.erase(split.begin() + (size - 1));
 
         // find the directory we'd like to inject to
-        FindDirectoryListing(split, &fileListing, &folder);
+        FindDirectoryListing(split, &fileListing, &folder, false);
         if (folder == NULL)
             throw string("STFS: The given folder could not be found.\n");
     }
@@ -2177,17 +2179,17 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
 void StfsPackage::ReplaceFile(string path, string pathInPackage, void (*replaceProgress)(void*,
     DWORD, DWORD), void* arg)
 {
-    StfsFileEntry entry = GetFileEntry(pathInPackage);
+    StfsFileEntry entry = GetFileEntry(pathInPackage, false, NULL, false);
     ReplaceFile(path, &entry, pathInPackage, replaceProgress, arg);
 }
 
 void StfsPackage::RenameFile(string newName, string pathInPackage)
 {
-    StfsFileEntry entry = GetFileEntry(pathInPackage, true);
+    StfsFileEntry entry = GetFileEntry(pathInPackage, true, NULL, false);
     entry.name = newName;
 
     // update the entry in memory
-    GetFileEntry(pathInPackage, true, &entry);
+    GetFileEntry(pathInPackage, true, &entry, false);
 
     io->SetPosition(entry.fileEntryAddress);
     WriteFileEntry(&entry);
@@ -2204,7 +2206,7 @@ void StfsPackage::CreateFolder(string pathInPackage)
     vector<string> split = SplitString(pathInPackage, "\\");
 
     StfsFileListing* folder = NULL;
-    FindDirectoryListing(split, &fileListing, &folder);
+    FindDirectoryListing(split, &fileListing, &folder, false);
     if (folder != NULL)
         throw string("STFS: Directory already exists in the package.\n");
 
@@ -2217,7 +2219,7 @@ void StfsPackage::CreateFolder(string pathInPackage)
         split.erase(split.begin() + (size - 1));
 
         // find the directory we'd like to inject to
-        FindDirectoryListing(split, &fileListing, &folder);
+        FindDirectoryListing(split, &fileListing, &folder, false);
         if (folder == NULL)
             throw string("STFS: The given folder could not be found.\n");
     }
@@ -2335,11 +2337,22 @@ StfsPackage::~StfsPackage(void)
     Cleanup();
 }
 
-bool StfsPackage::MatchesFileName(const std::string &pattern, const std::string &name)
+bool StfsPackage::MatchesFileName(const std::string &pattern, const std::string &name,
+    bool useWildcards)
 {
     // Kernel StfsLookupElementNameInDirectory compares with
     // IoIsNameInExpression(..., TRUE): case-insensitive, '*' and '?'.
     const auto lower = [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); };
+
+    if (!useWildcards)
+    {
+        if (pattern.size() != name.size())
+            return false;
+        for (size_t i = 0; i < pattern.size(); ++i)
+            if (lower(pattern[i]) != lower(name[i]))
+                return false;
+        return true;
+    }
 
     size_t p = 0, n = 0;
     size_t star = std::string::npos;

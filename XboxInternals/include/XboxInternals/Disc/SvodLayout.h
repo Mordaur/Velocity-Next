@@ -53,7 +53,7 @@ inline bool IsEnhanced(uint8_t flags)
 }
 
 // SvodCreateDevice reads the offset as one byte unless the package is
-// enhanced, where it is a big-endian 24-bit value.
+// enhanced, where it is a little-endian 24-bit value.
 inline DWORD DataBlockOffset(DWORD stored, bool enhanced)
 {
     return enhanced ? stored : (stored & 0xFF);

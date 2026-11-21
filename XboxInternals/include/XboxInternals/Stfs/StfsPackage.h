@@ -87,7 +87,7 @@ public:
 
     // Description: get the file entry of a file's path, sets nameLen to '0' if not found
     StfsFileEntry GetFileEntry(string pathInPackage, bool checkFolders = false,
-            StfsFileEntry *newEntry = NULL);
+            StfsFileEntry *newEntry = NULL, bool useWildcards = true);
 
     // Description: creates an StfsIO based off of the given path
     StfsIO* GetStfsIO(string pathInPackage);
@@ -102,11 +102,14 @@ public:
     DWORD GetFileMagic(StfsFileEntry entry);
 
     // Description: check if the file exists
-    bool FileExists(string pathInPackage);
+    bool FileExists(string pathInPackage, bool useWildcards = true);
 
-    // Description: case-insensitive name match with '*' and '?', mirroring the
-    // kernel's IoIsNameInExpression use in StfsLookupElementNameInDirectory.
-    static bool MatchesFileName(const std::string &pattern, const std::string &name);
+    // Description: case-insensitive name match. With useWildcards (the default,
+    // mirroring IoIsNameInExpression for lookups) '*' and '?' are patterns;
+    // mutations pass false so a literal '*'/'?' in a name cannot match another
+    // entry.
+    static bool MatchesFileName(const std::string &pattern, const std::string &name,
+            bool useWildcards = true);
 
     // Description: number of 4 KiB data blocks that fit in a block budget once
     // STFS hash blocks are reserved (kernel StfsComputeNumberOfDataBlocks,
@@ -251,7 +254,8 @@ private:
 
     // Description: get the file entry from a file's path
     void GetFileEntry(vector<string> locationOfFile, StfsFileListing *start, StfsFileEntry *out,
-            StfsFileEntry *newEntry = NULL, bool updateEntry = false, bool checkFolders = false);
+            StfsFileEntry *newEntry = NULL, bool updateEntry = false, bool checkFolders = false,
+            bool useWildcards = true);
 
     // Description: get the raw file listing
     void GenerateRawFileListing(StfsFileListing *in, vector<StfsFileEntry> *outFiles,
@@ -287,7 +291,7 @@ private:
 
     // Description: get the file listing that matches the directory path
     void FindDirectoryListing(vector<string> locationOfDirectory, StfsFileListing *start,
-            StfsFileListing **out);
+            StfsFileListing **out, bool useWildcards = true);
 
     // Description: update the entry at the given path
     void UpdateEntry(string pathInPackage, StfsFileEntry entry);

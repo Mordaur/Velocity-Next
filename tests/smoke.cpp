@@ -11,6 +11,7 @@
 #include <XboxInternals/Disc/SvodLayout.h>
 #include <XboxInternals/Gpd/Xdbf.h>
 #include <XboxInternals/IO/MemoryIO.h>
+#include <XboxInternals/Stfs/StfsDefinitions.h>
 #include <XboxInternals/Stfs/StfsPackage.h>
 #include <XboxInternals/Stfs/XContentHeader.h>
 #include <XboxInternals/Xex/XexLzxDecoder.h>
@@ -182,6 +183,12 @@ namespace
         check(!StfsPackage::MatchesFileName("a?c", "ac"),
               "STFS '?' requires one character");
         check(StfsPackage::MatchesFileName("*", ""), "STFS '*' matches empty");
+        check(StfsPackage::MatchesFileName("a*b", "a*b", false),
+              "STFS exact match keeps wildcard characters literal");
+        check(!StfsPackage::MatchesFileName("a*", "abc", false),
+              "STFS exact match does not treat '*' as a pattern");
+        check(StfsPackage::MatchesFileName("SAVE.BIN", "save.bin", false),
+              "STFS exact match is still case-insensitive");
 
         // Kernel StfsComputeNumberOfDataBlocks (male geometry, 0x800DFA40).
         struct Case { UINT64 blocks; DWORD expected; };
@@ -283,6 +290,37 @@ namespace
         check(BytesUntilHashBlock(0xCE000) == 0, "SVOD level-0 block is not data");
         check(BytesUntilHashBlock(0xCF000) == 0xCC000, "SVOD chunk restarts after a hash block");
         check(BytesUntilHashBlock(0xA28F000) == 0x1000, "SVOD chunk stops at the part end");
+    }
+
+    void testSvodDescriptorEndianness()
+    {
+        // SvodCreateDevice: dataBlockCount is big-endian, dataBlockOffset is
+        // little-endian (and only its low byte is used for legacy packages).
+        std::vector<BYTE> buffer(0x379 + sizeof(SvodVolumeDescriptor), 0);
+        buffer[0x379] = 0x24;
+        buffer[0x37A] = 0x01;
+        buffer[0x391] = 0x40;                     // enhanced
+        buffer[0x392] = 0x00;                     // dataBlockCount = 0x000102 (BE)
+        buffer[0x393] = 0x01;
+        buffer[0x394] = 0x02;
+        buffer[0x395] = 0x11;                     // dataBlockOffset = 0x000011 (LE)
+        buffer[0x396] = 0x00;
+        buffer[0x397] = 0x00;
+
+        MemoryIO io(buffer.data(), buffer.size());
+        SvodVolumeDescriptor descriptor{};
+        ReadSvodVolumeDescriptorEx(&descriptor, &io);
+
+        check(static_cast<DWORD>(descriptor.dataBlockCount) == 0x102,
+              "SVOD dataBlockCount is big-endian");
+        check(static_cast<DWORD>(descriptor.dataBlockOffset) == 0x11,
+              "SVOD dataBlockOffset is little-endian");
+
+        std::vector<BYTE> written(0x379 + sizeof(SvodVolumeDescriptor), 0);
+        MemoryIO out(written.data(), written.size());
+        WriteSvodVolumeDescriptorEx(&descriptor, &out);
+        check(written[0x395] == 0x11 && written[0x396] == 0x00 && written[0x397] == 0x00,
+              "SVOD dataBlockOffset is written little-endian");
     }
 
     void testMSTimeRoundTrip()
@@ -609,6 +647,7 @@ int main()
     testMSTimeRoundTrip();
     testStfsNameMatchingAndGeometry();
     testSvodLayout();
+    testSvodDescriptorEndianness();
     testLzxStoredBlock();
     testResignFailureLeavesPackageIntact();
     testCorruptXdbf();

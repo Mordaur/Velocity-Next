@@ -38,7 +38,9 @@ void ReadSvodVolumeDescriptorEx(SvodVolumeDescriptor *descriptor, BaseIO *io)
 
     descriptor->flags = io->ReadByte();
     descriptor->dataBlockCount = io->ReadInt24(BigEndian);
-    descriptor->dataBlockOffset = io->ReadInt24(BigEndian);
+    // SvodCreateDevice reads the offset little-endian (low byte first),
+    // unlike the big-endian dataBlockCount above.
+    descriptor->dataBlockOffset = io->ReadInt24(LittleEndian);
 
     io->ReadBytes(descriptor->reserved, 0x05);
 }
@@ -171,7 +173,7 @@ void WriteSvodVolumeDescriptorEx(SvodVolumeDescriptor *descriptor, BaseIO *io)
 
     io->Write(descriptor->flags);
     io->Write((INT24)descriptor->dataBlockCount, BigEndian);
-    io->Write((INT24)descriptor->dataBlockOffset, BigEndian);
+    io->Write((INT24)descriptor->dataBlockOffset, LittleEndian);
 
     io->Write(descriptor->reserved, 5);
 
