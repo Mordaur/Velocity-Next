@@ -354,10 +354,19 @@ void Xex::ExtractDecompressedData(std::string path)
 
         // Check the whole run before writing anything. A corrupt table could
         // otherwise make us write up to 4 GiB per entry before the final size
-        // check, and a DWORD sum could wrap past imageSize.
+        // check, and a DWORD sum could wrap past imageSize. The kernel clamps
+        // an overrunning run instead; rejecting the table is deliberate.
         const UINT64 blockTotal = static_cast<UINT64>(block.size) + block.nullSize;
         if (blockTotal > static_cast<UINT64>(securityInfo.imageSize) - produced)
             throw std::string("XEX: The compression block table exceeds the image size.\n");
+
+        // XeCryptAesCbc decrypts only len>>4 blocks and leaves a partial tail
+        // as ciphertext; the loader carries the IV across chunks and runs but
+        // never carries partial blocks. We reject a non-block-aligned run
+        // instead of writing ciphertext into the extracted image. Retail runs
+        // are page-aligned, so this only affects hand-built files.
+        if (IsEncrypted() && block.size % XEX_AES_BLOCK_SIZE != 0)
+            throw std::string("XEX: Encrypted type-1 run is not AES-block aligned.\n");
 
         // determine how many copy iterations it will take
         DWORD copyIterations = block.size / XEX_COPY_BUFFER_SIZE;
@@ -375,10 +384,9 @@ void Xex::ExtractDecompressedData(std::string path)
             // read in the data
             io->ReadBytes(copyBuffer.data(), bytesToCopy);
 
-            // decrypt it if necessary
+            // decrypt it if necessary; the IV stays chained across buffers
             if (IsEncrypted())
             {
-                // could be problematic
                 DWORD aesBlocksInBuffer = bytesToCopy / XEX_AES_BLOCK_SIZE;
                 for (DWORD y = 0; y < aesBlocksInBuffer; y++)
                 {
@@ -435,85 +443,9 @@ void Xex::ExtractDecompressedData(std::string path)
 
 void Xex::ExtractData2(std::string path)
 {
-    // create an io to read the data as it is in the file
-    BaseIO *plaintextDataIO = io;
-    plaintextDataIO->SetPosition(header.dataAddress);
-
-    std::unique_ptr<BaseIO> aesIO;
-    std::unique_ptr<BaseIO> decompressedIO;
-
-    // check to see if it needs be to decrypted
-    if (GetEncryptionState() == RetailEncrypted || GetEncryptionState() == DevKitEncrypted)
-    {
-        aesIO = std::make_unique<XexAesIO>(plaintextDataIO, this, decryptedKey);
-        plaintextDataIO = aesIO.get();
-    }
-
-    // check to see if it needs to be zero decompressed
-    if (!compressionBlocks.empty())
-    {
-        decompressedIO = std::make_unique<XexZeroBasedCompressionIO>(plaintextDataIO, this);
-        plaintextDataIO = decompressedIO.get();
-    }
-
-    // calculate the total data size
-    DWORD dataSize;
-    if (compressionBlocks.size() == 0)
-    {
-        dataSize = io->Length() - header.dataAddress;
-    }
-    else
-    {
-        dataSize = 0;
-        for (size_t i = 0; i < compressionBlocks.size(); i++)
-        {
-            dataSize += compressionBlocks.at(i).size;
-            dataSize += compressionBlocks.at(i).nullSize;
-        }
-    }
-
-    DWORD copyIterations = dataSize / XEX_COPY_BUFFER_SIZE;
-    if (dataSize % XEX_COPY_BUFFER_SIZE != 0)
-        copyIterations++;
-
-    std::vector<BYTE> copyBuffer(XEX_COPY_BUFFER_SIZE);
-
-    // copy the data over in chunks
-    FileIO outFile(path, true);
-    for (DWORD i = 0; i < copyIterations; i++)
-    {
-        // determine the amount of bytes to copy
-        DWORD bytesToCopy = XEX_COPY_BUFFER_SIZE;
-        if (i + 1 == copyIterations && dataSize % XEX_COPY_BUFFER_SIZE != 0)
-            bytesToCopy = dataSize % XEX_COPY_BUFFER_SIZE;
-
-        // copy the bytes to the out file
-        plaintextDataIO->ReadBytes(copyBuffer.data(), bytesToCopy);
-        outFile.Write(copyBuffer.data(), bytesToCopy);
-    }
-
-    // Same tail rule as ExtractDecompressedData: the block table stops at the
-    // last initialised byte and the kernel zeroes the remainder.
-    if (!compressionBlocks.empty())
-    {
-        if (dataSize > securityInfo.imageSize)
-            throw std::string("XEX: The compression block table exceeds the image size.\n");
-
-        if (dataSize < securityInfo.imageSize)
-        {
-            std::fill(copyBuffer.begin(), copyBuffer.end(), 0);
-            UINT64 remaining = securityInfo.imageSize - dataSize;
-            while (remaining > 0)
-            {
-                const DWORD chunk = static_cast<DWORD>(
-                        std::min<UINT64>(remaining, copyBuffer.size()));
-                outFile.Write(copyBuffer.data(), chunk);
-                remaining -= chunk;
-            }
-        }
-    }
-
-    // cleanup handled by unique_ptr wrappers
+    // Legacy alias. Keep one extraction path so the size/bounds checks cannot
+    // diverge between ExtractData and ExtractData2.
+    ExtractData(std::move(path));
 }
 
 bool Xex::HasRegion(XexRegion region)
@@ -928,10 +860,23 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
     // supported and is left unparsed.
     if (compressionState == XexCompressed)
     {
-        if ((baseFileDescriptorSize - 8) % XEX_COMPRESSION_BLOCK_SIZE != 0)
+        if (baseFileDescriptorSize < 0x10 ||
+            (baseFileDescriptorSize - 8) % XEX_COMPRESSION_BLOCK_SIZE != 0)
             throw std::string("XEX: Invalid compression block table.\n");
 
-        DWORD blockCount = (baseFileDescriptorSize - 8) / XEX_COMPRESSION_BLOCK_SIZE;
+        // XexpLoadRawImage requires the descriptor to end in a zero dword and
+        // stops at the first block whose nullSize is zero; trailing entries are
+        // not consumed.
+        const UINT64 descriptorEnd = static_cast<UINT64>(address) + baseFileDescriptorSize;
+        if (descriptorEnd > io->Length())
+            throw std::string("XEX: Compression block table is outside the file.\n");
+
+        io->SetPosition(static_cast<DWORD>(descriptorEnd - 4));
+        if (io->ReadDword() != 0)
+            throw std::string("XEX: Compression block table has no terminator.\n");
+
+        io->SetPosition(address + 8);
+        const DWORD blockCount = (baseFileDescriptorSize - 8) / XEX_COMPRESSION_BLOCK_SIZE;
         for (DWORD i = 0; i < blockCount; i++)
         {
             XexCompressionBlock block;
@@ -939,6 +884,8 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
             block.nullSize = io->ReadDword();
 
             compressionBlocks.push_back(block);
+            if (block.nullSize == 0)
+                break;
         }
     }
     else if (compressionState == XexSupercompressed)
