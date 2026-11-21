@@ -1,5 +1,6 @@
 #include <XboxInternals/Gpd/GpdBase.h>
 #include <utility>
+#include <bit>
 
 
 GpdBase::GpdBase(shared_ptr<FileIO> io) : io(std::move(io))
@@ -260,12 +261,16 @@ void GpdBase::WriteSettingEntry(SettingEntry setting)
             break;
         }
         case Int32:
+            io->Write(static_cast<u32>(setting.int32));
+            break;
         case Float:
-            io->Write((u32)setting.int32);
+            io->Write(std::bit_cast<u32>(setting.floatData));
             break;
         case Int64:
+            io->Write(static_cast<u64>(setting.int64));
+            break;
         case Double:
-            io->Write((u64)setting.int64);
+            io->Write(std::bit_cast<u64>(setting.doubleData));
             break;
         case TimeStamp:
         {

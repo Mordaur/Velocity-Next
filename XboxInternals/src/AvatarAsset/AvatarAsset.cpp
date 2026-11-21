@@ -1,5 +1,6 @@
 #include <XboxInternals/AvatarAsset/AvatarAsset.h>
 
+#include <cmath>
 
 AvatarAsset::AvatarAsset(string assetPath)
 {
@@ -212,8 +213,9 @@ void AvatarAsset::readAnimationInfo(u32 pos)
     // read the fps
     animation.framesPerSecond =  io->ReadFloat();
 
-    // round dat, yo
-    animation.framesPerSecond = (float)(((int)((animation.framesPerSecond + .05f) * 100)) / 100);
+    // round to two decimal places without float -> int overflow
+    animation.framesPerSecond =
+            std::round(animation.framesPerSecond * 100.0f) / 100.0f;
 
     // calculate the duration of the animation
     animation.duration = (float)animation.frameCount / animation.framesPerSecond;

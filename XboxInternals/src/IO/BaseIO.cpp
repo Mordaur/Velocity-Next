@@ -1,5 +1,6 @@
 #include <XboxInternals/IO/BaseIO.h>
 #include <vector>
+#include <bit>
 
 using namespace std;
 
@@ -129,12 +130,14 @@ u64 BaseIO::ReadMultiByte(size_t size)
 
 float BaseIO::ReadFloat()
 {
-    return (float)ReadDword();
+    // ReadDword/UInt64 already apply the file byte order; reinterpret the bits,
+    // do not convert the integer value.
+    return std::bit_cast<float>(ReadDword());
 }
 
 double BaseIO::ReadDouble()
 {
-    return (double)ReadUInt64();
+    return std::bit_cast<double>(ReadUInt64());
 }
 
 string BaseIO::ReadString(int len, char nullTerminator, bool forceInclude0, int maxLength)
