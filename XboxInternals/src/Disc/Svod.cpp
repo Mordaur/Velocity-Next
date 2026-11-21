@@ -488,7 +488,9 @@ bool SVOD::Verify()
         }
 
         // Slot 203 links to the next part's master block.
-        memcpy(expectedMaster, master + 4060, 0x14);
+        memcpy(expectedMaster,
+               master + static_cast<std::size_t>(XboxInternals::SvodLayout::kGroupsPerPart) * 0x14,
+               0x14);
 
         const DWORD firstBlock = part * blocksPerPart;
         if (firstBlock >= totalDataBlocks)
@@ -499,7 +501,9 @@ bool SVOD::Verify()
 
         for (DWORD group = 0; group < groups; ++group)
         {
-            io->SetPosition((1 + group * 205) * 0x1000, static_cast<int>(part));
+            io->SetPosition(static_cast<DWORD>(0x1000 +
+                    static_cast<UINT64>(group) * XboxInternals::SvodLayout::kGroupStrideBytes),
+                    static_cast<int>(part));
             io->ReadBytes(level0, 0x1000);
             HashBlock(level0, digest);
 
