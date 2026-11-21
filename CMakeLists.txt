@@ -286,6 +286,13 @@ botan_generate(
     ${VELOCITY_BOTAN_MODULES}
 )
 
+# Botan is third-party code; GCC/Clang can emit false positives from its
+# amalgamation (e.g. -Wstringop-overread). Keep the project targets clean
+# without attributing those to our build.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(BotanAmalgamation PRIVATE -w)
+endif()
+
 # Install Botan amalgamation header for standalone XboxInternals distribution
 # This allows consumers to use XboxInternals without rebuilding Botan
 include(GNUInstallDirs)
