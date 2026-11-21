@@ -36,6 +36,10 @@ private:
     EndianType endian;
     u64 length;
     bool readOnly = false;
+    // A read-write fstream keeps separate get and put positions. These track
+    // which one is stale so the next operation can resync before it runs.
+    bool readNeedsSync = false;
+    bool writeNeedsSync = false;
     void ReadBytesWithChecks(void *buffer, i32 size);
     std::unique_ptr<fstream> fstr;
     const string filePath;

@@ -46,14 +46,37 @@ FileIO::FileIO(string path, bool truncate) :
 void FileIO::SetPosition(u64 pos, ios_base::seekdir dir)
 {
     if (readOnly)
+    {
         fstr->seekg(pos, static_cast<std::ios_base::seekdir>(dir));
+        return;
+    }
+
+    // A read-write fstream keeps separate get and put positions. BaseIO has a
+    // single position, so move both pointers to the same absolute offset;
+    // otherwise a read after a write starts at the stale get position.
+    u64 target;
+    if (dir == ios_base::beg)
+    {
+        target = pos;
+    }
     else
+    {
+        // Resolve cur/end against the put position, then seek both absolutely.
         fstr->seekp(pos, static_cast<std::ios_base::seekdir>(dir));
+        target = static_cast<u64>(fstr->tellp());
+    }
+
+    fstr->seekp(static_cast<std::streamoff>(target), std::ios_base::beg);
+    fstr->seekg(static_cast<std::streamoff>(target), std::ios_base::beg);
+    readNeedsSync = false;
+    writeNeedsSync = false;
 }
 
 u64 FileIO::GetPosition()
 {
-    return readOnly ? fstr->tellg() : fstr->tellp();
+    // The get pointer is current after a read (or a fresh seek); the put pointer
+    // is current after a write.
+    return (readOnly || writeNeedsSync) ? fstr->tellg() : fstr->tellp();
 }
 
 u64 FileIO::Length()
@@ -95,9 +118,19 @@ string FileIO::GetFilePath()
 
 void FileIO::ReadBytes(u8 *outBuffer, u32 len)
 {
+    // Reading does not move the put pointer; if a write left it elsewhere, first
+    // bring the get pointer to the logical position the caller expects.
+    if (readNeedsSync)
+    {
+        fstr->seekg(fstr->tellp());
+        readNeedsSync = false;
+    }
+
     fstr->read((fstream::char_type*)outBuffer, len);
     if (fstr->fail())
         throw string("FileIO: Error reading from file.\n");
+
+    writeNeedsSync = true;
 }
 
 void FileIO::WriteBytes(u8 *buffer, u32 len)
@@ -105,9 +138,18 @@ void FileIO::WriteBytes(u8 *buffer, u32 len)
     if (readOnly)
         throw string("FileIO: File was opened read-only.\n");
 
+    // Mirror ReadBytes: a read does not move the put pointer, so resync it.
+    if (writeNeedsSync)
+    {
+        fstr->seekp(fstr->tellg());
+        writeNeedsSync = false;
+    }
+
     fstr->write((fstream::char_type*)buffer, len);
     if (fstr->fail())
         throw string("FileIO: Error writing to file.\n");
+
+    readNeedsSync = true;
 }
 
 FileIO::~FileIO(void)
