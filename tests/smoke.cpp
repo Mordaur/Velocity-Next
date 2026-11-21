@@ -818,6 +818,27 @@ void testXexType1Tables()
         std::error_code ignored;
         fs::remove(out, ignored);
     }
+
+    {
+        namespace fs = std::filesystem;
+        const fs::path out = fs::temp_directory_path() / "xbi_smoke_xex_raw.bin";
+        auto file = makeSyntheticXex(0x8, 0, 0, 0, 0);
+        bool ok = false;
+        try
+        {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+            xex.ExtractData(out.string());
+            ok = fs::exists(out) && fs::file_size(out) == 0x800;
+        }
+        catch (...)
+        {
+        }
+        check(ok, "XEX uncompressed unencrypted extraction copies raw data");
+
+        std::error_code ignored;
+        fs::remove(out, ignored);
+    }
 }
 
 void testSvodMultipartRehash()

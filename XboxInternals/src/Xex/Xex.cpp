@@ -299,6 +299,22 @@ void Xex::ExtractData(std::string path)
         ExtractCompressedData(path);
     else if (compressionState == XexDeltaCompressed)
         throw std::string("XEX: Delta compression (type 3) is not supported yet.\n");
+    else if (compressionState == XexDecompressed)
+    {
+        // Plain, unencrypted image: copy the raw bytes after the header. The
+        // old ExtractData2 handled this case; keep it so the alias does not
+        // silently return without writing a file.
+        const UINT64 dataStart = header.dataAddress;
+        const UINT64 fileLength = io->Length();
+        if (dataStart > fileLength)
+            throw std::string("XEX: Data starts past the end of the file.\n");
+
+        const UINT64 dataSize = fileLength - dataStart;
+        if (dataSize > UINT32_MAX)
+            throw std::string("XEX: Extracted data is too large.\n");
+
+        ExtractFromRawData(path, 0, static_cast<DWORD>(dataSize));
+    }
 }
 
 void Xex::ExtractDecryptedData(std::string path) const
