@@ -29,7 +29,7 @@ MultiFileIO::~MultiFileIO()
     Close();
 }
 
-void MultiFileIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
+void MultiFileIO::SetPosition(u64 position, std::ios_base::seekdir dir)
 {
     if (dir == std::ios_base::end)
         throw std::string("MultiFileIO: Unsupported seek dir.");
@@ -52,22 +52,22 @@ void MultiFileIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
     }
 }
 
-UINT64 MultiFileIO::GetPosition()
+u64 MultiFileIO::GetPosition()
 {
     return pos;
 }
 
-UINT64 MultiFileIO::Length()
+u64 MultiFileIO::Length()
 {
     return lengthOfFiles;
 }
 
-void MultiFileIO::WriteBytes(BYTE *buffer, DWORD len)
+void MultiFileIO::WriteBytes(u8 *buffer, u32 len)
 {
     if (len > lengthOfFiles - pos)
         throw std::string("MultiFileIO: Requested Write length is too large.\n");
 
-    DWORD offset = 0;
+    u32 offset = 0;
 
     // check to see if we can Write straight from the current stream
     if (files.at(currentIOIndex)->GetPosition() + len > files.at(currentIOIndex)->Length())
@@ -75,7 +75,7 @@ void MultiFileIO::WriteBytes(BYTE *buffer, DWORD len)
         // if we can't, we must calculate how much we should read each time
         while (len > 0)
         {
-        DWORD WriteCount = (files.at(currentIOIndex)->Length() > files.at(currentIOIndex)->GetPosition() +
+        u32 WriteCount = (files.at(currentIOIndex)->Length() > files.at(currentIOIndex)->GetPosition() +
             len) ? len : (files.at(currentIOIndex)->Length() - files.at(currentIOIndex)->GetPosition());
         files.at(currentIOIndex)->WriteBytes(buffer + offset, WriteCount);
             offset += WriteCount;
@@ -95,9 +95,9 @@ void MultiFileIO::Flush()
     files.at(currentIOIndex)->Flush();
 }
 
-void MultiFileIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void MultiFileIO::ReadBytes(u8 *outBuffer, u32 len)
 {
-    DWORD offset = 0;
+    u32 offset = 0;
 
     // check to see if we can read straight from the current stream
     if (files.at(currentIOIndex)->GetPosition() + len > files.at(currentIOIndex)->Length())
@@ -105,7 +105,7 @@ void MultiFileIO::ReadBytes(BYTE *outBuffer, DWORD len)
         // if we can't, we must calculate how much we should read each time
         while (len > 0)
         {
-        DWORD readCount = (files.at(currentIOIndex)->Length() > files.at(currentIOIndex)->GetPosition() +
+        u32 readCount = (files.at(currentIOIndex)->Length() > files.at(currentIOIndex)->GetPosition() +
             len) ? len : (files.at(currentIOIndex)->Length() - files.at(currentIOIndex)->GetPosition());
         files.at(currentIOIndex)->ReadBytes(outBuffer + offset, readCount);
             offset += readCount;

@@ -139,7 +139,8 @@ After installation, the library is organized as:
       IO/
       Stfs/
       Export.h
-      TypeDefinitions.h
+      Types.h
+      EnumTraits.h
       XboxInternals.h (convenience header)
   lib/
     libXboxInternals.so / XboxInternals.dll / libXboxInternals.a

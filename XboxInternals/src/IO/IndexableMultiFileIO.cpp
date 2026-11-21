@@ -7,13 +7,13 @@ IndexableMultiFileIO::IndexableMultiFileIO()
 
 IndexableMultiFileIO::~IndexableMultiFileIO() = default;
 
-void IndexableMultiFileIO::SetPosition(DWORD newAddressInFile, int desiredFileIndex)
+void IndexableMultiFileIO::SetPosition(u32 newAddressInFile, int desiredFileIndex)
 {
     if (currentIO == nullptr && files.empty()) {
         throw std::string("MultiFileIO: No files are loaded.");
     }
 
-    if (desiredFileIndex == -1 || static_cast<DWORD>(desiredFileIndex) == fileIndex) {
+    if (desiredFileIndex == -1 || static_cast<u32>(desiredFileIndex) == fileIndex) {
         if (newAddressInFile >= CurrentFileLength()) {
             throw std::string("MultiFileIO: Cannot seek beyond the end of the file\n");
         }
@@ -38,11 +38,11 @@ void IndexableMultiFileIO::SetPosition(DWORD newAddressInFile, int desiredFileIn
     }
 
     addressInFile = newAddressInFile;
-    fileIndex = static_cast<DWORD>(desiredFileIndex);
+    fileIndex = static_cast<u32>(desiredFileIndex);
     currentIO->SetPosition(addressInFile);
 }
 
-void IndexableMultiFileIO::GetPosition(DWORD *addressOut, DWORD *fileIndexOut)
+void IndexableMultiFileIO::GetPosition(u32 *addressOut, u32 *fileIndexOut)
 {
     if (addressOut) {
         *addressOut = addressInFile;
@@ -52,28 +52,28 @@ void IndexableMultiFileIO::GetPosition(DWORD *addressOut, DWORD *fileIndexOut)
     }
 }
 
-DWORD IndexableMultiFileIO::CurrentFileLength()
+u32 IndexableMultiFileIO::CurrentFileLength()
 {
     if (currentIO == nullptr) {
         throw std::string("MultiFileIO: No current file is open\n");
     }
 
     currentIO->SetPosition(0, std::ios_base::end);
-    DWORD fileLen = static_cast<DWORD>(currentIO->GetPosition());
+    u32 fileLen = static_cast<u32>(currentIO->GetPosition());
     currentIO->SetPosition(addressInFile);
     return fileLen;
 }
 
-void IndexableMultiFileIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void IndexableMultiFileIO::ReadBytes(u8 *outBuffer, u32 len)
 {
     while (len > 0) {
-        DWORD bytesLeft = CurrentFileLength() - addressInFile;
-        DWORD amountToRead = (bytesLeft > len) ? len : bytesLeft;
+        u32 bytesLeft = CurrentFileLength() - addressInFile;
+        u32 amountToRead = (bytesLeft > len) ? len : bytesLeft;
 
         currentIO->ReadBytes(outBuffer, amountToRead);
 
         if (len >= bytesLeft && (fileIndex + 1) < FileCount()) {
-            SetPosition(static_cast<DWORD>(0), static_cast<int>(fileIndex + 1));
+            SetPosition(static_cast<u32>(0), static_cast<int>(fileIndex + 1));
         } else if (len < bytesLeft) {
             SetPosition(addressInFile + len);
         }
@@ -83,16 +83,16 @@ void IndexableMultiFileIO::ReadBytes(BYTE *outBuffer, DWORD len)
     }
 }
 
-void IndexableMultiFileIO::WriteBytes(BYTE *buffer, DWORD len)
+void IndexableMultiFileIO::WriteBytes(u8 *buffer, u32 len)
 {
     while (len > 0) {
-        DWORD bytesLeft = CurrentFileLength() - addressInFile;
-        DWORD amountToWrite = (bytesLeft > len) ? len : bytesLeft;
+        u32 bytesLeft = CurrentFileLength() - addressInFile;
+        u32 amountToWrite = (bytesLeft > len) ? len : bytesLeft;
 
         currentIO->Write(buffer, amountToWrite);
 
         if (len >= bytesLeft) {
-            SetPosition(static_cast<DWORD>(0), static_cast<int>(fileIndex + 1));
+            SetPosition(static_cast<u32>(0), static_cast<int>(fileIndex + 1));
         } else {
             SetPosition(addressInFile + len);
         }
@@ -116,7 +116,7 @@ void IndexableMultiFileIO::Flush()
     }
 }
 
-UINT64 IndexableMultiFileIO::Length()
+u64 IndexableMultiFileIO::Length()
 {
     if (currentIO == nullptr) {
         return 0;
@@ -124,17 +124,17 @@ UINT64 IndexableMultiFileIO::Length()
     return currentIO->Length();
 }
 
-DWORD IndexableMultiFileIO::FileCount()
+u32 IndexableMultiFileIO::FileCount()
 {
-    return static_cast<DWORD>(files.size());
+    return static_cast<u32>(files.size());
 }
 
-void IndexableMultiFileIO::SetPosition(UINT64, std::ios_base::seekdir)
+void IndexableMultiFileIO::SetPosition(u64, std::ios_base::seekdir)
 {
     throw std::string("MultiFileIO: Unused function has been called.\n");
 }
 
-UINT64 IndexableMultiFileIO::GetPosition()
+u64 IndexableMultiFileIO::GetPosition()
 {
     throw std::string("MultiFileIO: Unused function has been called.\n");
 }

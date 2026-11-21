@@ -29,7 +29,7 @@
 #include <vector>
 
 // other
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/Stfs/StfsConstants.h>
 #include <ctype.h>
 
@@ -47,13 +47,13 @@ enum VelocityDropAction
 class QtHelpers
 {
 public:
-    static QString ByteArrayToString(BYTE *buffer, DWORD len, bool spacesBetween);
+    static QString ByteArrayToString(u8 *buffer, u32 len, bool spacesBetween);
 
-    static QString ByteArrayToHexQString(BYTE *buffer, DWORD len);
+    static QString ByteArrayToHexQString(u8 *buffer, u32 len);
 
-    static DWORD ParseHexString(QString string);
+    static u32 ParseHexString(QString string);
 
-    static void ParseHexStringBuffer(QString bytes, BYTE *outBuffer, int len);
+    static void ParseHexStringBuffer(QString bytes, u8 *outBuffer, int len);
 
     static QString DefaultLocation();
 
@@ -122,7 +122,7 @@ public:
 
     static void CollapseAllChildren(QTreeWidgetItem *item);
 
-    static void GetFileIcon(DWORD magic, QString fileName, QIcon &icon, QTreeWidgetItem &item,
+    static void GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidgetItem &item,
                             FileSystem fileSystem = FileSystemSTFS);
 
     static void AddSubWindow(QMdiArea *mdiArea, QWidget *widget);

@@ -30,7 +30,7 @@ XexDialog::XexDialog(Xex *xex, QWidget *parent, BaseIO *ownedIo) :
 
     try {
         // load the module flags
-        DWORD moduleFlags = xex->GetModuleFlags();
+        u32 moduleFlags = xex->GetModuleFlags();
         ui->chkTitleModule->setChecked(!!(moduleFlags & ModuleTitle));
         ui->chkDeltaPatch->setChecked(!!(moduleFlags & ModulePatchDelta));
         ui->chkDLL->setChecked(!!(moduleFlags & ModuleDLL));
@@ -117,7 +117,7 @@ XexDialog::XexDialog(Xex *xex, QWidget *parent, BaseIO *ownedIo) :
     ui->lblLANKey->setText(QString::fromStdString(Utils::ConvertToHexString(xex->GetLANKey(), 0x10)));
 
     // load the allowed media types
-    DWORD allowedMediaTypes = xex->GetAllowedMediaTypes();
+    u32 allowedMediaTypes = xex->GetAllowedMediaTypes();
     ui->chkHardDisk->setChecked(!!(allowedMediaTypes & HardDisk));
     ui->chkDVDX2->setChecked(!!(allowedMediaTypes & DVDX2));
     ui->chkDVDCD->setChecked(!!(allowedMediaTypes & DVDCD));
@@ -139,7 +139,7 @@ XexDialog::XexDialog(Xex *xex, QWidget *parent, BaseIO *ownedIo) :
     ui->chkXboxPlatformPackage->setChecked(!!(allowedMediaTypes & XboxPlatformPackage));
 
     // load the image flags
-    DWORD imageFlags = xex->GetImageFlags();
+    u32 imageFlags = xex->GetImageFlags();
     ui->chkXgd2MediaOnly->setChecked(!!(imageFlags & XGD2MediaOnly));
     ui->chkCardeaKey->setChecked(!!(imageFlags & CardeaKey));
     ui->chkXeikaKey->setChecked(!!(imageFlags & XeikaKey));
@@ -161,7 +161,7 @@ XexDialog::XexDialog(Xex *xex, QWidget *parent, BaseIO *ownedIo) :
     boxArtRetriever = new BoxArtRetriever(this);
     connect(boxArtRetriever, SIGNAL(largeBoxArtRetrieved(QPixmap)), this, SLOT(onLargeBoxArtRetrieved(QPixmap)));
 
-    DWORD titleID = xex->GetTitleID();
+    u32 titleID = xex->GetTitleID();
     boxArtRetriever->FetchBoxArt(titleID, BoxArtLarge);
 
     // load the state
@@ -188,7 +188,7 @@ XexDialog::~XexDialog()
     delete ui;
 }
 
-void XexDialog::AddExecutableProperty(QString name, DWORD value)
+void XexDialog::AddExecutableProperty(QString name, u32 value)
 {
     if (value != 0)
         AddExecutableProperty(name, "0x" + QString::fromStdString(Utils::ConvertToHexString(value)));

@@ -65,13 +65,13 @@ public:
     wstring GetGamertag();
 
     // Description: get the player's XUID
-    UINT64 GetXUID();
+    u64 GetXUID();
 
     // Description: get the player's xbl service provider
     XboxLiveServiceProvider GetServiceProvider();
 
     // Description: get the player's passcode, if it isn't enabled, then the values won't be returned
-    void GetPasscode(BYTE *passcode);
+    void GetPasscode(u8 *passcode);
 
     // Description: get the onlne domain for XboxLIVE
     string GetOnlineDomain();
@@ -80,7 +80,7 @@ public:
     string GetKerberosRealm();
 
     // Description: get the online key for the player
-    void GetOnlineKey(BYTE *outKey);
+    void GetOnlineKey(u8 *outKey);
 
     // Description: enable/disable a passcode
     void SetPasscodeEnabled(bool b);
@@ -110,7 +110,7 @@ public:
     void SetGamertag(std::wstring gamertag);
 
     // Description: set the passcode for the player
-    void SetPasscode(BYTE *passcode);
+    void SetPasscode(u8 *passcode);
 
     // Description: set the gamer's XUID to offline
     void SetXUIDOffline();
@@ -119,7 +119,7 @@ public:
     void SetXUIDOnline();
 
     // Description: set the gamer's XUID
-    void SetXUID(UINT64 xuid);
+    void SetXUID(u64 xuid);
 
     // Description: set the service provider for the player
     void SetOnlineServiceProvider(XboxLiveServiceProvider provider);

@@ -53,14 +53,14 @@ void AvatarAsset::readHeader()
 
 void AvatarAsset::readBlocks()
 {
-    DWORD prevAddress = header.blockStartAddress, prevDataLen = 0;
+    u32 prevAddress = header.blockStartAddress, prevDataLen = 0;
     io->SetPosition(0, ios_base::end);
-    DWORD fileSize = io->GetPosition();
+    u32 fileSize = io->GetPosition();
 
     for (;;)
     {
         // seek to the position of the next block
-        DWORD curBlockAddress = prevAddress + roundUpToBlockAlignment(prevDataLen);
+        u32 curBlockAddress = prevAddress + roundUpToBlockAlignment(prevDataLen);
         io->SetPosition(curBlockAddress);
 
         // if the io is at the end of the file, then break out
@@ -95,7 +95,7 @@ void AvatarAsset::readBlocks()
     }
 }
 
-void AvatarAsset::parseMetadataLegacyV1(DWORD pos)
+void AvatarAsset::parseMetadataLegacyV1(u32 pos)
 {
     // seek to the position of the metadata
     io->SetPosition(pos);
@@ -116,7 +116,7 @@ void AvatarAsset::parseMetadataLegacyV1(DWORD pos)
     io->SetEndian(byteOrder);
 }
 
-void AvatarAsset::parseMetadata(DWORD pos)
+void AvatarAsset::parseMetadata(u32 pos)
 {
     // seek to the position of the metadata
     io->SetPosition(pos);
@@ -144,7 +144,7 @@ void AvatarAsset::parseMetadata(DWORD pos)
     }
 }
 
-void AvatarAsset::parseColorTable(DWORD pos)
+void AvatarAsset::parseColorTable(u32 pos)
 {
     // seek to the color table position
     io->SetPosition(pos);
@@ -160,7 +160,7 @@ void AvatarAsset::parseColorTable(DWORD pos)
     customColors.entries.resize(customColors.count);
 
     // read the entries
-    for (DWORD i = 0; i < customColors.count; i++)
+    for (u32 i = 0; i < customColors.count; i++)
     {
         customColors.entries[i].color1.color.blue = io->ReadByte();
         customColors.entries[i].color1.color.green = io->ReadByte();
@@ -197,7 +197,7 @@ void AvatarAsset::ReadBlockData(STRBBlock *block)
     io->ReadBytes(block->data.data(), block->dataLength);
 }
 
-void AvatarAsset::readAnimationInfo(DWORD pos)
+void AvatarAsset::readAnimationInfo(u32 pos)
 {
     // seek to the position of the animation information
     io->SetPosition(pos);
@@ -221,7 +221,7 @@ void AvatarAsset::readAnimationInfo(DWORD pos)
     io->SetEndian(byteOrder);
 }
 
-DWORD AvatarAsset::roundUpToBlockAlignment(DWORD valueToRound)
+u32 AvatarAsset::roundUpToBlockAlignment(u32 valueToRound)
 {
     if (((header.blockAlignment & (header.blockAlignment - 1)) != 0) || (header.blockAlignment == 0))
         throw string("STRB: Error when rounding.\n");

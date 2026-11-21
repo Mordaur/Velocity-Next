@@ -19,7 +19,7 @@ ClusterToolDialog::~ClusterToolDialog()
 void ClusterToolDialog::on_spinBox_valueChanged(int cluster)
 {
     ui->lblAddress->setText("0x" + QString::number(part.ClusterToOffset(
-            static_cast<DWORD>(cluster)), 16).toUpper());
+            static_cast<u32>(cluster)), 16).toUpper());
 }
 
 

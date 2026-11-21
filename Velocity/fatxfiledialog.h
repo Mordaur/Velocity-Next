@@ -20,7 +20,7 @@ class FatxFileDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit FatxFileDialog(FatxDrive *drive, FatxFileEntry *entry, DWORD clusterSize, QString type,
+    explicit FatxFileDialog(FatxDrive *drive, FatxFileEntry *entry, u32 clusterSize, QString type,
             QWidget *parent);
     ~FatxFileDialog();
 
@@ -34,10 +34,10 @@ private:
     QString type;
     FatxDrive *drive;
 
-    QString msTimeToString(DWORD time);
+    QString msTimeToString(u32 time);
     QString getFileType(QString fileName);
     void WriteEntryBack();
-    UINT64 calculateDirectorySize(FatxFileEntry *directory, DWORD clusterSize);
+    u64 calculateDirectorySize(FatxFileEntry *directory, u32 clusterSize);
 };
 
 #endif // FATXFILEDIALOG_H

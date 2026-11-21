@@ -27,7 +27,7 @@
 #include <cstdint>
 
 #include <XboxInternals/Stfs/StfsConstants.h>
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 
 namespace XboxInternals::SvodLayout {
 
@@ -45,7 +45,7 @@ constexpr uint64_t kGroupStrideBytes = 0x1000 + kDataBlocksPerGroup * 0x1000; //
 constexpr uint8_t kEnhancedFlag = EnhancedGDFLayout;
 
 // GDF volume descriptor block (volume block 16, byte 0x10000).
-constexpr DWORD kGdfHeaderVolumeBlock = 16;
+constexpr u32 kGdfHeaderVolumeBlock = 16;
 
 inline bool IsEnhanced(uint8_t flags)
 {
@@ -54,21 +54,21 @@ inline bool IsEnhanced(uint8_t flags)
 
 // SvodCreateDevice reads the offset as one byte unless the package is
 // enhanced, where it is a little-endian 24-bit value.
-inline DWORD DataBlockOffset(DWORD stored, bool enhanced)
+inline u32 DataBlockOffset(u32 stored, bool enhanced)
 {
     return enhanced ? stored : (stored & 0xFF);
 }
 
 // SvodReadBackingBlocks, mode 0: part-relative byte offset of a data block.
 // The enhanced shift selects a different data block; it never moves this one.
-inline uint64_t DataBlockAddress(DWORD dataBlock)
+inline uint64_t DataBlockAddress(u32 dataBlock)
 {
     return (static_cast<uint64_t>(dataBlock) + dataBlock / kDataBlocksPerGroup + 2) * 0x1000;
 }
 
 // Data block that holds the GDF volume descriptor. Returns false when a legacy
 // package skips far enough that the descriptor is zero-filled.
-inline bool GdfHeaderBlock(DWORD dataBlockOffset, bool enhanced, DWORD *dataBlock)
+inline bool GdfHeaderBlock(u32 dataBlockOffset, bool enhanced, u32 *dataBlock)
 {
     if (enhanced)
     {
@@ -89,9 +89,9 @@ inline bool GdfHeaderBlock(DWORD dataBlockOffset, bool enhanced, DWORD *dataBloc
 // sector the kernel would zero-fill (below dataBlockOffset, or outside the
 // part). `dataBlockCount` optionally bounds the volume; pass 0 to skip that
 // check (used by the low-level layout tests).
-inline bool Map(DWORD sector, DWORD dataBlockOffset, bool enhanced,
-                DWORD *addressInDataFile, DWORD *dataFileIndex,
-                DWORD dataBlockCount = 0)
+inline bool Map(u32 sector, u32 dataBlockOffset, bool enhanced,
+                u32 *addressInDataFile, u32 *dataFileIndex,
+                u32 dataBlockCount = 0)
 {
     const uint64_t offsetSectors = static_cast<uint64_t>(dataBlockOffset) * 2;
     const uint64_t logical = static_cast<uint64_t>(sector);
@@ -138,14 +138,14 @@ inline bool Map(DWORD sector, DWORD dataBlockOffset, bool enhanced,
     const uint64_t part = dataBlock / kDataBlocksPerPart;
     const uint64_t within = dataBlock % kDataBlocksPerPart;
 
-    const uint64_t address = DataBlockAddress(static_cast<DWORD>(within)) + inBlock * 0x800;
+    const uint64_t address = DataBlockAddress(static_cast<u32>(within)) + inBlock * 0x800;
     if (address >= kFullPartBytes)
         return false;
 
     if (addressInDataFile)
-        *addressInDataFile = static_cast<DWORD>(address);
+        *addressInDataFile = static_cast<u32>(address);
     if (dataFileIndex)
-        *dataFileIndex = static_cast<DWORD>(part);
+        *dataFileIndex = static_cast<u32>(part);
 
     return true;
 }

@@ -1,8 +1,9 @@
 #ifndef GDFX_H
 #define GDFX_H
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/IO/BaseIO.h>
+#include <XboxInternals/Gpd/XdbfDefinitions.h>
 #include <iostream>
 #include <vector>
 
@@ -11,28 +12,28 @@ using std::vector;
 
 struct GdfxHeader
 {
-    BYTE magic[0x14];   // MICROSOFT*XBOX*MEDIA
-    DWORD rootSector;
-    DWORD rootSize;
-    WINFILETIME creationTime;
+    u8 magic[0x14];   // MICROSOFT*XBOX*MEDIA
+    u32 rootSector;
+    u32 rootSize;
+    FileTime creationTime;
 };
 
 struct GdfxFileEntry
 {
     // in the file
-    DWORD unknown;
-    DWORD sector;
-    DWORD size;
-    BYTE attributes;
-    BYTE nameLen;
+    u32 unknown;
+    u32 sector;
+    u32 size;
+    u8 attributes;
+    u8 nameLen;
     string name;
 
     // extra stuff
     string filePath;
     vector<GdfxFileEntry> files;
-    DWORD address;
-    DWORD fileIndex;
-    DWORD magic;  // file type identifier (first 4 bytes)
+    u32 address;
+    u32 fileIndex;
+    u32 magic;  // file type identifier (first 4 bytes)
 };
 
 enum GdfxDirentAttributesutes

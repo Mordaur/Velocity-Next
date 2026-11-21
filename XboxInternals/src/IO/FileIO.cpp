@@ -43,7 +43,7 @@ FileIO::FileIO(string path, bool truncate) :
     }
 }
 
-void FileIO::SetPosition(UINT64 pos, ios_base::seekdir dir)
+void FileIO::SetPosition(u64 pos, ios_base::seekdir dir)
 {
     if (readOnly)
         fstr->seekg(pos, static_cast<std::ios_base::seekdir>(dir));
@@ -51,12 +51,12 @@ void FileIO::SetPosition(UINT64 pos, ios_base::seekdir dir)
         fstr->seekp(pos, static_cast<std::ios_base::seekdir>(dir));
 }
 
-UINT64 FileIO::GetPosition()
+u64 FileIO::GetPosition()
 {
     return readOnly ? fstr->tellg() : fstr->tellp();
 }
 
-UINT64 FileIO::Length()
+u64 FileIO::Length()
 {
     return length;
 }
@@ -93,14 +93,14 @@ string FileIO::GetFilePath()
     return filePath;
 }
 
-void FileIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void FileIO::ReadBytes(u8 *outBuffer, u32 len)
 {
     fstr->read((fstream::char_type*)outBuffer, len);
     if (fstr->fail())
         throw string("FileIO: Error reading from file.\n");
 }
 
-void FileIO::WriteBytes(BYTE *buffer, DWORD len)
+void FileIO::WriteBytes(u8 *buffer, u32 len)
 {
     if (readOnly)
         throw string("FileIO: File was opened read-only.\n");

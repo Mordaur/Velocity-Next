@@ -1,7 +1,8 @@
 #ifndef StfsConstants
 #define StfsConstants
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
+#include <XboxInternals/EnumTraits.h>
 
 enum StfsPackageFlags
 {
@@ -102,7 +103,7 @@ enum ContentType
 template <>
 struct EnumTraits<ContentType>
 {
-    static ContentType FromRaw(UINT64 raw)
+    static ContentType FromRaw(u64 raw)
     {
         return raw <= CommunityGame ? static_cast<ContentType>(raw) : ContentTypeUnknown;
     }
@@ -111,7 +112,7 @@ struct EnumTraits<ContentType>
 template <>
 struct EnumTraits<InstallerType>
 {
-    static InstallerType FromRaw(UINT64 raw)
+    static InstallerType FromRaw(u64 raw)
     {
         switch (raw)
         {
@@ -145,7 +146,7 @@ enum SVODFeatures
 
 struct Version
 {
-    WORD major, minor, build, revision;
+    u16 major, minor, build, revision;
 };
 
 #endif

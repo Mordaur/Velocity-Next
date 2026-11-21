@@ -15,9 +15,9 @@ class XexBaseIO : public BaseIO
 public:
     XexBaseIO(BaseIO *io, Xex *xex);
 
-    void SetPosition(UINT64 position, std::ios_base::seekdir dir);
+    void SetPosition(u64 position, std::ios_base::seekdir dir);
 
-    UINT64 GetPosition();
+    u64 GetPosition();
 
     void Flush();
 
@@ -26,7 +26,7 @@ public:
 protected:
     BaseIO *io;
     Xex *xex;
-    UINT64 position;
+    u64 position;
 };
 
 #endif // XEXBASEIO_H

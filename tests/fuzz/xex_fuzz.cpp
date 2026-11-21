@@ -16,7 +16,7 @@
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data, std::size_t size)
 {
-    std::vector<BYTE> buffer(data, data + size);
+    std::vector<u8> buffer(data, data + size);
     MemoryIO io(buffer.data(), buffer.size());
 
     try

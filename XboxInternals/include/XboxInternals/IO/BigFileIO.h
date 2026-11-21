@@ -5,15 +5,7 @@
 
 #include <XboxInternals/IO/BaseIO.h>
 
-#ifdef _WIN32
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
-    #include <windows.h>
-#else
+#ifndef _WIN32
     #include <fstream>
 #endif
 
@@ -25,11 +17,11 @@ public:
     BigFileIO(std::string filePath, bool create = false);
     ~BigFileIO();
 
-    void ReadBytes(BYTE *outBuffer, DWORD len) override;
-    void WriteBytes(BYTE *buffer, DWORD len) override;
-    UINT64 Length() override;
-    UINT64 GetPosition() override;
-    void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg) override;
+    void ReadBytes(u8 *outBuffer, u32 len) override;
+    void WriteBytes(u8 *buffer, u32 len) override;
+    u64 Length() override;
+    u64 GetPosition() override;
+    void SetPosition(u64 position, std::ios_base::seekdir dir = std::ios_base::beg) override;
     void Close() override;
     void Flush() override;
 
@@ -37,9 +29,9 @@ private:
     std::string filePath;
 
 #ifdef _WIN32
-    HANDLE hFile;
+    void *hFile; // Win32 HANDLE; <windows.h> stays out of the public header
 #else
     std::unique_ptr<std::fstream> fstr;
-    UINT64 length;
+    u64 length;
 #endif
 };

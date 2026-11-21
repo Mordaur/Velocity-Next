@@ -160,7 +160,7 @@ SingleProgressDialog::~SingleProgressDialog()
     delete ui;
 }
 
-void UpdateProgress(void *arg, DWORD cur, DWORD total)
+void UpdateProgress(void *arg, u32 cur, u32 total)
 {
     SingleProgressDialog *dialog = reinterpret_cast<SingleProgressDialog*>(arg);
     dialog->ui->progressBar->setMaximum(total);

@@ -7,7 +7,7 @@
 #define DOWN_TO_NEAREST_SECTOR(x) (0xFFFFFFFFFFFFFE00 & x)
 #define UP_TO_NEAREST_SECTOR(x) ((x + 0x1FF) & 0xFFFFFFFFFFFFFE00)
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/Export.h>
 
 class XBOXINTERNALSSHARED_EXPORT FATXHelpers

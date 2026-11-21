@@ -11,22 +11,22 @@
 
 namespace
 {
-constexpr DWORD dataBlocksPerHashTreeLevel[3] = {1, 0xAA, 0x70E4};
+constexpr u32 dataBlocksPerHashTreeLevel[3] = {1, 0xAA, 0x70E4};
 
 // A level's final hash table holds the remainder of the level's entries. An
 // exact multiple means the final table is full, not empty: returning 0 drops
 // the last table from every hash walk (e.g. 340 data blocks, 510 tables).
-DWORD FinalHashTableEntryCount(DWORD totalEntries)
+u32 FinalHashTableEntryCount(u32 totalEntries)
 {
     if (totalEntries == 0)
         return 0;
 
-    const DWORD remainder = totalEntries % 0xAA;
+    const u32 remainder = totalEntries % 0xAA;
     return remainder == 0 ? 0xAA : remainder;
 }
 }
 
-StfsPackage::StfsPackage(BaseIO* io, DWORD flags) :
+StfsPackage::StfsPackage(BaseIO* io, u32 flags) :
     io(io), flags(flags)
 {
     if ((flags & StfsPackageDeleteIO) && io != nullptr)
@@ -46,7 +46,7 @@ StfsPackage::StfsPackage(BaseIO* io, DWORD flags) :
     }
 }
 
-StfsPackage::StfsPackage(string packagePath, DWORD flags) :
+StfsPackage::StfsPackage(string packagePath, u32 flags) :
     io(nullptr), flags(flags)
 {
     ownedIO = std::make_unique<FileIO>(packagePath, (bool)(flags & StfsPackageCreate));
@@ -67,11 +67,11 @@ void StfsPackage::Init()
 {
     if (flags & StfsPackageCreate)
     {
-        DWORD headerSize = (flags & StfsPackagePEC) ? ((flags & StfsPackageFemale) ? 0x2000 : 0x1000) : ((
+        u32 headerSize = (flags & StfsPackagePEC) ? ((flags & StfsPackageFemale) ? 0x2000 : 0x1000) : ((
             flags & StfsPackageFemale) ? 0xB000 : 0xA000);
-        BYTE zeroBuffer[0x1000] = { 0 };
+        u8 zeroBuffer[0x1000] = { 0 };
 
-        for (DWORD i = 0; i < ((headerSize >> 0xC) + ((flags & StfsPackageFemale) ? 1 : 2) + 1); i++)
+        for (u32 i = 0; i < ((headerSize >> 0xC) + ((flags & StfsPackageFemale) ? 1 : 2) + 1); i++)
             io->Write(zeroBuffer, 0x1000);
 
         // Female packages store block separation in volume descriptor
@@ -125,7 +125,7 @@ void StfsPackage::Parse()
         metaData->licenseData[0].type = Unrestricted;
         metaData->licenseData[0].data = 0xFFFFFFFFFFFF;
 
-        DWORD headerSize;
+        u32 headerSize;
         if (flags & StfsPackagePEC)
             headerSize = (flags & StfsPackageFemale) ? 0x2000 : 0x1000;
         else
@@ -175,7 +175,7 @@ void StfsPackage::Parse()
         metaData->WriteMetaData();
 
         io->SetPosition(((headerSize + 0xFFF) & 0xFFFFF000) + 0x14);
-        io->Write((DWORD)0x80FFFFFF);
+        io->Write((u32)0x80FFFFFF);
     }
 
     if (metaData->fileSystem != FileSystemSTFS && (flags & StfsPackagePEC) == 0)
@@ -209,7 +209,7 @@ void StfsPackage::Parse()
     topTable.trueBlockNumber = ComputeLevelNBackingHashBlockNumber(0, topLevel);
     topTable.level = topLevel;
 
-    DWORD baseAddress = (topTable.trueBlockNumber << 0xC) + firstHashTableAddress;
+    u32 baseAddress = (topTable.trueBlockNumber << 0xC) + firstHashTableAddress;
     topTable.addressInFile = baseAddress + ((metaData->stfsVolumeDescriptor.blockSeparation & 2) <<
         0xB);
     io->SetPosition(topTable.addressInFile);
@@ -224,7 +224,7 @@ void StfsPackage::Parse()
         (metaData->stfsVolumeDescriptor.allocatedBlockCount % 0xAA != 0))
         topTable.entryCount++;
 
-    for (DWORD i = 0; i < topTable.entryCount; i++)
+    for (u32 i = 0; i < topTable.entryCount; i++)
     {
         io->ReadBytes(topTable.entries[i].blockHash, 0x14);
         topTable.entries[i].status = io->ReadByte();
@@ -254,21 +254,21 @@ Level StfsPackage::CalcualateTopLevel()
         throw string("STFS: Invalid number of allocated blocks.\n");
 }
 
-DWORD StfsPackage::ComputeBackingDataBlockNumber(DWORD blockNum)
+u32 StfsPackage::ComputeBackingDataBlockNumber(u32 blockNum)
 {
-    DWORD toReturn = (((blockNum + 0xAA) / 0xAA) << (BYTE)packageSex) + blockNum;
+    u32 toReturn = (((blockNum + 0xAA) / 0xAA) << (u8)packageSex) + blockNum;
     if (blockNum < 0xAA)
         return toReturn;
     else if (blockNum < 0x70E4)
-        return toReturn + (((blockNum + 0x70E4) / 0x70E4) << (BYTE)packageSex);
+        return toReturn + (((blockNum + 0x70E4) / 0x70E4) << (u8)packageSex);
     else
-        return (1 << (BYTE)packageSex) + (toReturn + (((blockNum + 0x70E4) / 0x70E4) << (BYTE)packageSex));
+        return (1 << (u8)packageSex) + (toReturn + (((blockNum + 0x70E4) / 0x70E4) << (u8)packageSex));
 }
 
-DWORD StfsPackage::BlockToAddress(DWORD blockNum)
+u32 StfsPackage::BlockToAddress(u32 blockNum)
 {
     // check for invalid block number
-    if (blockNum > UINT24_MAX)
+    if (blockNum > kBlockNumberMask)
         throw string("STFS: Block number must be less than 0xFFFFFF.\n");
 
     // A logical block at or past the allocated count is outside the volume. The
@@ -286,7 +286,7 @@ bool StfsPackage::IsPEC()
     return flags & StfsPackagePEC;
 }
 
-DWORD StfsPackage::ComputeLevelNBackingHashBlockNumber(DWORD blockNum, Level level)
+u32 StfsPackage::ComputeLevelNBackingHashBlockNumber(u32 blockNum, Level level)
 {
     switch (level)
     {
@@ -304,38 +304,38 @@ DWORD StfsPackage::ComputeLevelNBackingHashBlockNumber(DWORD blockNum, Level lev
     }
 }
 
-DWORD StfsPackage::ComputeLevel0BackingHashBlockNumber(DWORD blockNum)
+u32 StfsPackage::ComputeLevel0BackingHashBlockNumber(u32 blockNum)
 {
     if (blockNum < 0xAA)
         return 0;
 
-    DWORD num = (blockNum / 0xAA) * blockStep[0];
-    num += ((blockNum / 0x70E4) + 1) << ((BYTE)packageSex);
+    u32 num = (blockNum / 0xAA) * blockStep[0];
+    num += ((blockNum / 0x70E4) + 1) << ((u8)packageSex);
 
     if (blockNum / 0x70E4 == 0)
         return num;
 
-    return num + (1 << (BYTE)packageSex);
+    return num + (1 << (u8)packageSex);
 }
 
-DWORD StfsPackage::ComputeLevel1BackingHashBlockNumber(DWORD blockNum)
+u32 StfsPackage::ComputeLevel1BackingHashBlockNumber(u32 blockNum)
 {
     if (blockNum < 0x70E4)
         return blockStep[0];
-    return (1 << (BYTE)packageSex) + (blockNum / 0x70E4) * blockStep[1];
+    return (1 << (u8)packageSex) + (blockNum / 0x70E4) * blockStep[1];
 }
 
-DWORD StfsPackage::ComputeLevel2BackingHashBlockNumber(DWORD /*blockNum*/)
+u32 StfsPackage::ComputeLevel2BackingHashBlockNumber(u32 /*blockNum*/)
 {
     return blockStep[1];
 }
 
-DWORD StfsPackage::GetHashAddressOfBlock(DWORD blockNum)
+u32 StfsPackage::GetHashAddressOfBlock(u32 blockNum)
 {
     if (blockNum >= metaData->stfsVolumeDescriptor.allocatedBlockCount)
         throw string("STFS: Reference to illegal block number.\n");
 
-    DWORD hashAddr = (ComputeLevel0BackingHashBlockNumber(blockNum) << 0xC) + firstHashTableAddress;
+    u32 hashAddr = (ComputeLevel0BackingHashBlockNumber(blockNum) << 0xC) + firstHashTableAddress;
     hashAddr += (blockNum % 0xAA) * 0x18;
 
     switch (topLevel)
@@ -345,7 +345,7 @@ DWORD StfsPackage::GetHashAddressOfBlock(DWORD blockNum)
         break;
     case 1:
     {
-        const DWORD tableIndex = blockNum / 0xAA;
+        const u32 tableIndex = blockNum / 0xAA;
         if (tableIndex >= 0xAA)
             throw string("STFS: Illegal level-1 table index.\n");
         hashAddr += ((topTable.entries[tableIndex].status & 0x40) << 6);
@@ -353,12 +353,12 @@ DWORD StfsPackage::GetHashAddressOfBlock(DWORD blockNum)
     }
     case 2:
     {
-        const DWORD tableIndex = blockNum / 0x70E4;
+        const u32 tableIndex = blockNum / 0x70E4;
         if (tableIndex >= 0xAA)
             throw string("STFS: Illegal level-2 table index.\n");
 
-        DWORD level1Off = ((topTable.entries[tableIndex].status & 0x40) << 6);
-        DWORD pos = ((ComputeLevel1BackingHashBlockNumber(blockNum) << 0xC) + firstHashTableAddress +
+        u32 level1Off = ((topTable.entries[tableIndex].status & 0x40) << 6);
+        u32 pos = ((ComputeLevel1BackingHashBlockNumber(blockNum) << 0xC) + firstHashTableAddress +
             level1Off) + ((blockNum % 0xAA) * 0x18);
         io->SetPosition(pos + 0x14);
         hashAddr += ((io->ReadByte() & 0x40) << 6);
@@ -368,7 +368,7 @@ DWORD StfsPackage::GetHashAddressOfBlock(DWORD blockNum)
     return hashAddr;
 }
 
-HashEntry StfsPackage::GetBlockHashEntry(DWORD blockNum)
+HashEntry StfsPackage::GetBlockHashEntry(u32 blockNum)
 {
     if (blockNum >= metaData->stfsVolumeDescriptor.allocatedBlockCount)
         throw string("STFS: Reference to illegal block number.\n");
@@ -383,7 +383,7 @@ HashEntry StfsPackage::GetBlockHashEntry(DWORD blockNum)
     return he;
 }
 
-void StfsPackage::ExtractBlock(DWORD blockNum, BYTE* data, DWORD length)
+void StfsPackage::ExtractBlock(u32 blockNum, u8* data, u32 length)
 {
     if (blockNum >= metaData->stfsVolumeDescriptor.allocatedBlockCount)
         throw string("STFS: Reference to illegal block number.\n");
@@ -407,16 +407,16 @@ void StfsPackage::ReadFileListing()
     entry.fileSize = (metaData->stfsVolumeDescriptor.fileTableBlockCount * 0x1000);
 
     // generate a block chain for the full file listing
-    DWORD block = entry.startingBlockNum;
+    u32 block = entry.startingBlockNum;
 
     StfsFileListing fl;
-    DWORD currentAddr;
-    for (DWORD x = 0; x < metaData->stfsVolumeDescriptor.fileTableBlockCount; x++)
+    u32 currentAddr;
+    for (u32 x = 0; x < metaData->stfsVolumeDescriptor.fileTableBlockCount; x++)
     {
         currentAddr = BlockToAddress(block);
         io->SetPosition(currentAddr);
 
-        for (DWORD i = 0; i < 0x40; i++)
+        for (u32 i = 0; i < 0x40; i++)
         {
             StfsFileEntry fe;
 
@@ -476,13 +476,13 @@ StfsFileListing StfsPackage::GetFileListing(bool forceUpdate)
     return fileListing;
 }
 
-DWORD StfsPackage::GetFileMagic(string pathInPackage)
+u32 StfsPackage::GetFileMagic(string pathInPackage)
 {
     StfsFileEntry entry = GetFileEntry(pathInPackage);
     return GetFileMagic(entry);
 }
 
-DWORD StfsPackage::GetFileMagic(StfsFileEntry entry)
+u32 StfsPackage::GetFileMagic(StfsFileEntry entry)
 {
     // make sure the file is at least 4 bytes
     if (entry.fileSize < 4)
@@ -496,7 +496,7 @@ DWORD StfsPackage::GetFileMagic(StfsFileEntry entry)
 }
 
 void StfsPackage::ExtractFile(string pathInPackage, string outPath, void (*extractProgress)(void*,
-    DWORD, DWORD), void* arg)
+    u32, u32), void* arg)
 {
     // get the given path's file entry
     StfsFileEntry entry = GetFileEntry(pathInPackage);
@@ -506,7 +506,7 @@ void StfsPackage::ExtractFile(string pathInPackage, string outPath, void (*extra
 }
 
 void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extractProgress)(void*,
-    DWORD, DWORD), void* arg)
+    u32, u32), void* arg)
 {
     if (!entry)
         throw std::string("STFS: NULL file entry pointer");
@@ -540,7 +540,7 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
     // can hold; the contiguous read path below sizes its buffer from the block
     // count, so reject the mismatch instead of overrunning it.
     if (entry->blocksForFile != 0 &&
-        (static_cast<UINT64>(entry->blocksForFile) << 0xC) < entry->fileSize)
+        (static_cast<u64>(entry->blocksForFile) << 0xC) < entry->fileSize)
     {
         except.str(std::string());
         except << "STFS: File '" << entry->name.c_str()
@@ -552,7 +552,7 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
     FileIO outFile(outPath, true);
 
     // get the file size that we are extracting
-    DWORD fileSize = entry->fileSize;
+    u32 fileSize = entry->fileSize;
 
     // make a special case for files of size 0
     if (fileSize == 0)
@@ -604,18 +604,18 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
     if (useOptimizedPath)
     {
         // Allocate buffer for 0xAA blocks (optimal read size)
-        std::vector<BYTE> buffer(0xAA000);
+        std::vector<u8> buffer(0xAA000);
 
         // seek to the beginning of the file
-        DWORD startAddress = BlockToAddress(entry->startingBlockNum);
+        u32 startAddress = BlockToAddress(entry->startingBlockNum);
         io->SetPosition(startAddress);
 
         // calculate the number of blocks to read before we hit a table
-        DWORD blockCount = (ComputeLevel0BackingHashBlockNumber(entry->startingBlockNum) + blockStep[0])
+        u32 blockCount = (ComputeLevel0BackingHashBlockNumber(entry->startingBlockNum) + blockStep[0])
             - ((startAddress - firstHashTableAddress) >> 0xC);
 
         // pick up the change at the beginning, until we hit a hash table
-        if ((DWORD)entry->blocksForFile <= blockCount)
+        if ((u32)entry->blocksForFile <= blockCount)
         {
             // The buffer holds exactly one hash-table group (0xAA blocks); a
             // larger size here would mean the block-count arithmetic is wrong.
@@ -643,11 +643,11 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
         }
 
         // extract the blocks inbetween the tables
-        DWORD tempSize = (entry->fileSize - (blockCount << 0xC));
+        u32 tempSize = (entry->fileSize - (blockCount << 0xC));
         while (tempSize >= 0xAA000)
         {
             // skip past the hash table(s)
-            DWORD currentPos = io->GetPosition();
+            u32 currentPos = io->GetPosition();
             io->SetPosition(currentPos + GetHashTableSkipSize(currentPos));
 
             // read in the 0xAA blocks between the tables
@@ -668,7 +668,7 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
         if (tempSize != 0)
         {
             // skip past the hash table(s)
-            DWORD currentPos = io->GetPosition();
+            u32 currentPos = io->GetPosition();
             io->SetPosition(currentPos + GetHashTableSkipSize(currentPos));
 
             // Read trailing data after hash tables
@@ -685,18 +685,18 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
     else
     {
         // generate the block chain which we have to extract
-        DWORD fullReadCounts = fileSize / 0x1000;
+        u32 fullReadCounts = fileSize / 0x1000;
 
         fileSize -= (fullReadCounts * 0x1000);
 
-        DWORD block = entry->startingBlockNum;
+        u32 block = entry->startingBlockNum;
 
         // allocate data for the blocks
-        BYTE data[0x1000];
+        u8 data[0x1000];
 
         // read all the full blocks the file allocates
-        std::unordered_set<DWORD> visitedBlocks;
-        for (DWORD i = 0; i < fullReadCounts; i++)
+        std::unordered_set<u32> visitedBlocks;
+        for (u32 i = 0; i < fullReadCounts; i++)
         {
             // Detect cycles
             if (!visitedBlocks.insert(block).second)
@@ -733,10 +733,10 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
     outFile.Close();
 }
 
-DWORD StfsPackage::GetHashTableSkipSize(DWORD tableAddress)
+u32 StfsPackage::GetHashTableSkipSize(u32 tableAddress)
 {
     // convert the address to a true block number
-    DWORD trueBlockNumber = (tableAddress - firstHashTableAddress) >> 0xC;
+    u32 trueBlockNumber = (tableAddress - firstHashTableAddress) >> 0xC;
 
     // check if it's the first hash table
     if (trueBlockNumber == 0)
@@ -804,7 +804,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
     if (locationOfFile.size() == 1)
     {
         // find the file
-        for (DWORD i = 0; i < start->fileEntries.size(); i++)
+        for (u32 i = 0; i < start->fileEntries.size(); i++)
             if (MatchesFileName(locationOfFile.at(0), start->fileEntries.at(i).name, useWildcards))
             {
                 // update the entry
@@ -826,7 +826,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
         if (!found && checkFolders)
         {
             // find the file
-            for (DWORD i = 0; i < start->folderEntries.size(); i++)
+            for (u32 i = 0; i < start->folderEntries.size(); i++)
                 if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name, useWildcards))
                 {
                     // update the entry
@@ -848,7 +848,7 @@ void StfsPackage::GetFileEntry(vector<string> locationOfFile, StfsFileListing* s
     else
     {
         // find the next folder
-        for (DWORD i = 0; i < start->folderEntries.size(); i++)
+        for (u32 i = 0; i < start->folderEntries.size(); i++)
             if (MatchesFileName(locationOfFile.at(0), start->folderEntries.at(i).folder.name, useWildcards))
             {
                 // erase the found folder from the vector
@@ -887,7 +887,7 @@ vector<string> StfsPackage::SplitString(string str, string delimeter)
 
 void StfsPackage::AddToListing(StfsFileListing* fullListing, StfsFileListing* out)
 {
-    for (DWORD i = 0; i < fullListing->fileEntries.size(); i++)
+    for (u32 i = 0; i < fullListing->fileEntries.size(); i++)
     {
         // check if the file is a directory
         bool isDirectory = (fullListing->fileEntries.at(i).flags & 2);
@@ -909,20 +909,20 @@ void StfsPackage::AddToListing(StfsFileListing* fullListing, StfsFileListing* ou
     }
 
     // for every folder added, add the files to them
-    for (DWORD i = 0; i < out->folderEntries.size(); i++)
+    for (u32 i = 0; i < out->folderEntries.size(); i++)
         AddToListing(fullListing, &out->folderEntries.at(i));
 }
 
-HashTable StfsPackage::GetLevelNHashTable(DWORD index, Level lvl)
+HashTable StfsPackage::GetLevelNHashTable(u32 index, Level lvl)
 {
     HashTable toReturn;
     toReturn.level = lvl;
 
     // compute base address of the hash table
     // Use explicit multipliers: Level0 covers 0xAA blocks, Level1 covers 0x70E4 blocks
-    DWORD blockMultiplier = (lvl == Zero) ? 0xAA : (lvl == One) ? 0x70E4 : 1;
+    u32 blockMultiplier = (lvl == Zero) ? 0xAA : (lvl == One) ? 0x70E4 : 1;
     toReturn.trueBlockNumber = ComputeLevelNBackingHashBlockNumber(index * blockMultiplier, lvl);
-    DWORD baseHashAddress = ((toReturn.trueBlockNumber << 0xC) + firstHashTableAddress);
+    u32 baseHashAddress = ((toReturn.trueBlockNumber << 0xC) + firstHashTableAddress);
 
     // adjust the hash address
     if (lvl < 0 || lvl > topLevel)
@@ -955,7 +955,7 @@ HashTable StfsPackage::GetLevelNHashTable(DWORD index, Level lvl)
         // entry index % 0xAA. The old code loaded the level-1 table at
         // `index % 0xAA`, i.e. the wrong table for volumes with more than one
         // level-1 table, and could add a bogus swap offset.
-        const DWORD parentIndex = index / 0xAA;
+        const u32 parentIndex = index / 0xAA;
         if (cached.trueBlockNumber !=
             ComputeLevelNBackingHashBlockNumber(parentIndex * 0x70E4, One))
             cached = GetLevelNHashTable(parentIndex, One);
@@ -973,7 +973,7 @@ HashTable StfsPackage::GetLevelNHashTable(DWORD index, Level lvl)
     toReturn.addressInFile = baseHashAddress;
     io->SetPosition(toReturn.addressInFile);
 
-    for (DWORD i = 0; i < toReturn.entryCount; i++)
+    for (u32 i = 0; i < toReturn.entryCount; i++)
     {
         io->ReadBytes(toReturn.entries[i].blockHash, 0x14);
         toReturn.entries[i].status = io->ReadByte();
@@ -983,7 +983,7 @@ HashTable StfsPackage::GetLevelNHashTable(DWORD index, Level lvl)
     return toReturn;
 }
 
-DWORD StfsPackage::GetHashTableEntryCount(DWORD index, Level lvl)
+u32 StfsPackage::GetHashTableEntryCount(u32 index, Level lvl)
 {
     if (lvl < 0 || lvl > topLevel)
         throw string("STFS: Invalid level.\n");
@@ -1026,14 +1026,14 @@ void StfsPackage::RebuildHashes()
     // Invalidate the cached hash table since we're rebuilding everything
     cached.trueBlockNumber = 0xFFFFFFFF;
     
-    BYTE blockBuffer[0x1000];
+    u8 blockBuffer[0x1000];
     switch (topLevel)
     {
     case Zero:
         // set the position to the first data block in the file
         io->SetPosition(BlockToAddress(0));
         // iterate through all of the data blocks
-        for (DWORD i = 0; i < topTable.entryCount; i++)
+        for (u32 i = 0; i < topTable.entryCount; i++)
         {
             // read in the current data block
             io->ReadBytes(blockBuffer, 0x1000);
@@ -1046,7 +1046,7 @@ void StfsPackage::RebuildHashes()
 
     case One:
         // loop through all of the level1 hash blocks
-        for (DWORD i = 0; i < topTable.entryCount; i++)
+        for (u32 i = 0; i < topTable.entryCount; i++)
         {
             // get the current level0 hash table
             HashTable level0Table = GetLevelNHashTable(i, Zero);
@@ -1055,7 +1055,7 @@ void StfsPackage::RebuildHashes()
             io->SetPosition(BlockToAddress(i * 0xAA));
 
             // iterate through all of the data blocks this table hashes
-            for (DWORD x = 0; x < level0Table.entryCount; x++)
+            for (u32 x = 0; x < level0Table.entryCount; x++)
             {
                 // read in the current data block
                 io->ReadBytes(blockBuffer, 0x1000);
@@ -1078,13 +1078,13 @@ void StfsPackage::RebuildHashes()
 
     case Two:
         // iterate through all of the level2 tables
-        for (DWORD i = 0; i < topTable.entryCount; i++)
+        for (u32 i = 0; i < topTable.entryCount; i++)
         {
             // get the current level1 hash table
             HashTable level1Table = GetLevelNHashTable(i, One);
 
             // iterate through all of the level0 tables hashed in this table
-            for (DWORD x = 0; x < level1Table.entryCount; x++)
+            for (u32 x = 0; x < level1Table.entryCount; x++)
             {
                 // get the current level0 hash table
                 HashTable level0Table = GetLevelNHashTable((i * 0xAA) + x, Zero);
@@ -1093,7 +1093,7 @@ void StfsPackage::RebuildHashes()
                 io->SetPosition(BlockToAddress((i * 0x70E4) + (x * 0xAA)));
 
                 // iterate through all of the data blocks hashed in this table
-                for (DWORD y = 0; y < level0Table.entryCount; y++)
+                for (u32 y = 0; y < level0Table.entryCount; y++)
                 {
                     // read the current data block
                     io->ReadBytes(blockBuffer, 0x1000);
@@ -1117,14 +1117,14 @@ void StfsPackage::RebuildHashes()
             BuildTableInMemory(&level1Table, blockBuffer);
 
             // Write the number of blocks hashed by this table at the bottom of the table, MS why?
-            DWORD blocksHashed;
+            u32 blocksHashed;
             if (i + 1 == topTable.entryCount)
                 blocksHashed = (metaData->stfsVolumeDescriptor.allocatedBlockCount % 0x70E4 == 0) ? 0x70E4 :
                 metaData->stfsVolumeDescriptor.allocatedBlockCount % 0x70E4;
             else
                 blocksHashed = 0x70E4;
             FileIO::ReverseGenericArray(&blocksHashed, 1, 4);
-            ((DWORD*)&blockBuffer)[0x3FC] = blocksHashed;
+            ((u32*)&blockBuffer)[0x3FC] = blocksHashed;
 
             // Write the hash table back to the file
             io->SetPosition(level1Table.addressInFile);
@@ -1142,9 +1142,9 @@ void StfsPackage::RebuildHashes()
     // Write the number of blocks the table hashes at the bottom of the hash table, MS why?
     if (topTable.level >= One)
     {
-        DWORD allocatedBlockCountSwapped = metaData->stfsVolumeDescriptor.allocatedBlockCount;
+        u32 allocatedBlockCountSwapped = metaData->stfsVolumeDescriptor.allocatedBlockCount;
         FileIO::ReverseGenericArray(&allocatedBlockCountSwapped, 1, 4);
-        ((DWORD*)&blockBuffer)[0x3FC] = allocatedBlockCountSwapped;
+        ((u32*)&blockBuffer)[0x3FC] = allocatedBlockCountSwapped;
     }
 
     // hash the top table
@@ -1157,7 +1157,7 @@ void StfsPackage::RebuildHashes()
     // Write new volume descriptor to the file
     metaData->WriteVolumeDescriptor();
 
-    DWORD headerStart;
+    u32 headerStart;
 
     // set the headerStart
     if (flags & StfsPackagePEC)
@@ -1166,11 +1166,11 @@ void StfsPackage::RebuildHashes()
         headerStart = 0x344;
 
     // calculate header size / first hash table address
-    DWORD calculated = ((metaData->headerSize + 0xFFF) & 0xF000);
-    DWORD headerSize = calculated - headerStart;
+    u32 calculated = ((metaData->headerSize + 0xFFF) & 0xF000);
+    u32 headerSize = calculated - headerStart;
 
     // read the data to hash
-    std::vector<BYTE> buffer(headerSize);
+    std::vector<u8> buffer(headerSize);
     io->SetPosition(headerStart);
     io->ReadBytes(buffer.data(), headerSize);
 
@@ -1189,7 +1189,7 @@ void StfsPackage::ReloadHashTable()
     topTable.trueBlockNumber = ComputeLevelNBackingHashBlockNumber(0, topLevel);
     topTable.level = topLevel;
 
-    DWORD baseAddress = (topTable.trueBlockNumber << 0xC) + firstHashTableAddress;
+    u32 baseAddress = (topTable.trueBlockNumber << 0xC) + firstHashTableAddress;
     topTable.addressInFile = baseAddress + ((metaData->stfsVolumeDescriptor.blockSeparation & 2) << 0xB);
     
     // Seek to the top table address
@@ -1206,14 +1206,14 @@ void StfsPackage::ReloadHashTable()
         topTable.entryCount++;
 
     // Re-read all hash entries from disk
-    for (DWORD i = 0; i < topTable.entryCount; i++)
+    for (u32 i = 0; i < topTable.entryCount; i++)
     {
         io->ReadBytes(topTable.entries[i].blockHash, 0x14);
         topTable.entries[i].status = io->ReadByte();
         topTable.entries[i].nextBlock = io->ReadInt24();
     }
 
-    DWORD headerStart;
+    u32 headerStart;
 
     // set the headerStart
     if (flags & StfsPackagePEC)
@@ -1222,11 +1222,11 @@ void StfsPackage::ReloadHashTable()
         headerStart = 0x344;
 
     // calculate header size / first hash table address
-    DWORD calculated = ((metaData->headerSize + 0xFFF) & 0xF000);
-    DWORD headerSize = calculated - headerStart;
+    u32 calculated = ((metaData->headerSize + 0xFFF) & 0xF000);
+    u32 headerSize = calculated - headerStart;
 
     // read the data to hash
-    std::vector<BYTE> buffer(headerSize);
+    std::vector<u8> buffer(headerSize);
     io->SetPosition(headerStart);
     io->ReadBytes(buffer.data(), headerSize);
 
@@ -1238,7 +1238,7 @@ void StfsPackage::ReloadHashTable()
     metaData->WriteMetaData();
 }
 
-void StfsPackage::SwapTable(DWORD index, Level lvl)
+void StfsPackage::SwapTable(u32 index, Level lvl)
 {
     // only one table per set in female packages
     if (packageSex == StfsFemale)
@@ -1247,14 +1247,14 @@ void StfsPackage::SwapTable(DWORD index, Level lvl)
         throw string("STFS: Invaid parameters for swapping table.\n");
 
     // read in all the status's so that when we swap tables, the package isn't messed up
-    DWORD entryCount = GetHashTableEntryCount(index, lvl);
-    std::vector<DWORD> tableStatuses(entryCount);
+    u32 entryCount = GetHashTableEntryCount(index, lvl);
+    std::vector<u32> tableStatuses(entryCount);
 
     // set the io to the beginning of the table
-    DWORD tablePos = GetHashTableAddress(index, lvl) + 0x14;
+    u32 tablePos = GetHashTableAddress(index, lvl) + 0x14;
     io->SetPosition(tablePos);
 
-    for (DWORD i = 0; i < entryCount; i++)
+    for (u32 i = 0; i < entryCount; i++)
     {
         tableStatuses[i] = io->ReadDword();
         io->SetPosition(tablePos + (i * 0x18));
@@ -1268,11 +1268,11 @@ void StfsPackage::SwapTable(DWORD index, Level lvl)
     }
     else
     {
-        DWORD statusPosition = GetTableHashAddress(index, lvl) + 0x14;
+        u32 statusPosition = GetTableHashAddress(index, lvl) + 0x14;
 
         // read the status of the requested hash table
         io->SetPosition(statusPosition);
-        BYTE status = io->ReadByte();
+        u8 status = io->ReadByte();
 
         // invert the table used
         status ^= 0x40;
@@ -1287,7 +1287,7 @@ void StfsPackage::SwapTable(DWORD index, Level lvl)
     io->SetPosition(tablePos);
 
     // Write all the statuses to the other table
-    for (DWORD i = 0; i < entryCount; i++)
+    for (u32 i = 0; i < entryCount; i++)
     {
         io->Write(tableStatuses[i]);
         io->SetPosition(tablePos + (i * 0x18));
@@ -1295,10 +1295,10 @@ void StfsPackage::SwapTable(DWORD index, Level lvl)
 
 }
 
-DWORD StfsPackage::GetHashTableAddress(DWORD index, Level lvl)
+u32 StfsPackage::GetHashTableAddress(u32 index, Level lvl)
 {
     // get the base address of the hash table requested
-    DWORD baseAddress = GetBaseHashTableAddress(index, lvl);
+    u32 baseAddress = GetBaseHashTableAddress(index, lvl);
 
     // only one table per index in female packages
     if (packageSex == StfsFemale)
@@ -1315,7 +1315,7 @@ DWORD StfsPackage::GetHashTableAddress(DWORD index, Level lvl)
     }
 }
 
-DWORD StfsPackage::GetBaseHashTableAddress(DWORD index, Level lvl)
+u32 StfsPackage::GetBaseHashTableAddress(u32 index, Level lvl)
 {
     if (lvl > Two)
         throw string("STFS: Invalid hash table level.\n");
@@ -1324,13 +1324,13 @@ DWORD StfsPackage::GetBaseHashTableAddress(DWORD index, Level lvl)
         lvl) << 0xC) + firstHashTableAddress);
 }
 
-DWORD StfsPackage::GetTableHashAddress(DWORD index, Level lvl)
+u32 StfsPackage::GetTableHashAddress(u32 index, Level lvl)
 {
     if (lvl >= topTable.level || lvl < Zero)
         throw string("STFS: Level is invalid. No parent hash address accessible.\n");
 
     // compute base address of the hash table
-    DWORD baseHashAddress = GetBaseHashTableAddress(index / 0xAA, (Level)(lvl + 1));
+    u32 baseHashAddress = GetBaseHashTableAddress(index / 0xAA, (Level)(lvl + 1));
 
     // add the hash offset to the base address so we use the correct table
     if (lvl + 1 == topLevel)
@@ -1351,22 +1351,22 @@ void StfsPackage::Resign(string kvPath)
     metaData->ResignHeader(kvPath);
 }
 
-void StfsPackage::Resign(BYTE* kvData, size_t length)
+void StfsPackage::Resign(u8* kvData, size_t length)
 {
     metaData->ResignHeader(kvData, length);
 }
 
-void StfsPackage::SetBlockStatus(DWORD blockNum, BlockStatusLevelZero status)
+void StfsPackage::SetBlockStatus(u32 blockNum, BlockStatusLevelZero status)
 {
     if (blockNum >= metaData->stfsVolumeDescriptor.allocatedBlockCount)
         throw string("STFS: Reference to illegal block number.\n");
 
-    DWORD statusAddress = GetHashAddressOfBlock(blockNum) + 0x14;
+    u32 statusAddress = GetHashAddressOfBlock(blockNum) + 0x14;
     io->SetPosition(statusAddress);
-    io->Write((BYTE)status);
+    io->Write((u8)status);
 }
 
-void StfsPackage::HashBlock(BYTE* block, BYTE* outBuffer)
+void StfsPackage::HashBlock(u8* block, u8* outBuffer)
 {
     // hash the block
     const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
@@ -1374,20 +1374,20 @@ void StfsPackage::HashBlock(BYTE* block, BYTE* outBuffer)
     sha1->final(outBuffer);
 }
 
-void StfsPackage::BuildTableInMemory(HashTable* table, BYTE* outBuffer)
+void StfsPackage::BuildTableInMemory(HashTable* table, u8* outBuffer)
 {
     if (table->entryCount > 0x1000 / 0x18)
         throw string("STFS: Hash table entry count exceeds buffer size.\n");
 
     memset(outBuffer, 0, 0x1000);
-    for (DWORD i = 0; i < table->entryCount; i++)
+    for (u32 i = 0; i < table->entryCount; i++)
     {
         // copy the hash over (0x14 bytes; status is at +0x14)
         memcpy(outBuffer + (i * 0x18), table->entries[i].blockHash, 0x14);
         outBuffer[(i * 0x18) + 0x14] = table->entries[i].status;
 
         // copy over the next block
-        INT24 swappedValue = table->entries[i].nextBlock;
+        u32 swappedValue = table->entries[i].nextBlock;
         FileIO::ReverseGenericArray(&swappedValue, 1, 4);
         swappedValue >>= 8;
         memcpy((outBuffer + i * 0x18) + 0x15, &swappedValue, 3);
@@ -1402,7 +1402,7 @@ void StfsPackage::RemoveFile(StfsFileEntry entry)
     GenerateRawFileListing(&fileListing, &files, &folders);
 
     // remove the file from the listing
-    for (DWORD i = 0; i < files.size(); i++)
+    for (u32 i = 0; i < files.size(); i++)
         if (files.at(i).name == entry.name && files.at(i).pathIndicator == entry.pathIndicator)
         {
             files.erase(files.begin() + i);
@@ -1415,8 +1415,8 @@ void StfsPackage::RemoveFile(StfsFileEntry entry)
         throw string("STFS: File could not be deleted because it doesn't exist in the package.\n");
 
     // set the status of every allocated block to unallocated
-    DWORD blockToDeallocate = entry.startingBlockNum;
-    while (blockToDeallocate != BLOCK_CHAIN_TERMINATOR)
+    u32 blockToDeallocate = entry.startingBlockNum;
+    while (blockToDeallocate != kBlockChainTerminator)
     {
         SetBlockStatus(blockToDeallocate, Unallocated);
         blockToDeallocate = GetBlockHashEntry(blockToDeallocate).nextBlock;
@@ -1444,23 +1444,23 @@ void StfsPackage::WriteFileListing(bool usePassed, vector<StfsFileEntry>* outFis
     outFolders.erase(outFolders.begin());
 
     // initialize the folders map (used in new path indicators)
-    std::map<INT24, int> folders;
+    std::map<u32, int> folders;
     folders[0xFFFF] = 0xFFFF;
 
     bool alwaysAllocate = false, firstCheck = true;
 
     // go to the block where the file listing begins (for overwriting)
-    DWORD block = metaData->stfsVolumeDescriptor.fileTableBlockNum;
+    u32 block = metaData->stfsVolumeDescriptor.fileTableBlockNum;
     io->SetPosition(BlockToAddress(block));
 
-    DWORD outFileSize = outFolders.size();
+    u32 outFileSize = outFolders.size();
 
     // add all folders to the folders map
-    for (DWORD i = 0; i < outFileSize; i++)
+    for (u32 i = 0; i < outFileSize; i++)
         folders[outFolders.at(i).entryIndex] = i;
 
     // Write the folders to the listing
-    for (DWORD i = 0; i < outFolders.size(); i++)
+    for (u32 i = 0; i < outFolders.size(); i++)
     {
         // check to see if we need to go to the next block
         if (firstCheck)
@@ -1468,7 +1468,7 @@ void StfsPackage::WriteFileListing(bool usePassed, vector<StfsFileEntry>* outFis
         else if ((i + 1) % 0x40 == 0)
         {
             // check if we need to allocate a new block
-            INT24 nextBlock;
+            u32 nextBlock;
             if (alwaysAllocate)
             {
                 nextBlock = AllocateBlock();
@@ -1482,7 +1482,7 @@ void StfsPackage::WriteFileListing(bool usePassed, vector<StfsFileEntry>* outFis
                 nextBlock = GetBlockHashEntry(block).nextBlock;
 
                 // if not, allocate one and make it so it always allocates
-                if (nextBlock == BLOCK_CHAIN_TERMINATOR)
+                if (nextBlock == kBlockChainTerminator)
                 {
                     nextBlock = AllocateBlock();
                     SetNextBlock(block, nextBlock);
@@ -1510,7 +1510,7 @@ void StfsPackage::WriteFileListing(bool usePassed, vector<StfsFileEntry>* outFis
             firstCheck = false;
         else if (i % 0x40 == 0)
         {
-            INT24 nextBlock;
+            u32 nextBlock;
             if (alwaysAllocate)
             {
                 nextBlock = AllocateBlock();
@@ -1519,7 +1519,7 @@ void StfsPackage::WriteFileListing(bool usePassed, vector<StfsFileEntry>* outFis
             else
             {
                 nextBlock = GetBlockHashEntry(block).nextBlock;
-                if (nextBlock == BLOCK_CHAIN_TERMINATOR)
+                if (nextBlock == kBlockChainTerminator)
                 {
                     nextBlock = AllocateBlock();
                     SetNextBlock(block, nextBlock);
@@ -1536,11 +1536,11 @@ void StfsPackage::WriteFileListing(bool usePassed, vector<StfsFileEntry>* outFis
     }
 
     // Write remaining null bytes
-    DWORD remainingEntries = (outFoldersAndFilesSize % 0x40);
+    u32 remainingEntries = (outFoldersAndFilesSize % 0x40);
     int remainer = 0;
     if (remainingEntries > 0)
         remainer = (0x40 - remainingEntries) * 0x40;
-    std::vector<BYTE> nullBytes(static_cast<size_t>(remainer));
+    std::vector<u8> nullBytes(static_cast<size_t>(remainer));
     memset(nullBytes.data(), 0, remainer);
     io->Write(nullBytes.data(), remainer);
 
@@ -1553,14 +1553,14 @@ void StfsPackage::WriteFileListing(bool usePassed, vector<StfsFileEntry>* outFis
     ReadFileListing();
 }
 
-void StfsPackage::SetNextBlock(DWORD blockNum, INT24 nextBlockNum)
+void StfsPackage::SetNextBlock(u32 blockNum, u32 nextBlockNum)
 {
     if (blockNum >= metaData->stfsVolumeDescriptor.allocatedBlockCount)
         throw string("STFS: Reference to illegal block number.\n");
 
-    DWORD hashLoc = GetHashAddressOfBlock(blockNum) + 0x15;
+    u32 hashLoc = GetHashAddressOfBlock(blockNum) + 0x15;
     io->SetPosition(hashLoc);
-    io->Write((INT24)nextBlockNum);
+    io->WriteInt24(nextBlockNum);
 
     if (topLevel == Zero)
     {
@@ -1581,14 +1581,14 @@ void StfsPackage::WriteFileEntry(StfsFileEntry* entry)
         throw string("STFS: File entry name length cannot be greater than 40(0x28) characters.\n");
 
     // put the flags and name length into one byte
-    BYTE nameLengthAndFlags = entry->nameLen | (entry->flags << 6);
+    u8 nameLengthAndFlags = entry->nameLen | (entry->flags << 6);
 
     // Write the entry
     io->Write(entry->name, 0x28, false);
     io->Write(nameLengthAndFlags);
-    io->Write(entry->blocksForFile, LittleEndian);
-    io->Write(entry->blocksForFile, LittleEndian);
-    io->Write(entry->startingBlockNum, LittleEndian);
+    io->WriteInt24(entry->blocksForFile, LittleEndian);
+    io->WriteInt24(entry->blocksForFile, LittleEndian);
+    io->WriteInt24(entry->startingBlockNum, LittleEndian);
     io->Write(entry->pathIndicator);
     io->Write(entry->fileSize);
     io->Write(entry->createdTimeStamp);
@@ -1600,7 +1600,7 @@ void StfsPackage::RemoveFile(string pathInPackage)
     RemoveFile(GetFileEntry(pathInPackage, false, NULL, false));
 }
 
-UINT24 StfsPackage::AllocateBlock()
+u32 StfsPackage::AllocateBlock()
 {
     // reset the cached table
     cached.addressInFile = 0;
@@ -1608,13 +1608,13 @@ UINT24 StfsPackage::AllocateBlock()
     cached.level = (Level)-1;
     cached.trueBlockNumber = 0xFFFFFFFF;
 
-    DWORD lengthToWrite = 0xFFF;
+    u32 lengthToWrite = 0xFFF;
 
     // update the allocated block count
     metaData->stfsVolumeDescriptor.allocatedBlockCount++;
 
     // recalculate the hash table counts to see if we need to make any new tables
-    DWORD recalcTablesPerLevel[3];
+    u32 recalcTablesPerLevel[3];
     recalcTablesPerLevel[0] = (metaData->stfsVolumeDescriptor.allocatedBlockCount / 0xAA) + ((
         metaData->stfsVolumeDescriptor.allocatedBlockCount % 0xAA != 0) ? 1 : 0);
     recalcTablesPerLevel[1] = (recalcTablesPerLevel[0] / 0xAA) + ((recalcTablesPerLevel[0] % 0xAA != 0
@@ -1639,14 +1639,14 @@ UINT24 StfsPackage::AllocateBlock()
 
                 // Write it to the file
                 io->SetPosition(topTable.addressInFile + ((tablesPerLevel[i] - 1) * 0x18) + 0x15);
-                io->Write((INT24)BLOCK_CHAIN_TERMINATOR);
+                io->WriteInt24(kBlockChainTerminator);
             }
         }
     }
 
     // allocate the necessary memory
     io->SetPosition(lengthToWrite, ios_base::end);
-    io->Write((BYTE)0);
+    io->Write((u8)0);
 
     // if the top level changed, then we need to re-load the top table
     Level newTop = CalcualateTopLevel();
@@ -1655,7 +1655,7 @@ UINT24 StfsPackage::AllocateBlock()
         topLevel = newTop;
         topTable.level = topLevel;
 
-        DWORD blockOffset = metaData->stfsVolumeDescriptor.blockSeparation & 2;
+        u32 blockOffset = metaData->stfsVolumeDescriptor.blockSeparation & 2;
         metaData->stfsVolumeDescriptor.blockSeparation &= 0xFD;
         topTable.addressInFile = GetHashTableAddress(0, topLevel);
         topTable.entryCount = 2;
@@ -1666,7 +1666,7 @@ UINT24 StfsPackage::AllocateBlock()
 
         topTable.entries[0].status = blockOffset << 5;
         io->SetPosition(topTable.addressInFile + 0x14);
-        io->Write((BYTE)topTable.entries[0].status);
+        io->Write((u8)topTable.entries[0].status);
 
         // clear the top hash offset
         metaData->stfsVolumeDescriptor.blockSeparation &= 0xFD;
@@ -1676,43 +1676,43 @@ UINT24 StfsPackage::AllocateBlock()
     // Write the block status
     io->SetPosition(GetHashAddressOfBlock(metaData->stfsVolumeDescriptor.allocatedBlockCount - 1) +
         0x14);
-    io->Write((BYTE)Allocated);
+    io->Write((u8)Allocated);
 
     if (topLevel == Zero)
     {
-        const DWORD lastBlock = metaData->stfsVolumeDescriptor.allocatedBlockCount - 1;
+        const u32 lastBlock = metaData->stfsVolumeDescriptor.allocatedBlockCount - 1;
         if (lastBlock >= 0xAA)
             throw string("STFS: Illegal top-level block index.\n");
 
         topTable.entryCount++;
-        topTable.entries[lastBlock].status = (BYTE)Allocated;
-        topTable.entries[lastBlock].nextBlock = BLOCK_CHAIN_TERMINATOR;
+        topTable.entries[lastBlock].status = (u8)Allocated;
+        topTable.entries[lastBlock].nextBlock = kBlockChainTerminator;
     }
 
     // terminate the chain
-    io->Write((INT24)BLOCK_CHAIN_TERMINATOR);
+    io->WriteInt24(kBlockChainTerminator);
 
     metaData->WriteVolumeDescriptor();
-    return static_cast<UINT24>(metaData->stfsVolumeDescriptor.allocatedBlockCount - 1);
+    return static_cast<u32>(metaData->stfsVolumeDescriptor.allocatedBlockCount - 1);
 }
 
-DWORD StfsPackage::GetBlocksUntilNextHashTable(DWORD currentBlock)
+u32 StfsPackage::GetBlocksUntilNextHashTable(u32 currentBlock)
 {
     return (ComputeLevel0BackingHashBlockNumber(currentBlock) + blockStep[0]) - ((BlockToAddress(
         currentBlock) - firstHashTableAddress) >> 0xC);
 }
 
-UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
+u32 StfsPackage::AllocateBlocks(u32 blockCount)
 {
-    UINT24 returnValue = static_cast<UINT24>(metaData->stfsVolumeDescriptor.allocatedBlockCount);
+    u32 returnValue = static_cast<u32>(metaData->stfsVolumeDescriptor.allocatedBlockCount);
 
     // figure out how far away the next hash table set is
-    DWORD blocksUntilTable = GetBlocksUntilNextHashTable(
+    u32 blocksUntilTable = GetBlocksUntilNextHashTable(
         metaData->stfsVolumeDescriptor.allocatedBlockCount);
 
     // create a hash block of all statuses set to allocated, for fast writing
-    BYTE allocatedHashBlock[0x1000];
-    for (DWORD i = 0; i < 0xAA; i++)
+    u8 allocatedHashBlock[0x1000];
+    for (u32 i = 0; i < 0xAA; i++)
         allocatedHashBlock[0x14 + (i * 0x18)] = 0x80;
 
     // allocate the amount before the hash table
@@ -1720,7 +1720,7 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
     // allocate the memory in the file
     io->SetPosition((((blockCount <= blocksUntilTable) ? blockCount : blocksUntilTable) << 0xC) - 1,
         ios_base::end);
-    io->Write((BYTE)0);
+    io->Write((u8)0);
 
     // set blocks to allocated in hash table
     io->SetPosition(BlockToAddress((metaData->stfsVolumeDescriptor.allocatedBlockCount -
@@ -1735,7 +1735,7 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
     // allocate memory the hash table
     io->SetPosition(GetHashTableSkipSize(metaData->stfsVolumeDescriptor.allocatedBlockCount) - 1,
         ios_base::end);
-    io->Write((BYTE)0);
+    io->Write((u8)0);
 
     blockCount -= blocksUntilTable;
 
@@ -1745,7 +1745,7 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
         // allocate the memory in the file
         io->SetPosition(0xAA000 + GetHashTableSkipSize(metaData->stfsVolumeDescriptor.allocatedBlockCount +
             0xAA) - 1, ios_base::end);
-        io->Write((BYTE)0);
+        io->Write((u8)0);
 
         // set all the blocks to allocated
         io->SetPosition(BlockToAddress(metaData->stfsVolumeDescriptor.allocatedBlockCount) -
@@ -1762,7 +1762,7 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
         // allocate the extra
         io->SetPosition(GetHashTableSkipSize(metaData->stfsVolumeDescriptor.allocatedBlockCount + 0xAA) +
             (blockCount << 0xC) - 1, ios_base::end);
-        io->Write((BYTE)0);
+        io->Write((u8)0);
 
         // set all the blocks to allocated
         io->SetPosition(BlockToAddress(metaData->stfsVolumeDescriptor.allocatedBlockCount) -
@@ -1779,7 +1779,7 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
         topLevel = newTop;
         topTable.level = topLevel;
 
-        DWORD blockOffset = metaData->stfsVolumeDescriptor.blockSeparation & 2;
+        u32 blockOffset = metaData->stfsVolumeDescriptor.blockSeparation & 2;
         metaData->stfsVolumeDescriptor.blockSeparation &= 0xFD;
         topTable.addressInFile = GetHashTableAddress(0, topLevel);
         topTable.entryCount = 2;
@@ -1789,7 +1789,7 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
 
         topTable.entries[0].status = blockOffset << 5;
         io->SetPosition(topTable.addressInFile + 0x14);
-        io->Write((BYTE)topTable.entries[0].status);
+        io->Write((u8)topTable.entries[0].status);
 
         // clear the top hash offset
         metaData->stfsVolumeDescriptor.blockSeparation &= 0xFD;
@@ -1814,7 +1814,7 @@ void StfsPackage::FindDirectoryListing(vector<string> locationOfDirectory, StfsF
     const bool finalLoop = (locationOfDirectory.size() == 1);
     const string &childName = locationOfDirectory.front();
 
-    for (DWORD i = 0; i < start->folderEntries.size(); i++)
+    for (u32 i = 0; i < start->folderEntries.size(); i++)
     {
         StfsFileListing &child = start->folderEntries.at(i);
         if (!MatchesFileName(childName, child.folder.name, useWildcards))
@@ -1841,7 +1841,7 @@ void StfsPackage::UpdateEntry(string pathInPackage, StfsFileEntry entry)
 }
 
 StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
-    void(*injectProgress)(void*, DWORD, DWORD), void* arg)
+    void(*injectProgress)(void*, u32, u32), void* arg)
 {
     if (FileExists(pathInPackage, false))
         throw string("STFS: File already exists in the package.\n");
@@ -1872,7 +1872,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     FileIO fileIn(path);
 
     fileIn.SetPosition(0, ios_base::end);
-    DWORD fileSize = fileIn.GetPosition();
+    u32 fileSize = fileIn.GetPosition();
     fileIn.SetPosition(0);
 
     // set up the entry
@@ -1885,7 +1885,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     entry.fileSize = fileSize;
     entry.flags = ConsecutiveBlocks;
     entry.pathIndicator = folder->folder.entryIndex;
-    entry.startingBlockNum = BLOCK_CHAIN_TERMINATOR;
+    entry.startingBlockNum = kBlockChainTerminator;
     entry.blocksForFile = ((fileSize + 0xFFF) & 0xFFFFFFF000) >> 0xC;
     entry.createdTimeStamp = MSTimeToDWORD(TimetToMSTime(time(NULL)));
     entry.accessTimeStamp = entry.createdTimeStamp;
@@ -1894,18 +1894,18 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     if (injectProgress != NULL)
         injectProgress(arg, 0, entry.blocksForFile);
 
-    UINT24 block = 0;
-    UINT24 prevBlock = BLOCK_CHAIN_TERMINATOR;
-    DWORD counter = 0;
-    BYTE data[0x1000];
+    u32 block = 0;
+    u32 prevBlock = kBlockChainTerminator;
+    u32 counter = 0;
+    u8 data[0x1000];
     while (fileSize >= 0x1000)
     {
         block = AllocateBlock();
 
-        if (entry.startingBlockNum == BLOCK_CHAIN_TERMINATOR)
+        if (entry.startingBlockNum == kBlockChainTerminator)
             entry.startingBlockNum = block;
 
-        if (prevBlock != BLOCK_CHAIN_TERMINATOR)
+        if (prevBlock != kBlockChainTerminator)
             SetNextBlock(prevBlock, block);
 
         prevBlock = block;
@@ -1927,16 +1927,16 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     {
         block = AllocateBlock();
 
-        if (entry.startingBlockNum == BLOCK_CHAIN_TERMINATOR)
+        if (entry.startingBlockNum == kBlockChainTerminator)
             entry.startingBlockNum = block;
 
-        if (prevBlock != BLOCK_CHAIN_TERMINATOR)
+        if (prevBlock != kBlockChainTerminator)
             SetNextBlock(prevBlock, block);
 
-    std::vector<BYTE> data(static_cast<size_t>(fileSize));
-    fileIn.ReadBytes(data.data(), fileSize);
+        std::vector<u8> data(static_cast<size_t>(fileSize));
+        fileIn.ReadBytes(data.data(), fileSize);
         io->SetPosition(BlockToAddress(block));
-    io->Write(data.data(), fileSize);
+        io->Write(data.data(), fileSize);
 
         fileSize = 0;
 
@@ -1946,7 +1946,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     }
     fileIn.Close();
 
-    SetNextBlock(block, BLOCK_CHAIN_TERMINATOR);
+    SetNextBlock(block, kBlockChainTerminator);
 
     folder->fileEntries.push_back(entry);
     WriteFileListing();
@@ -1957,7 +1957,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
 
         topTable.entryCount = metaData->stfsVolumeDescriptor.allocatedBlockCount;
 
-        for (DWORD i = 0; i < topTable.entryCount; i++)
+        for (u32 i = 0; i < topTable.entryCount; i++)
         {
             io->ReadBytes(topTable.entries[i].blockHash, 0x14);
             topTable.entries[i].status = io->ReadByte();
@@ -1967,8 +1967,8 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     return entry;
 }
 
-StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPackage,
-    void (*injectProgress)(void*, DWORD, DWORD), void* arg)
+StfsFileEntry StfsPackage::InjectData(u8* data, u32 length, string pathInPackage,
+    void (*injectProgress)(void*, u32, u32), void* arg)
 {
     if (FileExists(pathInPackage, false))
         throw string("STFS: File already exists in the package.\n");
@@ -1996,7 +1996,7 @@ StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPac
         folder = &fileListing;
     }
 
-    DWORD fileSize = length;
+    u32 fileSize = length;
 
     // set up the entry
     StfsFileEntry entry;
@@ -2004,26 +2004,26 @@ StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPac
     entry.fileSize = fileSize;
     entry.flags = ConsecutiveBlocks;
     entry.pathIndicator = folder->folder.entryIndex;
-    entry.startingBlockNum = BLOCK_CHAIN_TERMINATOR;
+    entry.startingBlockNum = kBlockChainTerminator;
     entry.blocksForFile = ((fileSize + 0xFFF) & 0xFFFFFFF000) >> 0xC;
 
-    UINT24 block = 0;
-    UINT24 prevBlock = BLOCK_CHAIN_TERMINATOR;
-    DWORD counter = 0;
+    u32 block = 0;
+    u32 prevBlock = kBlockChainTerminator;
+    u32 counter = 0;
     while (fileSize >= 0x1000)
     {
         block = AllocateBlock();
 
-        if (entry.startingBlockNum == BLOCK_CHAIN_TERMINATOR)
+        if (entry.startingBlockNum == kBlockChainTerminator)
             entry.startingBlockNum = block;
 
-        if (prevBlock != BLOCK_CHAIN_TERMINATOR)
+        if (prevBlock != kBlockChainTerminator)
             SetNextBlock(prevBlock, block);
 
         prevBlock = block;
 
         // read the data
-        BYTE* dataBlock = data + (counter++ * 0x1000);
+        u8* dataBlock = data + (counter++ * 0x1000);
 
         io->SetPosition(BlockToAddress(block));
         io->Write(dataBlock, 0x1000);
@@ -2039,13 +2039,13 @@ StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPac
     {
         block = AllocateBlock();
 
-        if (entry.startingBlockNum == BLOCK_CHAIN_TERMINATOR)
+        if (entry.startingBlockNum == kBlockChainTerminator)
             entry.startingBlockNum = block;
 
-        if (prevBlock != BLOCK_CHAIN_TERMINATOR)
+        if (prevBlock != kBlockChainTerminator)
             SetNextBlock(prevBlock, block);
 
-        BYTE* blockData = data + (length - fileSize);
+        u8* blockData = data + (length - fileSize);
         io->SetPosition(BlockToAddress(block));
         io->Write(blockData, fileSize);
 
@@ -2056,7 +2056,7 @@ StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPac
             injectProgress(arg, entry.blocksForFile, entry.blocksForFile);
     }
 
-    SetNextBlock(block, BLOCK_CHAIN_TERMINATOR);
+    SetNextBlock(block, kBlockChainTerminator);
 
     folder->fileEntries.push_back(entry);
     WriteFileListing();
@@ -2067,7 +2067,7 @@ StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPac
 
         topTable.entryCount = metaData->stfsVolumeDescriptor.allocatedBlockCount;
 
-        for (DWORD i = 0; i < topTable.entryCount; i++)
+        for (u32 i = 0; i < topTable.entryCount; i++)
         {
             io->ReadBytes(topTable.entries[i].blockHash, 0x14);
             topTable.entries[i].status = io->ReadByte();
@@ -2079,7 +2079,7 @@ StfsFileEntry StfsPackage::InjectData(BYTE* data, DWORD length, string pathInPac
 }
 
 void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPackage,
-    void (*replaceProgress)(void*, DWORD, DWORD), void* arg)
+    void (*replaceProgress)(void*, u32, u32), void* arg)
 {
     if (entry->nameLen == 0)
         throw string("STFS: File doesn't exists in the package.\n");
@@ -2087,26 +2087,26 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
     FileIO fileIn(path);
 
     fileIn.SetPosition(0, ios_base::end);
-    DWORD fileSize = fileIn.GetPosition();
+    u32 fileSize = fileIn.GetPosition();
     fileIn.SetPosition(0);
 
     // set up the entry
     entry->fileSize = fileSize;
     entry->blocksForFile = ((fileSize + 0xFFF) & 0xFFFFFFF000) >> 0xC;
 
-    UINT24 block = entry->startingBlockNum;
+    u32 block = entry->startingBlockNum;
     io->SetPosition(BlockToAddress(block));
 
-    DWORD fullReads = fileSize / 0x1000;
+    u32 fullReads = fileSize / 0x1000;
     bool first = true, alwaysAllocate = false;
 
     // Write the folders to the listing
-    for (DWORD i = 0; i < fullReads; i++)
+    for (u32 i = 0; i < fullReads; i++)
     {
         if (!first)
         {
             // check if we need to allocate a new block
-            UINT24 nextBlock;
+            u32 nextBlock;
             if (alwaysAllocate)
             {
                 nextBlock = AllocateBlock();
@@ -2120,7 +2120,7 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
                 nextBlock = GetBlockHashEntry(block).nextBlock;
 
                 // if not, allocate one and make it so it always allocates
-                if (nextBlock == BLOCK_CHAIN_TERMINATOR)
+                if (nextBlock == kBlockChainTerminator)
                 {
                     nextBlock = AllocateBlock();
                     SetNextBlock(block, nextBlock);
@@ -2136,7 +2136,7 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
             first = false;
 
         // read in the data
-        BYTE toWrite[0x1000];
+        u8 toWrite[0x1000];
         fileIn.ReadBytes(toWrite, 0x1000);
 
         // Write the data
@@ -2147,10 +2147,10 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
             replaceProgress(arg, i, entry->blocksForFile);
     }
 
-    DWORD remainder = fileSize % 0x1000;
+    u32 remainder = fileSize % 0x1000;
     if (remainder != 0)
     {
-        UINT24 nextBlock;
+        u32 nextBlock;
         if (!first)
         {
             // check if we need to allocate a new block
@@ -2167,7 +2167,7 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
                 nextBlock = GetBlockHashEntry(block).nextBlock;
 
                 // if not, allocate one and make it so it always allocates
-                if (nextBlock == BLOCK_CHAIN_TERMINATOR)
+                if (nextBlock == kBlockChainTerminator)
                 {
                     nextBlock = AllocateBlock();
                     SetNextBlock(block, nextBlock);
@@ -2180,7 +2180,7 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
         // go to the next block position
         io->SetPosition(BlockToAddress(block));
 
-        std::vector<BYTE> toWrite(remainder);
+        std::vector<u8> toWrite(remainder);
         fileIn.ReadBytes(toWrite.data(), remainder);
 
         io->Write(toWrite.data(), remainder);
@@ -2190,14 +2190,14 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
     if (replaceProgress != NULL)
         replaceProgress(arg, entry->blocksForFile, entry->blocksForFile);
 
-    SetNextBlock(block, BLOCK_CHAIN_TERMINATOR);
+    SetNextBlock(block, kBlockChainTerminator);
 
     entry->flags &= 0x2;
 
     io->SetPosition(entry->fileEntryAddress + 0x28);
-    io->Write((BYTE)(entry->nameLen | (entry->flags << 6)));
-    io->Write(entry->blocksForFile, LittleEndian);
-    io->Write(entry->blocksForFile, LittleEndian);
+    io->Write((u8)(entry->nameLen | (entry->flags << 6)));
+    io->WriteInt24(entry->blocksForFile, LittleEndian);
+    io->WriteInt24(entry->blocksForFile, LittleEndian);
 
     io->SetPosition(entry->fileEntryAddress + 0x34);
     io->Write(entry->fileSize);
@@ -2207,7 +2207,7 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
     {
         io->SetPosition(topTable.addressInFile);
 
-        for (DWORD i = 0; i < topTable.entryCount; i++)
+        for (u32 i = 0; i < topTable.entryCount; i++)
         {
             io->ReadBytes(topTable.entries[i].blockHash, 0x14);
             topTable.entries[i].status = io->ReadByte();
@@ -2220,7 +2220,7 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
 }
 
 void StfsPackage::ReplaceFile(string path, string pathInPackage, void (*replaceProgress)(void*,
-    DWORD, DWORD), void* arg)
+    u32, u32), void* arg)
 {
     StfsFileEntry entry = GetFileEntry(pathInPackage, false, NULL, false);
     ReplaceFile(path, &entry, pathInPackage, replaceProgress, arg);
@@ -2293,14 +2293,14 @@ void StfsPackage::CreateFolder(string pathInPackage)
     // existing folder uses; the default 0 collides with the first folder and
     // makes siblings resolve to the wrong parent (or to themselves).
     {
-        std::unordered_set<DWORD> usedIndices;
+        std::unordered_set<u32> usedIndices;
         vector<StfsFileEntry> allFiles, allFolders;
         GenerateRawFileListing(&fileListing, &allFiles, &allFolders);
         for (const StfsFileEntry &existing : allFolders)
             if (existing.entryIndex != 0xFFFF)
                 usedIndices.insert(existing.entryIndex);
 
-        DWORD newIndex = 0;
+        u32 newIndex = 0;
         while (newIndex < 0xFFFF && usedIndices.count(newIndex) != 0)
             ++newIndex;
 
@@ -2328,14 +2328,14 @@ void StfsPackage::GenerateBlockChain(StfsFileEntry *entry, bool forceRefresh)
 
     entry->blockChain.clear();
 
-    INT24 currentBlock = entry->startingBlockNum;
-    if (currentBlock == INT24_MAX)
+    u32 currentBlock = entry->startingBlockNum;
+    if (currentBlock == kBlockChainTerminator)
         return;
 
-    std::unordered_set<INT24> visitedBlocks;
-    const DWORD maxBlocks = metaData->stfsVolumeDescriptor.allocatedBlockCount;
+    std::unordered_set<u32> visitedBlocks;
+    const u32 maxBlocks = metaData->stfsVolumeDescriptor.allocatedBlockCount;
 
-    while (currentBlock != INT24_MAX)
+    while (currentBlock != kBlockChainTerminator)
     {
         // A cross-linked or corrupt chain cannot hold more blocks than the
         // volume allocates; stop before the vector can grow without bound.
@@ -2450,7 +2450,7 @@ bool StfsPackage::MatchesFileName(const std::string &pattern, const std::string 
     return p == pattern.size();
 }
 
-DWORD StfsPackage::ComputeNumberOfDataBlocks(UINT64 blocks)
+u32 StfsPackage::ComputeNumberOfDataBlocks(u64 blocks)
 {
     // Kernel StfsComputeNumberOfDataBlocks (xboxkrnl 16547, 0x800DFA40). The
     // 0xAC/0x723A steps are the male volume geometry; the kernel does not run
@@ -2458,13 +2458,13 @@ DWORD StfsPackage::ComputeNumberOfDataBlocks(UINT64 blocks)
     if (blocks >= 0x4BDA85ULL)
         return 0x4AF768;
 
-    DWORD n = static_cast<DWORD>(blocks);
+    u32 n = static_cast<u32>(blocks);
 
     if (n >= 0x723A)
     {
         n = (n <= 0x7240) ? 0x723A : n - 2;
 
-        DWORD remainder = n % 0x723A;
+        u32 remainder = n % 0x723A;
         if (remainder <= 4)
             n -= remainder;
 
@@ -2475,14 +2475,14 @@ DWORD StfsPackage::ComputeNumberOfDataBlocks(UINT64 blocks)
         n = (n <= 0xB0) ? 0xAC : n - 2;
     }
 
-    DWORD remainder = n % 0xAC;
+    u32 remainder = n % 0xAC;
     if (remainder <= 2)
         n -= remainder;
 
     return n - 2 * ((n + 0xAB) / 0xAC);
 }
 
-DWORD StfsPackage::ComputeAllocatedBlocksForSize(UINT64 sizeBytes)
+u32 StfsPackage::ComputeAllocatedBlocksForSize(u64 sizeBytes)
 {
     return ComputeNumberOfDataBlocks((sizeBytes + 0xFFF) / 0x1000);
 }

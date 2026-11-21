@@ -20,11 +20,11 @@ namespace
     // arbitrary byte into the enum and then comparing it is UB, so validate
     // against the known values and fall back to the "unrated" sentinel.
     template <typename Enum>
-    Enum RatingOrUnrated(BYTE value, std::initializer_list<Enum> valid, Enum unrated)
+    Enum RatingOrUnrated(u8 value, std::initializer_list<Enum> valid, Enum unrated)
     {
         for (Enum candidate : valid)
         {
-            if (static_cast<BYTE>(candidate) == value)
+            if (static_cast<u8>(candidate) == value)
                 return candidate;
         }
         return unrated;
@@ -82,7 +82,7 @@ std::vector<XexResourceFileEntry> Xex::GetResourceFileInfo() const
     return resourceFiles;
 }
 
-DWORD Xex::GetModuleFlags() const
+u32 Xex::GetModuleFlags() const
 {
     return header.moduleFlags;
 }
@@ -186,42 +186,42 @@ std::string Xex::GetOriginalPEImageName() const
     return originalPEImageName;
 }
 
-DWORD Xex::GetImageBaseAddress() const
+u32 Xex::GetImageBaseAddress() const
 {
     return imageBaseAddress;
 }
 
-DWORD Xex::GetEntryPoint() const
+u32 Xex::GetEntryPoint() const
 {
     return entryPoint;
 }
 
-DWORD Xex::GetOriginalBaseAddress() const
+u32 Xex::GetOriginalBaseAddress() const
 {
     return originalBaseAddress;
 }
 
-DWORD Xex::GetDefaultStackSize() const
+u32 Xex::GetDefaultStackSize() const
 {
     return defaultStackSize;
 }
 
-DWORD Xex::GetDefaultFileSystemCacheSize() const
+u32 Xex::GetDefaultFileSystemCacheSize() const
 {
     return defaultFileSystemCacheSize;
 }
 
-DWORD Xex::GetDefaultHeapSize() const
+u32 Xex::GetDefaultHeapSize() const
 {
     return defaultHeapSize;
 }
 
-DWORD Xex::GetTitleWorkspaceSize() const
+u32 Xex::GetTitleWorkspaceSize() const
 {
     return titleWorkspaceSize;
 }
 
-DWORD Xex::GetAllowedMediaTypes() const
+u32 Xex::GetAllowedMediaTypes() const
 {
     return securityInfo.allowedMediaTypes;
 }
@@ -232,22 +232,22 @@ void Xex::ExtractBaseImageFile(std::string outPath)
     // GetRawDataIO returns the original file positioned at the header for a
     // plain image, but a temp file starting at 0 for a compressed/encrypted
     // one. Subtracting dataAddress from the temp length truncates the output.
-    const UINT64 dataStart = (rawDataIO == io) ? header.dataAddress : 0;
-    const UINT64 rawLength = rawDataIO->Length();
-    const UINT64 available = rawLength > dataStart ? rawLength - dataStart : 0;
+    const u64 dataStart = (rawDataIO == io) ? header.dataAddress : 0;
+    const u64 rawLength = rawDataIO->Length();
+    const u64 available = rawLength > dataStart ? rawLength - dataStart : 0;
 
     // The logical image size is authoritative; never read past the raw data.
-    UINT64 baseImageSize = securityInfo.imageSize;
+    u64 baseImageSize = securityInfo.imageSize;
     if (baseImageSize == 0 || baseImageSize > available)
         baseImageSize = available;
 
     // if there are resources then the PE file runs right up until the first resource
     if (firstResourceFileAddr != 0xFFFFFFFF)
     {
-        const UINT64 imageBase = GetImageBaseAddress();
+        const u64 imageBase = GetImageBaseAddress();
         if (firstResourceFileAddr < imageBase)
             throw std::string("XEX: Resource address is below the image base.");
-        const UINT64 firstResourceFileDataOffset = firstResourceFileAddr - imageBase;
+        const u64 firstResourceFileDataOffset = firstResourceFileAddr - imageBase;
         if (firstResourceFileDataOffset > baseImageSize)
             throw std::string("XEX: Resource address is outside the image.");
         baseImageSize = firstResourceFileDataOffset;
@@ -256,7 +256,7 @@ void Xex::ExtractBaseImageFile(std::string outPath)
     if (baseImageSize > UINT32_MAX)
         throw std::string("XEX: Base image is too large to extract.");
 
-    ExtractFromRawData(outPath, 0, static_cast<DWORD>(baseImageSize));
+    ExtractFromRawData(outPath, 0, static_cast<u32>(baseImageSize));
 }
 
 void Xex::ExtractResource(std::string resourceName, std::string outPath)
@@ -277,20 +277,20 @@ void Xex::ExtractResource(std::string resourceName, std::string outPath)
     if (!found)
         throw std::string("XEX: Couldn't find resource to extract.");
 
-    const UINT64 imageBase = GetImageBaseAddress();
+    const u64 imageBase = GetImageBaseAddress();
     if (entry.address < imageBase)
         throw std::string("XEX: Resource address is below the image base.");
-    const UINT64 resourceOffset = entry.address - imageBase;
+    const u64 resourceOffset = entry.address - imageBase;
 
     BaseIO *rawDataIO = GetRawDataIO();
-    const UINT64 dataStart = (rawDataIO == io) ? header.dataAddress : 0;
-    const UINT64 rawLength = rawDataIO->Length();
-    const UINT64 available = rawLength > dataStart ? rawLength - dataStart : 0;
+    const u64 dataStart = (rawDataIO == io) ? header.dataAddress : 0;
+    const u64 rawLength = rawDataIO->Length();
+    const u64 available = rawLength > dataStart ? rawLength - dataStart : 0;
     if (resourceOffset > available || entry.size > available - resourceOffset ||
         resourceOffset > UINT32_MAX || entry.size > UINT32_MAX)
         throw std::string("XEX: Resource is outside the image.");
 
-    ExtractFromRawData(outPath, static_cast<DWORD>(resourceOffset), entry.size);
+    ExtractFromRawData(outPath, static_cast<u32>(resourceOffset), entry.size);
 }
 
 void Xex::ExtractData(std::string path)
@@ -308,23 +308,23 @@ void Xex::ExtractData(std::string path)
         // Plain, unencrypted image: copy the raw bytes after the header. The
         // old ExtractData2 handled this case; keep it so the alias does not
         // silently return without writing a file.
-        const UINT64 dataStart = header.dataAddress;
-        const UINT64 fileLength = io->Length();
+        const u64 dataStart = header.dataAddress;
+        const u64 fileLength = io->Length();
         if (dataStart > fileLength)
             throw std::string("XEX: Data starts past the end of the file.\n");
 
-        const UINT64 dataSize = fileLength - dataStart;
+        const u64 dataSize = fileLength - dataStart;
         if (dataSize > UINT32_MAX)
             throw std::string("XEX: Extracted data is too large.\n");
 
-        ExtractFromRawData(path, 0, static_cast<DWORD>(dataSize));
+        ExtractFromRawData(path, 0, static_cast<u32>(dataSize));
     }
 }
 
 void Xex::ExtractDecryptedData(std::string path) const
 {
-    BYTE bufferEnc[XEX_AES_BLOCK_SIZE];
-    BYTE bufferDec[XEX_AES_BLOCK_SIZE];
+    u8 bufferEnc[XEX_AES_BLOCK_SIZE];
+    u8 bufferDec[XEX_AES_BLOCK_SIZE];
 
     // set up the cipher
     auto aes = Botan::BlockCipher::create("AES-128");
@@ -334,18 +334,18 @@ void Xex::ExtractDecryptedData(std::string path) const
     io->SetPosition(header.dataAddress);
 
     // calculate how many blocks there are
-    const UINT64 fileLength = io->Length();
+    const u64 fileLength = io->Length();
     if (header.dataAddress > fileLength)
         throw std::string("XEX: Data starts past the end of the file.\n");
-    DWORD blockCount = static_cast<DWORD>(
+    u32 blockCount = static_cast<u32>(
             (fileLength - header.dataAddress) / XEX_AES_BLOCK_SIZE);
 
     // open an out file
     FileIO outFile(path, true);
 
     // decrypt the data (AES-128 cbc)
-    BYTE initializationVector[XEX_AES_BLOCK_SIZE] = {0};
-    for (DWORD i = 0; i < blockCount; i++)
+    u8 initializationVector[XEX_AES_BLOCK_SIZE] = {0};
+    for (u32 i = 0; i < blockCount; i++)
     {
         io->ReadBytes(bufferEnc, XEX_AES_BLOCK_SIZE);
         AesCbcDecrypt(aes.get(), initializationVector, bufferEnc, bufferDec);
@@ -358,30 +358,30 @@ void Xex::ExtractDecryptedData(std::string path) const
 
 void Xex::ExtractDecompressedData(std::string path)
 {
-    std::vector<BYTE> copyBuffer(XEX_COPY_BUFFER_SIZE);
+    std::vector<u8> copyBuffer(XEX_COPY_BUFFER_SIZE);
     FileIO outFile(path, true);
 
     // if it's encrypted we'll have to decrypt it
     auto aes = Botan::BlockCipher::create("AES-128");
-    BYTE iv[XEX_AES_BLOCK_SIZE] = {0};
+    u8 iv[XEX_AES_BLOCK_SIZE] = {0};
     aes->set_key(decryptedKey, XEX_AES_BLOCK_SIZE);
 
     // seek to the beginning of the data
     io->SetPosition(header.dataAddress);
 
-    UINT64 produced = 0;
+    u64 produced = 0;
 
     // decompress the data
-    for (DWORD i = 0; i < compressionBlocks.size(); i++)
+    for (u32 i = 0; i < compressionBlocks.size(); i++)
     {
         XexCompressionBlock block = compressionBlocks.at(i);
 
         // Check the whole run before writing anything. A corrupt table could
         // otherwise make us write up to 4 GiB per entry before the final size
-        // check, and a DWORD sum could wrap past imageSize. The kernel clamps
+        // check, and a u32 sum could wrap past imageSize. The kernel clamps
         // an overrunning run instead; rejecting the table is deliberate.
-        const UINT64 blockTotal = static_cast<UINT64>(block.size) + block.nullSize;
-        if (blockTotal > static_cast<UINT64>(securityInfo.imageSize) - produced)
+        const u64 blockTotal = static_cast<u64>(block.size) + block.nullSize;
+        if (blockTotal > static_cast<u64>(securityInfo.imageSize) - produced)
             throw std::string("XEX: The compression block table exceeds the image size.\n");
 
         // XeCryptAesCbc decrypts only len>>4 blocks and leaves a partial tail
@@ -393,15 +393,15 @@ void Xex::ExtractDecompressedData(std::string path)
             throw std::string("XEX: Encrypted type-1 run is not AES-block aligned.\n");
 
         // determine how many copy iterations it will take
-        DWORD copyIterations = block.size / XEX_COPY_BUFFER_SIZE;
+        u32 copyIterations = block.size / XEX_COPY_BUFFER_SIZE;
         if (block.size % XEX_COPY_BUFFER_SIZE != 0)
             copyIterations++;
 
         // copy over the data
-        for (DWORD x = 0; x < copyIterations; x++)
+        for (u32 x = 0; x < copyIterations; x++)
         {
             // determine the amount of bytes to copy
-            DWORD bytesToCopy = XEX_COPY_BUFFER_SIZE;
+            u32 bytesToCopy = XEX_COPY_BUFFER_SIZE;
             if (x + 1 == copyIterations && block.size % XEX_COPY_BUFFER_SIZE != 0)
                 bytesToCopy = block.size % XEX_COPY_BUFFER_SIZE;
 
@@ -411,10 +411,10 @@ void Xex::ExtractDecompressedData(std::string path)
             // decrypt it if necessary; the IV stays chained across buffers
             if (IsEncrypted())
             {
-                DWORD aesBlocksInBuffer = bytesToCopy / XEX_AES_BLOCK_SIZE;
-                for (DWORD y = 0; y < aesBlocksInBuffer; y++)
+                u32 aesBlocksInBuffer = bytesToCopy / XEX_AES_BLOCK_SIZE;
+                for (u32 y = 0; y < aesBlocksInBuffer; y++)
                 {
-                    BYTE *currentAesBlock = copyBuffer.data() + y * XEX_AES_BLOCK_SIZE;
+                    u8 *currentAesBlock = copyBuffer.data() + y * XEX_AES_BLOCK_SIZE;
                     AesCbcDecrypt(aes.get(), iv, currentAesBlock, currentAesBlock);
                 }
             }
@@ -429,10 +429,10 @@ void Xex::ExtractDecompressedData(std::string path)
             copyIterations++;
 
         // write all the null data
-        for (DWORD x = 0; x < copyIterations; x++)
+        for (u32 x = 0; x < copyIterations; x++)
         {
             // determine the amount of bytes to copy
-            DWORD bytesToCopy = XEX_COPY_BUFFER_SIZE;
+            u32 bytesToCopy = XEX_COPY_BUFFER_SIZE;
             if (x + 1 == copyIterations && block.nullSize % XEX_COPY_BUFFER_SIZE != 0)
                 bytesToCopy = block.nullSize % XEX_COPY_BUFFER_SIZE;
 
@@ -452,11 +452,11 @@ void Xex::ExtractDecompressedData(std::string path)
     if (produced < securityInfo.imageSize)
     {
         std::fill(copyBuffer.begin(), copyBuffer.end(), 0);
-        UINT64 remaining = securityInfo.imageSize - produced;
+        u64 remaining = securityInfo.imageSize - produced;
         while (remaining > 0)
         {
-            const DWORD chunk = static_cast<DWORD>(
-                    std::min<UINT64>(remaining, copyBuffer.size()));
+            const u32 chunk = static_cast<u32>(
+                    std::min<u64>(remaining, copyBuffer.size()));
             outFile.WriteBytes(copyBuffer.data(), chunk);
             remaining -= chunk;
         }
@@ -482,27 +482,27 @@ void Xex::SetRegion(XexRegion region)
     securityInfo.regions |= region;
 }
 
-DWORD Xex::GetImageFlags() const
+u32 Xex::GetImageFlags() const
 {
     return securityInfo.imageFlags;
 }
 
-DWORD Xex::GetImageSize() const
+u32 Xex::GetImageSize() const
 {
     return securityInfo.imageSize;
 }
 
-BYTE *Xex::GetMediaID()
+u8 *Xex::GetMediaID()
 {
     return securityInfo.mediaID;
 }
 
-BYTE *Xex::GetKey()
+u8 *Xex::GetKey()
 {
     return securityInfo.key;
 }
 
-BYTE *Xex::GetHeaderHash()
+u8 *Xex::GetHeaderHash()
 {
     return securityInfo.headerHash;
 }
@@ -512,12 +512,12 @@ bool Xex::IsHeaderHashValid() const
     return headerHashValid;
 }
 
-BYTE *Xex::GetLANKey()
+u8 *Xex::GetLANKey()
 {
     return lanKey;
 }
 
-DWORD Xex::GetTitleID() const
+u32 Xex::GetTitleID() const
 {
     return executionInfo.titleID;
 }
@@ -569,16 +569,16 @@ std::string Xex::GetCompressionStateStr() const
     }
 }
 
-void Xex::AesCbcDecrypt(Botan::BlockCipher *aes, BYTE *initializationVector, const BYTE *bufferEnc, BYTE *bufferDec) const
+void Xex::AesCbcDecrypt(Botan::BlockCipher *aes, u8 *initializationVector, const u8 *bufferEnc, u8 *bufferDec) const
 {
-    BYTE encCopy[XEX_AES_BLOCK_SIZE];
+    u8 encCopy[XEX_AES_BLOCK_SIZE];
     memcpy(encCopy, bufferEnc, XEX_AES_BLOCK_SIZE);
 
     // Copy to output buffer first, then decrypt in-place
     memcpy(bufferDec, bufferEnc, XEX_AES_BLOCK_SIZE);
     aes->decrypt(bufferDec);
 
-    for (DWORD x = 0; x < XEX_AES_BLOCK_SIZE; x++)
+    for (u32 x = 0; x < XEX_AES_BLOCK_SIZE; x++)
     {
         // xor the data with the old IV
         bufferDec[x] ^= initializationVector[x];
@@ -604,13 +604,13 @@ void Xex::Parse()
     header.optionalHeaderEntryCount = io->ReadDword();
 
     // read in all the optional header entries
-    for (DWORD i = 0; i < header.optionalHeaderEntryCount; i++)
+    for (u32 i = 0; i < header.optionalHeaderEntryCount; i++)
         ParseOptionalHeaderEntry(i);
 
     // read the security info
-    const UINT64 fileLength = io->Length();
+    const u64 fileLength = io->Length();
     if (header.headerAddress >= header.dataAddress ||
-        static_cast<UINT64>(header.headerAddress) + 0x184 > fileLength)
+        static_cast<u64>(header.headerAddress) + 0x184 > fileLength)
         throw std::string("XEX: Invalid security header offset.");
 
     io->SetPosition(header.headerAddress);
@@ -636,10 +636,10 @@ void Xex::Parse()
 
     // Always try to determine which encryption key is used
     // Note: Some XEX files have encrypted=0 in BaseFileDescriptor but are still encrypted!
-    const BYTE *key = XEX_RETAIL_KEY;
+    const u8 *key = XEX_RETAIL_KEY;
 
     // preserve the position in the file, the key probes change it
-    UINT64 position = io->GetPosition();
+    u64 position = io->GetPosition();
 
     if (compressionState == XexSupercompressed)
     {
@@ -680,15 +680,15 @@ void Xex::Parse()
         pageSize = 0x10000;
 
     // read the sections
-    DWORD sectionCount = io->ReadDword();
-    for (DWORD i = 0; i < sectionCount; i++)
+    u32 sectionCount = io->ReadDword();
+    for (u32 i = 0; i < sectionCount; i++)
     {
         XexSectionEntry entry;
 
         // the bottom 4 bits are the type, the rest are the size of the entry in pages
-        DWORD entryInfo = io->ReadDword();
+        u32 entryInfo = io->ReadDword();
 
-        const DWORD sectionType = entryInfo & 0x0F;
+        const u32 sectionType = entryInfo & 0x0F;
         entry.type = (sectionType >= XexSectionCode && sectionType <= XexSectionReadOnlyData)
                          ? static_cast<XexSectionType>(sectionType)
                          : XexSectionUnknown;
@@ -706,8 +706,8 @@ void Xex::ParseOptionalHeaderEntry(int index)
 
     // Switch on the raw id: casting an arbitrary file value to the enum would
     // create an out-of-range enumerator (UB) for unknown optional headers.
-    const DWORD headerId = io->ReadDword();
-    const DWORD headerData = io->ReadDword();
+    const u32 headerId = io->ReadDword();
+    const u32 headerData = io->ReadDword();
 
     switch (headerId)
     {
@@ -767,22 +767,22 @@ void Xex::ParseOptionalHeaderEntry(int index)
     }
 }
 
-void Xex::ParseSystemImportLibraryTable(DWORD address)
+void Xex::ParseSystemImportLibraryTable(u32 address)
 {
     io->SetPosition(address);
 
     // unknown
     io->ReadDword();
 
-    /*DWORD totalLength = */ io->ReadDword();
-    DWORD importLibraryCount = io->ReadDword();
+    /*u32 totalLength = */ io->ReadDword();
+    u32 importLibraryCount = io->ReadDword();
 
     // read the import library names
-    for (DWORD i = 0; i < importLibraryCount; i++)
+    for (u32 i = 0; i < importLibraryCount; i++)
         systemImportLibraries.push_back(io->ReadString());
 }
 
-void Xex::ParseRatingInformation(DWORD address)
+void Xex::ParseRatingInformation(u32 address)
 {
     io->SetPosition(address);
 
@@ -810,16 +810,16 @@ void Xex::ParseRatingInformation(DWORD address)
     // there are more
 }
 
-void Xex::ParseStaticLibraryTable(DWORD address)
+void Xex::ParseStaticLibraryTable(u32 address)
 {
     io->SetPosition(address);
 
-    DWORD staticLibraryStructSize = io->ReadDword();
+    u32 staticLibraryStructSize = io->ReadDword();
     if (staticLibraryStructSize < 4)
         return;
-    DWORD libraryCount = (staticLibraryStructSize - 4) / XEX_STATIC_LIBRARY_ENTRY_SIZE;
+    u32 libraryCount = (staticLibraryStructSize - 4) / XEX_STATIC_LIBRARY_ENTRY_SIZE;
 
-    for (DWORD i = 0; i < libraryCount; i++)
+    for (u32 i = 0; i < libraryCount; i++)
     {
         XexStaticLibraryInfo staticLibInfo;
         staticLibInfo.name = io->ReadString(8);
@@ -833,7 +833,7 @@ void Xex::ParseStaticLibraryTable(DWORD address)
     }
 }
 
-void Xex::ParseOriginalPEImageName(DWORD address)
+void Xex::ParseOriginalPEImageName(u32 address)
 {
     // seek past the length at the beginning
     io->SetPosition(address + 4);
@@ -841,15 +841,15 @@ void Xex::ParseOriginalPEImageName(DWORD address)
     originalPEImageName = io->ReadString();
 }
 
-void Xex::ParseResourceFileTable(DWORD address)
+void Xex::ParseResourceFileTable(u32 address)
 {
     io->SetPosition(address);
-    DWORD tableSize = io->ReadDword();
+    u32 tableSize = io->ReadDword();
     if (tableSize < 4)
         return;
-    DWORD entryCount = (tableSize - 4) / XEX_RESOURCE_FILE_ENTRY_SIZE;
+    u32 entryCount = (tableSize - 4) / XEX_RESOURCE_FILE_ENTRY_SIZE;
 
-    for (DWORD i = 0; i < entryCount; i++)
+    for (u32 i = 0; i < entryCount; i++)
     {
         // read the info from the file table
         XexResourceFileEntry entry;
@@ -864,16 +864,16 @@ void Xex::ParseResourceFileTable(DWORD address)
     }
 }
 
-void Xex::ParseBaseFileDescriptor(DWORD address)
+void Xex::ParseBaseFileDescriptor(u32 address)
 {
     io->SetPosition(address);
 
-    DWORD baseFileDescriptorSize = io->ReadDword();
+    u32 baseFileDescriptorSize = io->ReadDword();
     if (baseFileDescriptorSize < 8)
         throw std::string("XEX: Invalid base file descriptor size.\n");
 
     encrypted = !!(io->ReadWord());
-    const WORD compression = io->ReadWord();
+    const u16 compression = io->ReadWord();
     if (compression > XexDeltaCompressed)
         throw std::string("XEX: Unknown compression state.\n");
     compressionState = static_cast<XexCompressionState>(compression);
@@ -891,17 +891,17 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
         // XexpLoadRawImage requires the descriptor to end in a zero dword and
         // stops at the first block whose nullSize is zero; trailing entries are
         // not consumed.
-        const UINT64 descriptorEnd = static_cast<UINT64>(address) + baseFileDescriptorSize;
+        const u64 descriptorEnd = static_cast<u64>(address) + baseFileDescriptorSize;
         if (descriptorEnd > io->Length())
             throw std::string("XEX: Compression block table is outside the file.\n");
 
-        io->SetPosition(static_cast<DWORD>(descriptorEnd - 4));
+        io->SetPosition(static_cast<u32>(descriptorEnd - 4));
         if (io->ReadDword() != 0)
             throw std::string("XEX: Compression block table has no terminator.\n");
 
         io->SetPosition(address + 8);
-        const DWORD blockCount = (baseFileDescriptorSize - 8) / XEX_COMPRESSION_BLOCK_SIZE;
-        for (DWORD i = 0; i < blockCount; i++)
+        const u32 blockCount = (baseFileDescriptorSize - 8) / XEX_COMPRESSION_BLOCK_SIZE;
+        for (u32 i = 0; i < blockCount; i++)
         {
             XexCompressionBlock block;
             block.size = io->ReadDword();
@@ -930,13 +930,13 @@ void Xex::ParseBaseFileDescriptor(DWORD address)
     }
 }
 
-void Xex::ParseLANKey(DWORD address)
+void Xex::ParseLANKey(u32 address)
 {
     io->SetPosition(address);
     io->ReadBytes(lanKey, XEX_LAN_KEY_SIZE);
 }
 
-void Xex::ParseExecutionInfo(DWORD address)
+void Xex::ParseExecutionInfo(u32 address)
 {
     io->SetPosition(address);
 
@@ -951,26 +951,26 @@ void Xex::ParseExecutionInfo(DWORD address)
     executionInfo.savegameID = io->ReadDword();
 }
 
-void Xex::ExtractFromRawData(std::string outPath, DWORD address, DWORD size)
+void Xex::ExtractFromRawData(std::string outPath, u32 address, u32 size)
 {
     BaseIO *rawDataIO = GetRawDataIO();
-    const UINT64 offset = rawDataIO->GetPosition();
+    const u64 offset = rawDataIO->GetPosition();
 
     rawDataIO->SetPosition(offset + address);
 
     // extract the data
-    std::vector<BYTE> copyBuffer(XEX_COPY_BUFFER_SIZE);
+    std::vector<u8> copyBuffer(XEX_COPY_BUFFER_SIZE);
 
     // determine how many copy iterations it will take
-    DWORD copyIterations = size / XEX_COPY_BUFFER_SIZE;
+    u32 copyIterations = size / XEX_COPY_BUFFER_SIZE;
     if (size % XEX_COPY_BUFFER_SIZE != 0)
         copyIterations++;
 
     FileIO outFile(outPath, true);
-    for (DWORD i = 0; i < copyIterations; i++)
+    for (u32 i = 0; i < copyIterations; i++)
     {
         // determine the amount of bytes to copy
-        DWORD bytesToCopy = XEX_COPY_BUFFER_SIZE;
+        u32 bytesToCopy = XEX_COPY_BUFFER_SIZE;
         if (i + 1 == copyIterations && size % XEX_COPY_BUFFER_SIZE != 0)
             bytesToCopy = size % XEX_COPY_BUFFER_SIZE;
 
@@ -981,10 +981,10 @@ void Xex::ExtractFromRawData(std::string outPath, DWORD address, DWORD size)
     outFile.Close();
 }
 
-bool Xex::TryKey(const BYTE *key)
+bool Xex::TryKey(const u8 *key)
 {
     auto aes = Botan::BlockCipher::create("AES-128");
-    BYTE decryptedKeyBuffer[XEX_AES_BLOCK_SIZE];
+    u8 decryptedKeyBuffer[XEX_AES_BLOCK_SIZE];
 
     // First decrypt the key from the XEX header
     aes->set_key(key, XEX_AES_BLOCK_SIZE);
@@ -994,9 +994,9 @@ bool Xex::TryKey(const BYTE *key)
     // Now set up AES with the decrypted key
     aes->set_key(decryptedKeyBuffer, XEX_AES_BLOCK_SIZE);
 
-    BYTE iv[XEX_AES_BLOCK_SIZE] = {0};
-    BYTE encryptedBuffer[XEX_AES_BLOCK_SIZE] = {0};
-    BYTE decryptedBuffer[XEX_AES_BLOCK_SIZE] = {0};
+    u8 iv[XEX_AES_BLOCK_SIZE] = {0};
+    u8 encryptedBuffer[XEX_AES_BLOCK_SIZE] = {0};
+    u8 decryptedBuffer[XEX_AES_BLOCK_SIZE] = {0};
 
     // read in the first block
     io->SetPosition(header.dataAddress);
@@ -1009,7 +1009,7 @@ bool Xex::TryKey(const BYTE *key)
     MemoryIO peIO(decryptedBuffer, XEX_AES_BLOCK_SIZE);
     peIO.SetEndian(BigEndian);
 
-    WORD magic = peIO.ReadWord();
+    u16 magic = peIO.ReadWord();
     
     // Log diagnostic information if magic number validation fails
     if (magic != 0x4D5A) {
@@ -1022,7 +1022,7 @@ bool Xex::TryKey(const BYTE *key)
     return (magic == 0x4D5A); 	// 'MZ'
 }
 
-void Xex::ComputeSha1(const BYTE *data, size_t length, BYTE *outHash)
+void Xex::ComputeSha1(const u8 *data, size_t length, u8 *outHash)
 {
     const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
     sha1->update(data, length);
@@ -1031,9 +1031,9 @@ void Xex::ComputeSha1(const BYTE *data, size_t length, BYTE *outHash)
 
 bool Xex::VerifyHeaderHash()
 {
-    const UINT64 fileLength = io->Length();
-    const UINT64 securityOffset = header.headerAddress;
-    const UINT64 headerSize = header.dataAddress;
+    const u64 fileLength = io->Length();
+    const u64 securityOffset = header.headerAddress;
+    const u64 headerSize = header.dataAddress;
 
     // XexpVerifyXexHeaders hashes the part of the header after the RSA-signed
     // block and then the part before it; the signed block itself (which holds
@@ -1050,21 +1050,21 @@ bool Xex::VerifyHeaderHash()
     const size_t headLength = static_cast<size_t>(securityOffset + 8);
     const size_t tailLength = static_cast<size_t>(headerSize - securityOffset - 0x17C);
 
-    const UINT64 resume = io->GetPosition();
+    const u64 resume = io->GetPosition();
 
-    std::vector<BYTE> buffer(headLength + tailLength);
+    std::vector<u8> buffer(headLength + tailLength);
     io->SetPosition(securityOffset + 0x17C);
-    io->ReadBytes(buffer.data(), static_cast<DWORD>(tailLength));
+    io->ReadBytes(buffer.data(), static_cast<u32>(tailLength));
     io->SetPosition(0);
-    io->ReadBytes(buffer.data() + tailLength, static_cast<DWORD>(headLength));
+    io->ReadBytes(buffer.data() + tailLength, static_cast<u32>(headLength));
     io->SetPosition(resume);
 
-    BYTE digest[0x14];
+    u8 digest[0x14];
     ComputeSha1(buffer.data(), buffer.size(), digest);
     return memcmp(digest, securityInfo.headerHash, sizeof(digest)) == 0;
 }
 
-void Xex::ComputeImageKey(const BYTE *masterKey, BYTE *imageKey) const
+void Xex::ComputeImageKey(const u8 *masterKey, u8 *imageKey) const
 {
     auto aes = Botan::BlockCipher::create("AES-128");
     aes->set_key(masterKey, XEX_AES_BLOCK_SIZE);
@@ -1074,9 +1074,9 @@ void Xex::ComputeImageKey(const BYTE *masterKey, BYTE *imageKey) const
     aes->decrypt(imageKey);
 }
 
-const BYTE *Xex::SelectCompressedImageKey()
+const u8 *Xex::SelectCompressedImageKey()
 {
-    const UINT64 fileLength = io->Length();
+    const u64 fileLength = io->Length();
 
     if (header.dataAddress >= fileLength)
         throw std::string("XEX: Compressed data starts past the end of the file.\n");
@@ -1085,7 +1085,7 @@ const BYTE *Xex::SelectCompressedImageKey()
         throw std::string("XEX: The first compressed block is larger than the file.\n");
 
     // read the first block as it is stored in the file
-    std::vector<BYTE> block0(compressedBlock0Size);
+    std::vector<u8> block0(compressedBlock0Size);
     io->SetPosition(header.dataAddress);
     io->ReadBytes(block0.data(), compressedBlock0Size);
 
@@ -1093,31 +1093,31 @@ const BYTE *Xex::SelectCompressedImageKey()
     // block 0 from the signed base-file descriptor is the only reliable key
     // probe. Try the plaintext first (the descriptor's encryption flag is not
     // always trustworthy) and then the two master keys.
-    const BYTE *masterKeys[3] = { nullptr, XEX_RETAIL_KEY, XEX_DEVKIT_KEY };
+    const u8 *masterKeys[3] = { nullptr, XEX_RETAIL_KEY, XEX_DEVKIT_KEY };
     const XexEncryptionState states[3] = { Decrypted, RetailEncrypted, DevKitEncrypted };
 
-    std::vector<BYTE> decrypted(compressedBlock0Size);
-    BYTE digest[0x14];
+    std::vector<u8> decrypted(compressedBlock0Size);
+    u8 digest[0x14];
 
     for (size_t i = 0; i < 3; i++)
     {
-        const BYTE *plain = block0.data();
+        const u8 *plain = block0.data();
 
         if (masterKeys[i] != nullptr)
         {
             if ((compressedBlock0Size % XEX_AES_BLOCK_SIZE) != 0)
                 throw std::string("XEX: Encrypted first compressed block is not AES aligned.\n");
 
-            BYTE imageKey[XEX_AES_BLOCK_SIZE];
+            u8 imageKey[XEX_AES_BLOCK_SIZE];
             ComputeImageKey(masterKeys[i], imageKey);
 
             auto aes = Botan::BlockCipher::create("AES-128");
             aes->set_key(imageKey, XEX_AES_BLOCK_SIZE);
 
-            BYTE iv[XEX_AES_BLOCK_SIZE] = {0};
+            u8 iv[XEX_AES_BLOCK_SIZE] = {0};
             memcpy(decrypted.data(), block0.data(), compressedBlock0Size);
 
-            for (DWORD offset = 0; offset < compressedBlock0Size; offset += XEX_AES_BLOCK_SIZE)
+            for (u32 offset = 0; offset < compressedBlock0Size; offset += XEX_AES_BLOCK_SIZE)
                 AesCbcDecrypt(aes.get(), iv, decrypted.data() + offset, decrypted.data() + offset);
 
             plain = decrypted.data();
@@ -1141,7 +1141,7 @@ void Xex::ExtractCompressedData(std::string path)
     if (securityInfo.imageSize == 0 || securityInfo.imageSize > MaxDecompressedImageSize)
         throw std::string("XEX: Unsupported decompressed image size.\n");
 
-    const UINT64 fileLength = io->Length();
+    const u64 fileLength = io->Length();
     if (header.dataAddress >= fileLength)
         throw std::string("XEX: Compressed data starts past the end of the file.\n");
 
@@ -1160,17 +1160,17 @@ void Xex::ExtractCompressedData(std::string path)
     // slots instead of the 30 used by the 32 KiB XEXs.
     decoder.SetWindowSize(compressedBlockSize);
 
-    std::vector<BYTE> block;
-    std::vector<BYTE> chunkOutput(XexLzxDecoder::FrameSize);
+    std::vector<u8> block;
+    std::vector<u8> chunkOutput(XexLzxDecoder::FrameSize);
 
-    BYTE expectedHash[0x14];
+    u8 expectedHash[0x14];
     memcpy(expectedHash, compressedBlock0Sha1, sizeof(expectedHash));
 
-    BYTE iv[XEX_AES_BLOCK_SIZE] = {0}; // CBC state, continuous across blocks
-    UINT64 cursor = header.dataAddress;
-    DWORD currentBlockSize = compressedBlock0Size;
-    DWORD produced = 0;
-    DWORD blockIndex = 0;
+    u8 iv[XEX_AES_BLOCK_SIZE] = {0}; // CBC state, continuous across blocks
+    u64 cursor = header.dataAddress;
+    u32 currentBlockSize = compressedBlock0Size;
+    u32 produced = 0;
+    u32 blockIndex = 0;
 
     FileIO outFile(path, true);
 
@@ -1193,12 +1193,12 @@ void Xex::ExtractCompressedData(std::string path)
         // from one block to the next (zero IV at the start).
         if (decrypt)
         {
-            for (DWORD offset = 0; offset < currentBlockSize; offset += XEX_AES_BLOCK_SIZE)
+            for (u32 offset = 0; offset < currentBlockSize; offset += XEX_AES_BLOCK_SIZE)
                 AesCbcDecrypt(aes.get(), iv, block.data() + offset, block.data() + offset);
         }
 
         // digest chain: the descriptor signs block 0, every block signs the next
-        BYTE hash[0x14];
+        u8 hash[0x14];
         ComputeSha1(block.data(), currentBlockSize, hash);
 
         if (memcmp(hash, expectedHash, sizeof(expectedHash)) != 0)
@@ -1210,7 +1210,7 @@ void Xex::ExtractCompressedData(std::string path)
 
         while (offset + 2 <= currentBlockSize && produced < securityInfo.imageSize)
         {
-            const WORD chunkLength = static_cast<WORD>((block[offset] << 8) | block[offset + 1]);
+            const u16 chunkLength = static_cast<u16>((block[offset] << 8) | block[offset + 1]);
             offset += 2;
 
             if (chunkLength == 0)
@@ -1220,7 +1220,7 @@ void Xex::ExtractCompressedData(std::string path)
                 throw std::string("XEX: Compressed chunk runs past the end of its block.\n");
 
             // each chunk decodes to one frame, the last one to the remainder
-            const DWORD expectedOutput = std::min<DWORD>(XexLzxDecoder::FrameSize,
+            const u32 expectedOutput = std::min<u32>(XexLzxDecoder::FrameSize,
                                                          securityInfo.imageSize - produced);
 
             decoder.DecodeChunk(block.data() + offset, chunkLength, chunkOutput.data(), expectedOutput);
@@ -1232,10 +1232,10 @@ void Xex::ExtractCompressedData(std::string path)
 
         // the current block describes the next one
         memcpy(expectedHash, block.data() + 4, sizeof(expectedHash));
-        const DWORD nextBlockSize = (static_cast<DWORD>(block[0]) << 24) |
-                                    (static_cast<DWORD>(block[1]) << 16) |
-                                    (static_cast<DWORD>(block[2]) << 8) |
-                                    static_cast<DWORD>(block[3]);
+        const u32 nextBlockSize = (static_cast<u32>(block[0]) << 24) |
+                                    (static_cast<u32>(block[1]) << 16) |
+                                    (static_cast<u32>(block[2]) << 8) |
+                                    static_cast<u32>(block[3]);
 
         cursor += currentBlockSize;
         currentBlockSize = nextBlockSize;

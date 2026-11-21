@@ -26,12 +26,12 @@ LicensingDataDialog::LicensingDataDialog(QStatusBar *statusBar, LicenseEntry *en
     ui->btnUnlock->setEnabled(unlockable);
 
     // load all the license entries
-    for (DWORD i = 0; i < 0x10; i++)
+    for (u32 i = 0; i < 0x10; i++)
     {
         ui->tableWidget->insertRow(i);
 
         cmbxLicenseTypes[i] = new QComboBox(this);
-        for (DWORD x = 0; x < 9; x++)
+        for (u32 x = 0; x < 9; x++)
         {
             cmbxLicenseTypes[i]->addItem(licenseTypes[x].name);
             if (entryTable[i].type == licenseTypes[x].value)
@@ -58,7 +58,7 @@ LicensingDataDialog::~LicensingDataDialog()
 void LicensingDataDialog::on_pushButton_clicked()
 {
     // verify all the values
-    for (DWORD i = 0; i < 0x10; i++)
+    for (u32 i = 0; i < 0x10; i++)
     {
         if (!QtHelpers::VerifyHexString(ui->tableWidget->item(i, 1)->text()))
         {
@@ -81,7 +81,7 @@ void LicensingDataDialog::on_pushButton_clicked()
     }
 
     // update all the license entries
-    for (DWORD i = 0; i < 0x10; i++)
+    for (u32 i = 0; i < 0x10; i++)
     {
         entryTable[i].type = licenseTypes[cmbxLicenseTypes[i]->currentIndex()].value;
         entryTable[i].data = ui->tableWidget->item(i, 1)->text().replace("0x", "").toULongLong(0, 16);
@@ -116,7 +116,7 @@ void LicensingDataDialog::on_btnUnlock_clicked()
     ui->tableWidget->item(0, 1)->setText("0xFFFFFFFFFFFF");
     ui->tableWidget->item(0, 2)->setText("0x1");
 
-    for (DWORD i = 1; i < 0x10; i++)
+    for (u32 i = 1; i < 0x10; i++)
     {
         entryTable[0].bits = 0;
         ui->tableWidget->item(i, 2)->setText("0x0");

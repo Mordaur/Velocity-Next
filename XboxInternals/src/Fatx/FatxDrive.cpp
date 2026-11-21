@@ -130,7 +130,7 @@ void FatxDrive::processBootSector(Partition *part)
     }
 
     part->clusterSize = part->sectorsPerCluster * FATX_SECTOR_SIZE;
-    UINT64 totalClusters = (part->size / part->clusterSize) + 1;
+    u64 totalClusters = (part->size / part->clusterSize) + 1;
 
     if ((this->type == FatxFlashDrive && part->address == UsbOffsets::Data) || totalClusters >= FAT_CLUSTER16_RESERVED)
         part->clusterEntrySize = 4;
@@ -140,8 +140,8 @@ void FatxDrive::processBootSector(Partition *part)
 
     // https://docs.google.com/presentation/d/1LJLFRMAbCm9RBPg0l241GjwWdjGWROlihVgrC7pzLwg/edit?usp=sharing
     // go to slide 11 for a good visual to make sense of this
-    UINT64 chainmapSize = Utils::RoundToNearestHex1000((part->size / part->clusterSize + 1) * part->clusterEntrySize);
-    UINT64 totalDataSize = (part->size - FATX_HEADER_SIZE - chainmapSize);
+    u64 chainmapSize = Utils::RoundToNearestHex1000((part->size / part->clusterSize + 1) * part->clusterEntrySize);
+    u64 totalDataSize = (part->size - FATX_HEADER_SIZE - chainmapSize);
 
     part->clusterCount = totalDataSize / part->clusterSize;
     part->chainmapSize = chainmapSize;
@@ -162,7 +162,7 @@ void FatxDrive::processBootSector(Partition *part)
 
 void FatxDrive::ExtractSecurityBlob(string path)
 {
-    INT64 originalPos = io->GetPosition();
+    i64 originalPos = io->GetPosition();
 
     // create a file to save to
     FileIO outFile(path, true);
@@ -171,12 +171,12 @@ void FatxDrive::ExtractSecurityBlob(string path)
     io->SetPosition(0x2000);
 
     // allocate memory for the data
-    const UINT64 blobSize = static_cast<UINT64>(securityBlob.msLogoSize) + 0x204;
+    const u64 blobSize = static_cast<u64>(securityBlob.msLogoSize) + 0x204;
     if (blobSize > 0xFFFFFFFFULL)
         throw std::string("FATX: Security blob size overflow.\n");
 
-    const DWORD blobSize32 = static_cast<DWORD>(blobSize);
-    std::vector<BYTE> buffer(static_cast<size_t>(blobSize));
+    const u32 blobSize32 = static_cast<u32>(blobSize);
+    std::vector<u8> buffer(static_cast<size_t>(blobSize));
 
     // read in the data
     io->ReadBytes(buffer.data(), blobSize32);
@@ -189,12 +189,12 @@ void FatxDrive::ExtractSecurityBlob(string path)
 
 void FatxDrive::ReplaceSecurityBlob(std::string path)
 {
-    INT64 originalPos = io->GetPosition();
+    i64 originalPos = io->GetPosition();
 
     // open the security blob
     FileIO inFile(path);
 
-    const UINT64 blobSize = static_cast<UINT64>(securityBlob.msLogoSize) + 0x204;
+    const u64 blobSize = static_cast<u64>(securityBlob.msLogoSize) + 0x204;
     if (blobSize > 0xFFFFFFFFULL)
         throw std::string("FATX: Security blob size overflow.\n");
 
@@ -206,8 +206,8 @@ void FatxDrive::ReplaceSecurityBlob(std::string path)
     io->SetPosition(0x2000);
 
     // allocate memory for the data
-    const DWORD blobSize32 = static_cast<DWORD>(blobSize);
-    std::vector<BYTE> buffer(static_cast<size_t>(blobSize));
+    const u32 blobSize32 = static_cast<u32>(blobSize);
+    std::vector<u8> buffer(static_cast<size_t>(blobSize));
     inFile.SetPosition(0);
     inFile.ReadBytes(buffer.data(), blobSize32);
 
@@ -235,7 +235,7 @@ FatxFileEntry* FatxDrive::createFileEntry(FatxFileEntry *parent, FatxFileEntry *
     newEntry->path = parent->path + parent->name + "\\";
 
     // set the times
-    DWORD currentTime = MSTimeToDWORD(TimetToMSTime(time(NULL)));
+    u32 currentTime = MSTimeToDWORD(TimetToMSTime(time(NULL)));
     newEntry->creationDate = currentTime;
     newEntry->lastAccessDate = currentTime;
     newEntry->lastWriteDate = currentTime;
@@ -271,7 +271,7 @@ FatxFileEntry* FatxDrive::createFileEntry(FatxFileEntry *parent, FatxFileEntry *
 
     if (newEntry->address == 0)
     {
-        UINT64 freeEntryAddress = parent->cachedFiles.size() * FATX_ENTRY_SIZE;
+        u64 freeEntryAddress = parent->cachedFiles.size() * FATX_ENTRY_SIZE;
         FatxIO parentIO = GetFatxIO(parent);
 
         parent->fileSize = parent->cachedFiles.size() * FATX_ENTRY_SIZE;
@@ -279,7 +279,7 @@ FatxFileEntry* FatxDrive::createFileEntry(FatxFileEntry *parent, FatxFileEntry *
         {
             parentIO.AllocateMemory(FATX_ENTRY_SIZE);
             parentIO.SetPosition(parent->fileSize);
-            parentIO.Write((BYTE)0xFF);
+            parentIO.Write((u8)0xFF);
         }
 
         parentIO.SetPosition(freeEntryAddress);
@@ -288,7 +288,7 @@ FatxFileEntry* FatxDrive::createFileEntry(FatxFileEntry *parent, FatxFileEntry *
 
     newEntry->partition = parent->partition;
 
-    DWORD fileSize = newEntry->fileSize;
+    u32 fileSize = newEntry->fileSize;
     newEntry->fileSize = 0;
 
     FatxIO childIO(io.get(), newEntry);
@@ -361,7 +361,7 @@ void FatxDrive::RemoveFile(FatxFileEntry *entry, void(*progress)(void*), void *a
     FatxIO::GetConsecutive(entry->clusterChain, clusterRanges, true);
 
     // inject all of the ranges back into the cluster chain
-    for (DWORD i = 1; i < clusterRanges.size(); i++)
+    for (u32 i = 1; i < clusterRanges.size(); i++)
     {
         clusterRanges.at(i).start = entry->clusterChain.at(clusterRanges.at(i).start);
         injectRange(entry->partition->freeClusters, clusterRanges.at(i));
@@ -373,22 +373,22 @@ void FatxDrive::RemoveFile(FatxFileEntry *entry, void(*progress)(void*), void *a
 
     // update the entry file name lenght to deleted
     io->SetPosition(entry->address);
-    io->Write((BYTE)FATX_ENTRY_DELETED);
+    io->Write((u8)FATX_ENTRY_DELETED);
     io->Flush();
 
     if (progress)
         progress(arg);
 }
 
-void FatxDrive::InjectFile(FatxFileEntry *parent, std::string name, std::string filePath, void (*progress)(void *, DWORD, DWORD), void *arg)
+void FatxDrive::InjectFile(FatxFileEntry *parent, std::string name, std::string filePath, void (*progress)(void *, u32, u32), void *arg)
 {
-    UINT64 fileLength = 0;
+    u64 fileLength = 0;
 
 #ifdef _WIN32
     WIN32_FILE_ATTRIBUTE_DATA fileInfo;
     if (!GetFileAttributesExA(filePath.c_str(), GetFileExInfoStandard, &fileInfo))
         throw std::string("FATX: Error opening the file.\n");
-    fileLength = ((UINT64)fileInfo.nFileSizeHigh << 32) | fileInfo.nFileSizeLow;
+    fileLength = ((u64)fileInfo.nFileSizeHigh << 32) | fileInfo.nFileSizeLow;
 #else
     struct stat fileInfo;
     if (stat(filePath.c_str(), &fileInfo) != 0)
@@ -407,7 +407,7 @@ void FatxDrive::InjectFile(FatxFileEntry *parent, std::string name, std::string 
     inFile.SetPosition(0, ios_base::end);
 
     // get the file size
-    UINT64 fileSize = inFile.GetPosition();
+    u64 fileSize = inFile.GetPosition();
     entry.fileSize = fileSize;
 
     // set other stuff
@@ -450,19 +450,19 @@ void FatxDrive::GetChildFileEntries(FatxFileEntry *entry, void(*progress)(void*,
         ReadClusterChain(entry);
 
     // find out how many entries are in a single cluster
-    DWORD entriesInCluster = entry->partition->clusterSize / FATX_ENTRY_SIZE;
+    u32 entriesInCluster = entry->partition->clusterSize / FATX_ENTRY_SIZE;
 
     bool doneForGood = false;
 
     // read all entries
     for (size_t i = 0; i < entry->clusterChain.size(); i++)
     {
-        UINT64 posCur = FatxIO::ClusterToOffset(entry->partition, entry->clusterChain.at(i));
+        u64 posCur = FatxIO::ClusterToOffset(entry->partition, entry->clusterChain.at(i));
 
         // go to the cluster offset
         io->SetPosition(posCur);
 
-        for (DWORD x = 0; x < entriesInCluster; x++)
+        for (u32 x = 0; x < entriesInCluster; x++)
         {
             // read the name length
             FatxFileEntry newEntry;
@@ -542,21 +542,21 @@ void FatxDrive::ReadClusterChain(FatxFileEntry *entry)
 
     // calculate values
     bool clusterSizeIs2 = (entry->partition->clusterEntrySize == FAT16);
-    DWORD lastCluster =  (clusterSizeIs2) ? FAT_CLUSTER16_LAST : FAT_CLUSTER_LAST;
-    DWORD availableCluster = (clusterSizeIs2) ? FAT_CLUSTER16_AVAILABLE : FAT_CLUSTER_AVAILABLE;
-    INT64 clusterMapAddress = entry->partition->address + 0x1000;
+    u32 lastCluster =  (clusterSizeIs2) ? FAT_CLUSTER16_LAST : FAT_CLUSTER_LAST;
+    u32 availableCluster = (clusterSizeIs2) ? FAT_CLUSTER16_AVAILABLE : FAT_CLUSTER_AVAILABLE;
+    i64 clusterMapAddress = entry->partition->address + 0x1000;
 
     // Clusters are numbered from 1 up to the partition's cluster count. A chain
     // can never be longer than that, and it must never revisit a cluster: a
     // corrupt or cross-linked chain would otherwise loop forever while growing
     // clusterChain until the process runs out of memory.
-    const DWORD maxCluster = entry->partition->clusterCount;
+    const u32 maxCluster = entry->partition->clusterCount;
     const size_t maxChainLength = static_cast<size_t>(maxCluster) + 1;
 
-    std::unordered_set<DWORD> visited;
+    std::unordered_set<u32> visited;
 
     // start with the starting cluster
-    DWORD previousCluster = entry->startingCluster;
+    u32 previousCluster = entry->startingCluster;
 
     while (previousCluster != lastCluster && previousCluster != availableCluster)
     {
@@ -594,19 +594,19 @@ void FatxDrive::Close()
         io->Close();
 }
 
-void FatxDrive::CreateBackup(std::string outPath, void (*progress)(void *, DWORD, DWORD), void *arg)
+void FatxDrive::CreateBackup(std::string outPath, void (*progress)(void *, u32, u32), void *arg)
 {
     // create a file on the local disk to store the backup
     FileIO outBackup(outPath, true);
 
-    UINT64 driveLen = io->Length();
+    u64 driveLen = io->Length();
     io->SetPosition(0);
 
-    std::vector<BYTE> buffer(0x100000);
+    std::vector<u8> buffer(0x100000);
 
     // start writing the drive contents to the local disk
-    DWORD i = 0;
-    UINT64 totalProgress = driveLen / 0x100000;
+    u32 i = 0;
+    u64 totalProgress = driveLen / 0x100000;
     while (driveLen >= 0x100000)
     {
         io->ReadBytes(buffer.data(), 0x100000);
@@ -622,7 +622,7 @@ void FatxDrive::CreateBackup(std::string outPath, void (*progress)(void *, DWORD
     if (driveLen > 0)
     {
         // Read remaining data
-        const DWORD tailSize = static_cast<DWORD>(driveLen);
+        const u32 tailSize = static_cast<u32>(driveLen);
         io->ReadBytes(buffer.data(), tailSize);
         outBackup.WriteBytes(buffer.data(), tailSize);
     }
@@ -634,10 +634,10 @@ void FatxDrive::CreateBackup(std::string outPath, void (*progress)(void *, DWORD
 
 }
 
-void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void *, DWORD, DWORD), void *arg)
+void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void *, u32, u32), void *arg)
 {
-    std::vector<BYTE> buffer(0x100000);
-    const UINT64 deviceLength = io->Length();
+    std::vector<u8> buffer(0x100000);
+    const u64 deviceLength = io->Length();
 
 #ifdef _WIN32
     std::wstring wBackupPath;
@@ -654,7 +654,7 @@ void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void 
         throw std::string("FATX: Could not determine the backup size.");
     }
 
-    const UINT64 bytesLeftTotal = static_cast<UINT64>(backupSize.QuadPart);
+    const u64 bytesLeftTotal = static_cast<u64>(backupSize.QuadPart);
     if (deviceLength != 0 && bytesLeftTotal != deviceLength)
     {
         CloseHandle(hFile);
@@ -662,16 +662,16 @@ void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void 
     }
 
     io->SetPosition(0);
-    const UINT64 totalProgress = bytesLeftTotal / 0x100000;
-    UINT64 bytesLeft = bytesLeftTotal;
-    DWORD i = 0;
+    const u64 totalProgress = bytesLeftTotal / 0x100000;
+    u64 bytesLeft = bytesLeftTotal;
+    u32 i = 0;
 
     try
     {
         while (bytesLeft > 0)
         {
             const DWORD toRead = static_cast<DWORD>(
-                    std::min<UINT64>(bytesLeft, buffer.size()));
+                    std::min<u64>(bytesLeft, buffer.size()));
             DWORD totalRead = 0;
             while (totalRead < toRead)
             {
@@ -702,7 +702,7 @@ void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void 
     if (stat(backupPath.c_str(), &sb) != 0)
         throw std::string("FATX: Could not determine the backup size.");
 
-    const UINT64 bytesLeftTotal = static_cast<UINT64>(sb.st_size);
+    const u64 bytesLeftTotal = static_cast<u64>(sb.st_size);
     if (deviceLength != 0 && bytesLeftTotal != deviceLength)
         throw std::string("FATX: Backup size does not match the device size.");
 
@@ -711,16 +711,16 @@ void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void 
         throw std::string("FATX: Could not open drive backup.");
 
     io->SetPosition(0);
-    const UINT64 totalProgress = bytesLeftTotal / 0x100000;
-    UINT64 bytesLeft = bytesLeftTotal;
-    DWORD i = 0;
+    const u64 totalProgress = bytesLeftTotal / 0x100000;
+    u64 bytesLeft = bytesLeftTotal;
+    u32 i = 0;
 
     try
     {
         while (bytesLeft > 0)
         {
             const size_t toRead = static_cast<size_t>(
-                    std::min<UINT64>(bytesLeft, buffer.size()));
+                    std::min<u64>(bytesLeft, buffer.size()));
             size_t totalRead = 0;
             while (totalRead < toRead)
             {
@@ -737,7 +737,7 @@ void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void 
                 totalRead += static_cast<size_t>(got);
             }
 
-            io->WriteBytes(buffer.data(), static_cast<DWORD>(toRead));
+            io->WriteBytes(buffer.data(), static_cast<u32>(toRead));
             bytesLeft -= toRead;
 
             if (progress)
@@ -761,14 +761,14 @@ void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void 
     ReloadDrive();
 }
 
-BYTE FatxDrive::cntlzw(DWORD x)
+u8 FatxDrive::cntlzw(u32 x)
 {
     if (x == 0)
         return 0;
 
-    DWORD t = 0x80000000;
-    BYTE largestCount = 0, currentCount = 0;
-    BYTE n = 0;
+    u32 t = 0x80000000;
+    u8 largestCount = 0, currentCount = 0;
+    u8 n = 0;
 
     while (n < 32)
     {
@@ -877,7 +877,7 @@ void FatxDrive::loadProfiles()
     FatxFileEntry *contentRoot = NULL;
 
     // get the content partition's root
-    for (DWORD i = 0; i < partitions.size(); i++)
+    for (u32 i = 0; i < partitions.size(); i++)
     {
         if (partitions.at(i)->name == "Content")
             contentRoot = &partitions.at(i)->root;
@@ -891,7 +891,7 @@ void FatxDrive::loadProfiles()
     GetChildFileEntries(contentRoot);
 }
 
-void FatxDrive::injectRange(vector<DWORD> &clusters, Range &range)
+void FatxDrive::injectRange(vector<u32> &clusters, Range &range)
 {
     // do a binary search to find the position to inject the clusters
     int start = 0, end = clusters.size() - 1, pos = 0;
@@ -907,8 +907,8 @@ void FatxDrive::injectRange(vector<DWORD> &clusters, Range &range)
     }
 
     // generate the range of clusters to inject
-    vector<DWORD> sillyRange;
-    for (DWORD i = 0; i < range.len; i++)
+    vector<u32> sillyRange;
+    for (u32 i = 0; i < range.len; i++)
         sillyRange.push_back(range.start + i);
 
     // insert that range, yo
@@ -1001,13 +1001,13 @@ void FatxDrive::loadFatxDrive()
     if (lastFormatRecoveryVersion.major == 2 && lastFormatRecoveryVersion.build >= 1525 && lastFormatRecoveryVersion.revision >= 1)
     {
         auto content = std::make_unique<Partition>();
-        content->address = (UINT64)io->ReadDword() * FAT_SECTOR_SIZE;
-        content->size = (UINT64)io->ReadDword() * FAT_SECTOR_SIZE;
+        content->address = (u64)io->ReadDword() * FAT_SECTOR_SIZE;
+        content->size = (u64)io->ReadDword() * FAT_SECTOR_SIZE;
         content->name = "Content";
 
         auto dashboard = std::make_unique<Partition>();
-        dashboard->address = (UINT64)io->ReadDword() * FAT_SECTOR_SIZE;
-        dashboard->size = (UINT64)io->ReadDword() * FAT_SECTOR_SIZE;
+        dashboard->address = (u64)io->ReadDword() * FAT_SECTOR_SIZE;
+        dashboard->size = (u64)io->ReadDword() * FAT_SECTOR_SIZE;
         dashboard->name = "Xbox 360 Dashboard";
 
         partitions.push_back(std::move(content));
@@ -1071,13 +1071,13 @@ void FatxDrive::loadFatxDrive()
     }
 }
 
-UINT64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), void *arg, bool finish)
+u64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), void *arg, bool finish)
 {
     if (part->freeMemory != 0)
-        return (UINT64)part->freeClusters.size() * (UINT64)part->clusterSize;
+        return (u64)part->freeClusters.size() * (u64)part->clusterSize;
 
     // allocate memory for a buffer to minimize the amount of reads
-    std::vector<BYTE> buffer(0x50000);
+    std::vector<u8> buffer(0x50000);
 
     // seek to the chainmap
     io->SetPosition(part->address + 0x1000);
@@ -1085,9 +1085,9 @@ UINT64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), v
     // check if it's FAT16
     bool clusterSizeIs2 = (part->clusterEntrySize == FAT16);
 
-    UINT64 bytesLeft = (UINT64)part->clusterCount * (UINT64)part->clusterEntrySize;
-    DWORD readSize;
-    DWORD x = 0;
+    u64 bytesLeft = (u64)part->clusterCount * (u64)part->clusterEntrySize;
+    u32 readSize;
+    u32 x = 0;
     while (bytesLeft > 0)
     {
         // calculate the read size
@@ -1106,7 +1106,7 @@ UINT64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), v
         // iterate through all of the clusters
         if (clusterSizeIs2)
         {
-            for (DWORD i = 0; i < (readSize / 2); i++)
+            for (u32 i = 0; i < (readSize / 2); i++)
             {
                 if (memory.ReadWord() == FAT_CLUSTER16_AVAILABLE)
                     part->freeClusters.push_back(x + i);
@@ -1115,9 +1115,9 @@ UINT64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), v
         }
         else
         {
-            for (DWORD i = 0; i < (readSize / 4); i++)
+            for (u32 i = 0; i < (readSize / 4); i++)
             {
-                DWORD test = memory.ReadDword();
+                u32 test = memory.ReadDword();
                 if (test == FAT_CLUSTER_AVAILABLE)
                     part->freeClusters.push_back(x + i);
             }
@@ -1126,7 +1126,7 @@ UINT64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), v
     }
 
     // calculate the amount of free memory
-    part->freeMemory = (UINT64)part->freeClusters.size() * (UINT64)part->clusterSize;
+    part->freeMemory = (u64)part->freeClusters.size() * (u64)part->clusterSize;
 
     if (progress)
         progress(arg, finish);
@@ -1134,16 +1134,16 @@ UINT64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), v
     return part->freeMemory;
 }
 
-UINT64 FatxDrive::GetTotalSize()
+u64 FatxDrive::GetTotalSize()
 {
-    UINT64 toReturn = 0;
+    u64 toReturn = 0;
     for (size_t i = 0; i < partitions.size(); i++)
         toReturn += partitions.at(i)->size;
 
     return toReturn;
 }
 
-UINT64 FatxDrive::GetDeviceSize()
+u64 FatxDrive::GetDeviceSize()
 {
     return io->Length();
 }
@@ -1199,7 +1199,7 @@ FatxFileEntry* FatxDrive::GetFileEntry(std::string filePath)
         filePath = filePath.substr(filePath.find('\\') + 1);
 
     Partition *part = NULL;
-    for (DWORD i = 0; i < partitions.size(); i++)
+    for (u32 i = 0; i < partitions.size(); i++)
     {
         if (partitions.at(i)->name == partitionName)
         {
@@ -1228,7 +1228,7 @@ FatxFileEntry* FatxDrive::GetFileEntry(std::string filePath)
 
         // check and see if the sub-directory exists
         FatxFileEntry *foundEntry = NULL;
-        for (DWORD i = 0; i < parent->cachedFiles.size(); i++)
+        for (u32 i = 0; i < parent->cachedFiles.size(); i++)
         {
             if (parent->cachedFiles.at(i).name == fileName && parent->cachedFiles.at(i).nameLen != FATX_ENTRY_DELETED)
             {
@@ -1272,7 +1272,7 @@ void FatxDrive::SetDriveName(std::wstring name)
     nameIO.SetPosition(0);
 
     // the xbox requires that these 2 bytes are at the beginning of the file for whatever reason
-    nameIO.Write((WORD)0xFEFF);
+    nameIO.Write((u16)0xFEFF);
     nameIO.Write(name);
 }
 
@@ -1285,7 +1285,7 @@ bool FatxDrive::ValidFileName(std::string fileName)
     if (fileName == "." || fileName == "..")
         return false;
 
-    for (DWORD i = 0; i < fileName.size(); i++)
+    for (u32 i = 0; i < fileName.size(); i++)
         if (!validFileChar(fileName.at(i)))
             return false;
 

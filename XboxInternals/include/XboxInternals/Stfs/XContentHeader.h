@@ -1,6 +1,7 @@
 #pragma once
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
+#include <XboxInternals/EnumTraits.h>
 
 #include <XboxInternals/Stfs/StfsConstants.h>
 #include <XboxInternals/Stfs/StfsDefinitions.h>
@@ -47,7 +48,7 @@ enum FileSystem
 template <>
 struct EnumTraits<FileSystem>
 {
-    static FileSystem FromRaw(UINT64 raw)
+    static FileSystem FromRaw(u64 raw)
     {
         return raw <= FileSystemFATX ? static_cast<FileSystem>(raw) : FileSystemUnknown;
     }
@@ -56,7 +57,7 @@ struct EnumTraits<FileSystem>
 template <>
 struct EnumTraits<OnlineContentResumeState>
 {
-    static OnlineContentResumeState FromRaw(UINT64 raw)
+    static OnlineContentResumeState FromRaw(u64 raw)
     {
         switch (raw)
         {
@@ -77,13 +78,13 @@ class XBOXINTERNALS_EXPORT XContentHeader
 {
 public:
     // Description: read in all of the metadata for the package
-    XContentHeader(BaseIO *io, DWORD flags = 0);
+    XContentHeader(BaseIO *io, u32 flags = 0);
 
     // fix the signature in the header
     void ResignHeader(string kvPath);
 
     // fix the signature in the header
-    void ResignHeader(BYTE* kvData, size_t length);
+    void ResignHeader(u8* kvData, size_t length);
 
     // fix the signature in the header
     void ResignHeader(BaseIO& kvIo);
@@ -112,25 +113,25 @@ public:
     Certificate certificate;
 
     // only strong signed
-    BYTE packageSignature[0x100];
+    u8 packageSignature[0x100];
 
     LicenseEntry licenseData[0x10];
-    BYTE headerHash[0x14];
-    DWORD headerSize;
+    u8 headerHash[0x14];
+    u32 headerSize;
     ContentType contentType;
-    DWORD metaDataVersion;
-    UINT64 contentSize;
-    DWORD mediaID;
-    DWORD version;
-    DWORD baseVersion;
-    DWORD titleID;
-    BYTE platform;
-    BYTE executableType;
-    BYTE discNumber;
-    BYTE discInSet;
-    DWORD savegameID;
-    BYTE consoleID[5];
-    BYTE profileID[8];
+    u32 metaDataVersion;
+    u64 contentSize;
+    u32 mediaID;
+    u32 version;
+    u32 baseVersion;
+    u32 titleID;
+    u8 platform;
+    u8 executableType;
+    u8 discNumber;
+    u8 discInSet;
+    u32 savegameID;
+    u8 consoleID[5];
+    u8 profileID[8];
 
     StfsVolumeDescriptor stfsVolumeDescriptor;
     SvodVolumeDescriptor svodVolumeDescriptor;
@@ -140,50 +141,50 @@ public:
     bool enabled;
 
     // metadata v1
-    DWORD dataFileCount;
-    UINT64 dataFileCombinedSize;
-    BYTE deviceID[0x14];
+    u32 dataFileCount;
+    u64 dataFileCombinedSize;
+    u8 deviceID[0x14];
     wstring displayName;
     wstring displayDescription;
     wstring publisherName;
     wstring titleName;
-    BYTE transferFlags;
-    DWORD thumbnailImageSize;
-    DWORD titleThumbnailImageSize;
+    u8 transferFlags;
+    u32 thumbnailImageSize;
+    u32 titleThumbnailImageSize;
 
     // credit to Eaton for all the extra metadata stuff
     InstallerType installerType;
 
     // Avatar Asset
     AssetSubcategory subCategory;
-    DWORD colorizable;
-    BYTE guid[0x10];
+    u32 colorizable;
+    u8 guid[0x10];
     SkeletonVersion skeletonVersion;
 
     // media
-    BYTE seriesID[0x10];
-    BYTE seasonID[0x10];
-    WORD seasonNumber;
-    WORD episodeNumber;
+    u8 seriesID[0x10];
+    u8 seasonID[0x10];
+    u16 seasonNumber;
+    u16 episodeNumber;
 
     // installer progress cache data
     OnlineContentResumeState resumeState;
-    DWORD currentFileIndex;
-    UINT64 currentFileOffset;
-    UINT64 bytesProcessed;
+    u32 currentFileIndex;
+    u64 currentFileOffset;
+    u64 bytesProcessed;
     time_t lastModified;
-    BYTE cabResumeData[5584];
+    u8 cabResumeData[5584];
 
     // installer update data
     Version installerBaseVersion;
     Version installerVersion;
 
-    std::vector<BYTE> thumbnailImage;
-    std::vector<BYTE> titleThumbnailImage;
+    std::vector<u8> thumbnailImage;
+    std::vector<u8> titleThumbnailImage;
 
 private:
     BaseIO *io;
-    DWORD flags;
+    u32 flags;
 
     void readMetadata();
 };

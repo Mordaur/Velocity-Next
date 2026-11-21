@@ -132,7 +132,7 @@ bool Account::IsTeamXUID()
     return (account.xuid & 0xFF00000000000140) == 0xFE00000000000100;
 }
 
-UINT64 Account::GetXUID()
+u64 Account::GetXUID()
 {
     return account.xuid;
 }
@@ -190,7 +190,7 @@ void Account::SetXUIDOffline()
     account.xuid = 0;
 }
 
-void Account::SetXUID(UINT64 xuid)
+void Account::SetXUID(u64 xuid)
 {
     account.xuid = xuid;
 }
@@ -218,7 +218,7 @@ void Account::SetGamertag(wstring gamertag)
     account.gamertag = gamertag;
 }
 
-void Account::SetPasscode(BYTE *passcode)
+void Account::SetPasscode(u8 *passcode)
 {
     memcpy(account.passcode, passcode, 4);
 }
@@ -239,8 +239,8 @@ void Account::decryptAccount(std::string encryptedPath, std::string *outPath, Co
 {
     // open the encrypted file
     FileIO encIo(encryptedPath);
-    BYTE hmacHash[0x10];
-    BYTE rc4Key[0x14];
+    u8 hmacHash[0x10];
+    u8 rc4Key[0x14];
 
     // read the hash
     encIo.ReadBytes(hmacHash, 0x10);
@@ -257,9 +257,9 @@ void Account::decryptAccount(std::string encryptedPath, std::string *outPath, Co
     hmacSha1->update(hmacHash, 0x10);
     hmacSha1->final(rc4Key);
 
-    BYTE restOfFile[0x184];
-    BYTE confounder[8];
-    BYTE payload[0x17C];
+    u8 restOfFile[0x184];
+    u8 confounder[8];
+    u8 payload[0x17C];
 
     // read the rest of the file
     encIo.ReadBytes(restOfFile, 0x184);
@@ -277,7 +277,7 @@ void Account::decryptAccount(std::string encryptedPath, std::string *outPath, Co
     hmacSha1->update(confounder, 8);
     hmacSha1->update(payload, 0x17C);
 
-    BYTE confoundPayloadHash[0x14];
+    u8 confoundPayloadHash[0x14];
     hmacSha1->final(confoundPayloadHash);
 
     if (memcmp(confoundPayloadHash, hmacHash, 0x10) != 0)
@@ -302,7 +302,7 @@ void Account::decryptAccount(std::string encryptedPath, std::string *outPath, Co
 void Account::encryptAccount(std::string decryptedPath, ConsoleType type, std::string *outPath)
 {
     FileIO decIo(decryptedPath);
-    BYTE decryptedData[0x184];
+    u8 decryptedData[0x184];
 
     // copy in the the confounder
     memcpy(decryptedData, CONFOUNDER, 8);
@@ -320,7 +320,7 @@ void Account::encryptAccount(std::string decryptedPath, ConsoleType type, std::s
         hmacSha1->set_key(DEVKIT_KEY, 0x10);
 
     // hash the confounder and decrypted data
-    BYTE hmacHash[0x14];
+    u8 hmacHash[0x14];
     hmacSha1->update(decryptedData, 0x184);
     hmacSha1->final(hmacHash);
 
@@ -338,7 +338,7 @@ void Account::encryptAccount(std::string decryptedPath, ConsoleType type, std::s
     encrypted.Write(hmacHash, 0x10);
 
     // generate the rc4 key
-    BYTE rc4Key[0x14];
+    u8 rc4Key[0x14];
     hmacSha1->update(hmacHash, 0x10);
     hmacSha1->final(rc4Key);
 
@@ -368,13 +368,13 @@ void Account::WriteFile()
 
     // null the bytes out after the gamertag
     io->SetPosition(8 + (account.gamertag.length() * 2));
-    BYTE temp[0x20] = {0};
+    u8 temp[0x20] = {0};
     io->Write(temp, 0x20 - (account.gamertag.length() * 2));
 
     io->SetPosition(0x28);
     io->Write(account.xuid);
     io->Write(account.cachedUserFlags);
-    io->Write((DWORD)account.serviceProvider);
+    io->Write((u32)account.serviceProvider);
 
     io->SetPosition(0x38);
 
@@ -412,7 +412,7 @@ XboxLiveServiceProvider Account::GetServiceProvider()
     return account.serviceProvider;
 }
 
-void Account::GetPasscode(BYTE *passcode)
+void Account::GetPasscode(u8 *passcode)
 {
     if (!IsPasscodeEnabled())
     {
@@ -432,7 +432,7 @@ string Account::GetKerberosRealm()
     return account.kerberosRealm;
 }
 
-void Account::GetOnlineKey(BYTE *outKey)
+void Account::GetOnlineKey(u8 *outKey)
 {
     memcpy(outKey, account.onlineKey, 0x10);
 }

@@ -100,7 +100,7 @@ private:
     QStatusBar *statusBar;
     QList<QPixmap*> allocatedImages;
 
-    BYTE imagesLoaded;
+    u8 imagesLoaded;
     ConsoleType consoleType;
 
     void openWallpaper(QLabel *imageViewer, QImage *saveImage);

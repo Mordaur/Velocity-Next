@@ -9,15 +9,15 @@ namespace
         return XboxInternals::SvodLayout::IsEnhanced(metadata->svodVolumeDescriptor.flags);
     }
 
-    DWORD DataBlockOffset(const XContentHeader *metadata)
+    u32 DataBlockOffset(const XContentHeader *metadata)
     {
         return XboxInternals::SvodLayout::DataBlockOffset(
                 metadata->svodVolumeDescriptor.dataBlockOffset, IsEnhanced(metadata));
     }
 
-    UINT64 ChunkUntilHashBlock(DWORD addressInFile)
+    u64 ChunkUntilHashBlock(u32 addressInFile)
     {
-        const UINT64 available = XboxInternals::SvodLayout::BytesUntilHashBlock(addressInFile);
+        const u64 available = XboxInternals::SvodLayout::BytesUntilHashBlock(addressInFile);
         if (available == 0)
             throw std::string("SvodIO: Invalid data address.\n");
 
@@ -28,10 +28,10 @@ namespace
 SvodIO::SvodIO(XContentHeader *metadata, GdfxFileEntry entry, IndexableMultiFileIO *io) :
     BaseIO(), io(io), metadata(metadata), fileEntry(entry), pos(0)
 {
-    offset = static_cast<DWORD>(XboxInternals::SvodLayout::DataBlockAddress(0));
+    offset = static_cast<u32>(XboxInternals::SvodLayout::DataBlockAddress(0));
 
     // seek to the file's beginning
-    DWORD addr, index;
+    u32 addr, index;
     SectorToAddress(entry.sector, &addr, &index);
     io->SetPosition(addr, static_cast<int>(index));
 }
@@ -41,7 +41,7 @@ SvodIO::~SvodIO()
 
 }
 
-void SvodIO::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex)
+void SvodIO::SectorToAddress(u32 sector, u32 *addressInDataFile, u32 *dataFileIndex)
 {
     if (!XboxInternals::SvodLayout::Map(sector, DataBlockOffset(metadata),
             IsEnhanced(metadata), addressInDataFile, dataFileIndex,
@@ -49,7 +49,7 @@ void SvodIO::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *data
         throw std::string("SvodIO: Sector outside the data volume.\n");
 }
 
-void SvodIO::SetPosition(UINT64 address, ios_base::seekdir dir)
+void SvodIO::SetPosition(u64 address, ios_base::seekdir dir)
 {
     if (dir != std::ios_base::beg)
         throw std::string("SvodIO: Unsupported seek direction\n");
@@ -57,28 +57,28 @@ void SvodIO::SetPosition(UINT64 address, ios_base::seekdir dir)
     if (address > Length())
         throw std::string("SvodIO: Cannot seek beyond end of file.\n");
 
-    const UINT64 fileSector = static_cast<UINT64>(fileEntry.sector) + address / 0x800;
+    const u64 fileSector = static_cast<u64>(fileEntry.sector) + address / 0x800;
     if (fileSector > 0xFFFFFFFFULL)
         throw std::string("SvodIO: Sector index out of range.\n");
 
-    DWORD addr = 0, index = 0;
-    SectorToAddress(static_cast<DWORD>(fileSector), &addr, &index);
+    u32 addr = 0, index = 0;
+    SectorToAddress(static_cast<u32>(fileSector), &addr, &index);
 
-    io->SetPosition(addr + static_cast<DWORD>(address % 0x800), static_cast<int>(index));
+    io->SetPosition(addr + static_cast<u32>(address % 0x800), static_cast<int>(index));
     pos = address;
 }
 
-UINT64 SvodIO::GetPosition()
+u64 SvodIO::GetPosition()
 {
     return pos;
 }
 
-UINT64 SvodIO::Length()
+u64 SvodIO::Length()
 {
     return fileEntry.size;
 }
 
-void SvodIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void SvodIO::ReadBytes(u8 *outBuffer, u32 len)
 {
     if (pos + len > Length())
         throw std::string("SvodIO: Cannot read beyond end of file.\n");
@@ -88,22 +88,22 @@ void SvodIO::ReadBytes(BYTE *outBuffer, DWORD len)
         // Re-map for every chunk so a seek never relies on the previous part.
         SetPosition(pos);
 
-        DWORD addressInFile = 0, index = 0;
+        u32 addressInFile = 0, index = 0;
         io->GetPosition(&addressInFile, &index);
 
-        UINT64 chunk = ChunkUntilHashBlock(addressInFile);
+        u64 chunk = ChunkUntilHashBlock(addressInFile);
         if (chunk > len)
             chunk = len;
 
-        io->ReadBytes(outBuffer, static_cast<DWORD>(chunk));
+        io->ReadBytes(outBuffer, static_cast<u32>(chunk));
 
         outBuffer += chunk;
         pos += chunk;
-        len -= static_cast<DWORD>(chunk);
+        len -= static_cast<u32>(chunk);
     }
 }
 
-void SvodIO::WriteBytes(BYTE *buffer, DWORD len)
+void SvodIO::WriteBytes(u8 *buffer, u32 len)
 {
     if (pos + len > Length())
         throw std::string("SvodIO: Cannot write beyond end of file.\n");
@@ -112,28 +112,28 @@ void SvodIO::WriteBytes(BYTE *buffer, DWORD len)
     {
         SetPosition(pos);
 
-        DWORD addressInFile = 0, index = 0;
+        u32 addressInFile = 0, index = 0;
         io->GetPosition(&addressInFile, &index);
 
-        UINT64 chunk = ChunkUntilHashBlock(addressInFile);
+        u64 chunk = ChunkUntilHashBlock(addressInFile);
         if (chunk > len)
             chunk = len;
 
-        io->WriteBytes(buffer, static_cast<DWORD>(chunk));
+        io->WriteBytes(buffer, static_cast<u32>(chunk));
 
         buffer += chunk;
         pos += chunk;
-        len -= static_cast<DWORD>(chunk);
+        len -= static_cast<u32>(chunk);
     }
 }
 
-void SvodIO::SaveFile(string savePath, void(*progress)(void*, DWORD, DWORD), void *arg)
+void SvodIO::SaveFile(string savePath, void(*progress)(void*, u32, u32), void *arg)
 {
     FileIO outFile(savePath, true);
-    std::vector<BYTE> buffer(0x10000);
-    DWORD fileLen = fileEntry.size;
-    DWORD total = (fileLen + 0xFFFF) / 0x10000;
-    DWORD cur = 0;
+    std::vector<u8> buffer(0x10000);
+    u32 fileLen = fileEntry.size;
+    u32 total = (fileLen + 0xFFFF) / 0x10000;
+    u32 cur = 0;
 
     while (fileLen >= 0x10000)
     {
@@ -157,19 +157,19 @@ void SvodIO::SaveFile(string savePath, void(*progress)(void*, DWORD, DWORD), voi
     outFile.Close();
 }
 
-void SvodIO::OverWriteFile(string inPath, void (*progress)(void *, DWORD, DWORD), void *arg)
+void SvodIO::OverWriteFile(string inPath, void (*progress)(void *, u32, u32), void *arg)
 {
     FileIO inFile(inPath);
 
     // make sure that the files are the same size
     inFile.SetPosition(0, ios_base::end);
-    if (inFile.GetPosition() != static_cast<UINT64>(fileEntry.size))
+    if (inFile.GetPosition() != static_cast<u64>(fileEntry.size))
         throw string("SVOD: Cannot overWrite file of different length.\n");
 
-    std::vector<BYTE> buffer(0x10000);
-    DWORD fileLen = fileEntry.size;
-    DWORD total = (fileLen + 0xFFFF) / 0x10000;
-    DWORD cur = 0;
+    std::vector<u8> buffer(0x10000);
+    u32 fileLen = fileEntry.size;
+    u32 total = (fileLen + 0xFFFF) / 0x10000;
+    u32 cur = 0;
 
     inFile.SetPosition(0);
     SetPosition(0);

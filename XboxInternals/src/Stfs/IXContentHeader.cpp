@@ -28,8 +28,8 @@ std::string IXContentHeader::GetFatxFilePath()
         return {};
 
     std::string profileID = Utils::ConvertToHexString(metaData->profileID, 8);
-    std::string titleID = Utils::ConvertToHexString(static_cast<UINT64>(metaData->titleID));
-    std::string contentType = Utils::ConvertToHexString(static_cast<UINT64>(metaData->contentType));
+    std::string titleID = Utils::ConvertToHexString(static_cast<u64>(metaData->titleID));
+    std::string contentType = Utils::ConvertToHexString(static_cast<u64>(metaData->contentType));
 
     while (contentType.size() < 8)
         contentType = "0" + contentType;

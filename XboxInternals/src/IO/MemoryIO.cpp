@@ -1,6 +1,6 @@
 #include <XboxInternals/IO/MemoryIO.h>
 
-MemoryIO::MemoryIO(BYTE *data, size_t length) :
+MemoryIO::MemoryIO(u8 *data, size_t length) :
     BaseIO(), memory(data), length(length), pos(0)
 {
     SetPosition(0);
@@ -11,9 +11,9 @@ MemoryIO::~MemoryIO()
     // Destructors must not throw; no seek is needed on teardown.
 }
 
-void MemoryIO::SetPosition(UINT64 pos, std::ios_base::seekdir dir)
+void MemoryIO::SetPosition(u64 pos, std::ios_base::seekdir dir)
 {
-    UINT64 newPos;
+    u64 newPos;
     switch (dir)
     {
         case std::ios_base::beg:
@@ -34,17 +34,17 @@ void MemoryIO::SetPosition(UINT64 pos, std::ios_base::seekdir dir)
     this->pos = newPos;
 }
 
-UINT64 MemoryIO::GetPosition()
+u64 MemoryIO::GetPosition()
 {
     return pos;
 }
 
-UINT64 MemoryIO::Length()
+u64 MemoryIO::Length()
 {
     return length;
 }
 
-void MemoryIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void MemoryIO::ReadBytes(u8 *outBuffer, u32 len)
 {
     if (pos + len > length)
         throw std::string("MemoryIO: Cannot read beyond the end of the stream\n");
@@ -52,7 +52,7 @@ void MemoryIO::ReadBytes(BYTE *outBuffer, DWORD len)
     pos += len;
 }
 
-void MemoryIO::WriteBytes(BYTE *buffer, DWORD len)
+void MemoryIO::WriteBytes(u8 *buffer, u32 len)
 {
     if (pos + len > length)
         throw std::string("MemoryIO: Cannot write beyond the end of the stream\n");

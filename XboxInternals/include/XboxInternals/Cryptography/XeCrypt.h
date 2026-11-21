@@ -1,7 +1,7 @@
 #ifndef XECRYPT_H
 #define XECRYPT_H
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 
 #include <algorithm>
 #include <cstring>
@@ -14,10 +14,10 @@
 class XBOXINTERNALS_EXPORT XeCrypt
 {
 public:
-    static void BnQw_SwapDwQwLeBe(BYTE *data, DWORD length);
+    static void BnQw_SwapDwQwLeBe(u8 *data, u32 length);
 
-    static bool Pkcs1Verify(BYTE *pbMessage, DWORD cbMessage, BYTE *pbSignature, DWORD cbSignature,
-            UINT64 publicExponent, BYTE *modulus);
+    static bool Pkcs1Verify(u8 *pbMessage, u32 cbMessage, u8 *pbSignature, u32 cbSignature,
+            u64 publicExponent, u8 *modulus);
 
     // copied from wikibooks.org
     template<typename iter>

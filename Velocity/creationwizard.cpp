@@ -177,17 +177,17 @@ void CreationWizard::onFinished(int status)
         QBuffer buffer1(&ba1);
         buffer1.open(QIODevice::WriteOnly);
         ui->imgThumbnail->pixmap().save(&buffer1, "PNG");
-    const auto *thumbStart = reinterpret_cast<const BYTE*>(ba1.constData());
+    const auto *thumbStart = reinterpret_cast<const u8*>(ba1.constData());
     package.metaData->thumbnailImage.assign(thumbStart, thumbStart + ba1.size());
-    package.metaData->thumbnailImageSize = static_cast<DWORD>(package.metaData->thumbnailImage.size());
+    package.metaData->thumbnailImageSize = static_cast<u32>(package.metaData->thumbnailImage.size());
 
         QByteArray ba2;
         QBuffer buffer2(&ba2);
         buffer2.open(QIODevice::WriteOnly);
         ui->imgTitleThumbnail->pixmap().save(&buffer2, "PNG");
-    const auto *titleThumbStart = reinterpret_cast<const BYTE*>(ba2.constData());
+    const auto *titleThumbStart = reinterpret_cast<const u8*>(ba2.constData());
     package.metaData->titleThumbnailImage.assign(titleThumbStart, titleThumbStart + ba2.size());
-    package.metaData->titleThumbnailImageSize = static_cast<DWORD>(package.metaData->titleThumbnailImage.size());
+    package.metaData->titleThumbnailImageSize = static_cast<u32>(package.metaData->titleThumbnailImage.size());
 
         package.metaData->WriteMetaData();
 
@@ -207,7 +207,7 @@ void CreationWizard::onFinished(int status)
     *fileName = ui->lblSavePath->text();
 }
 
-DWORD CreationWizard::getContentType()
+u32 CreationWizard::getContentType()
 {
     QString contentType = ui->lwContentTypes->currentItem()->text().trimmed();
     if (contentType == "App")

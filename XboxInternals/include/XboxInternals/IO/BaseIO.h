@@ -2,7 +2,8 @@
 #define BASEIO_H
 
 #include <iostream>
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
+#include <XboxInternals/EnumTraits.h>
 
 #include <XboxInternals/Export.h>
 
@@ -29,33 +30,34 @@ public:
     void SwapEndian();
 
     // seek to a position in a file
-    virtual void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg) = 0;
+    virtual void SetPosition(u64 position, std::ios_base::seekdir dir = std::ios_base::beg) = 0;
 
     // get current address in the file
-    virtual UINT64 GetPosition() = 0;
+    virtual u64 GetPosition() = 0;
 
     // get length of the file
-    virtual UINT64 Length() = 0;
+    virtual u64 Length() = 0;
 
     // get the byte order in which to read the bytes
     EndianType GetEndian();
 
     // read len bytes from the current file at the current position into buffer
-    virtual void ReadBytes(BYTE *outBuffer, DWORD len) = 0;
+    virtual void ReadBytes(u8 *outBuffer, u32 len) = 0;
 
     // Write len bytes from the current file at the current position into buffer
-    virtual void WriteBytes(BYTE *buffer, DWORD len) = 0;
+    virtual void WriteBytes(u8 *buffer, u32 len) = 0;
 
     // all the read functions
-    BYTE ReadByte();
-    INT16 ReadInt16();
-    WORD ReadWord();
-    INT24 ReadInt24(EndianType et = Default);
-    INT32 ReadInt32();
-    DWORD ReadDword();
-    INT64 ReadInt64();
-    UINT64 ReadUInt64();
-    UINT64 ReadMultiByte(size_t size);
+    u8 ReadByte();
+    i16 ReadInt16();
+    u16 ReadWord();
+    // 24-bit fields (STFS block numbers, SVOD offsets); always 0..0xFFFFFF
+    u32 ReadInt24(EndianType et = Default);
+    i32 ReadInt32();
+    u32 ReadDword();
+    i64 ReadInt64();
+    u64 ReadUInt64();
+    u64 ReadMultiByte(size_t size);
 
     // Read `width` bytes (1, 2, 4 or 8) and convert them through the enum's
     // EnumTraits specialization. Every enum read from a file goes through this,
@@ -74,14 +76,15 @@ public:
     wstring ReadWString(int len = -1);
 
     // Write functions
-    void Write(BYTE b);
-    void Write(WORD w);
-    void Write(INT24 i24, EndianType et = Default);
-    void Write(DWORD dw);
-    void Write(UINT64 u64);
-    void Write(string s, int forceLen = -1, bool nullTerminating = true, BYTE nullTerminator = 0);
+    void Write(u8 b);
+    void Write(u16 w);
+    void Write(u32 dw);
+    void Write(u64 qw);
+    // Writes the low 24 bits of value (3 bytes)
+    void WriteInt24(u32 value, EndianType et = Default);
+    void Write(string s, int forceLen = -1, bool nullTerminating = true, u8 nullTerminator = 0);
     void Write(wstring ws, bool nullTerminating = true);
-    void Write(BYTE *buffer, DWORD len);
+    void Write(u8 *buffer, u32 len);
 
     // flush the io's buffer
     virtual void Flush() = 0;
@@ -93,7 +96,7 @@ protected:
     EndianType byteOrder;
 
 private:
-    void reverseByteArray(BYTE *array, DWORD len);
+    void reverseByteArray(u8 *array, u32 len);
 };
 
 #endif //BASEIO_H

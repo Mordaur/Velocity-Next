@@ -9,24 +9,24 @@ namespace fs = std::filesystem;
 
 std::string Utils::NormalizeFilePath(std::string path, char cur_separater, char replacement_separator)
 {
-    for (DWORD i = 0; i < path.length(); i++)
+    for (u32 i = 0; i < path.length(); i++)
         if (path.at(i) == cur_separater)
             path.at(i) = replacement_separator;
     return path;
 }
 
 
-std::string Utils::ConvertToHexString(BYTE *buffer, DWORD len, std::ios_base&(letterCase)(std::ios_base&))
+std::string Utils::ConvertToHexString(u8 *buffer, u32 len, std::ios_base&(letterCase)(std::ios_base&))
 {
     std::ostringstream ss;
     ss << std::hex << std::setfill('0');
-    for (DWORD i = 0; i < len; i++)
+    for (u32 i = 0; i < len; i++)
         ss << letterCase << std::hex << std::setw(2) << (int)buffer[i];
     return ss.str();
 }
 
 
-std::string Utils::ConvertToHexString(UINT64 value, std::ios_base&(letterCase)(std::ios_base&))
+std::string Utils::ConvertToHexString(u64 value, std::ios_base&(letterCase)(std::ios_base&))
 {
     std::ostringstream ss;
     ss << letterCase << std::hex << value;
@@ -64,7 +64,7 @@ std::vector<std::string> Utils::FilesInDirectory(std::string directoryPath)
 }
 
 
-UINT64 Utils::RoundToNearestHex1000(UINT64 num)
+u64 Utils::RoundToNearestHex1000(u64 num)
 {
     return (num + 0xFFF) & ~0xFFF;
 }

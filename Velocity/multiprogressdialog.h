@@ -41,7 +41,7 @@ class MultiProgressDialog;
 
 class QCloseEvent;
 
-void updateProgress(void *form, DWORD curProgress, DWORD total);
+void updateProgress(void *form, u32 curProgress, u32 total);
 
 // Stops and joins every extraction started from `owner`'s child progress
 // dialogs. An owner must call this before it releases the device it handed to
@@ -61,7 +61,7 @@ public:
     void run() override;
 
 signals:
-    void progressUpdate(int fileIndex, DWORD curProgress, DWORD total);
+    void progressUpdate(int fileIndex, u32 curProgress, u32 total);
     void fileComplete(int fileIndex);
     void extractionComplete(bool success, QString errorMessage);
     void windowTitleUpdate(QString title);
@@ -91,7 +91,7 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private slots:
-    void onProgressUpdate(int fileIndex, DWORD curProgress, DWORD total);
+    void onProgressUpdate(int fileIndex, u32 curProgress, u32 total);
     void onFileComplete(int fileIndex);
     void onExtractionComplete(bool success, QString errorMessage);
     void onWindowTitleUpdate(QString title);
@@ -104,9 +104,9 @@ private:
     QString outDir;
     QList<void*> internalFiles;
     int fileIndex;
-    DWORD overallProgress;
-    DWORD overallProgressTotal;
-    DWORD prevProgress;
+    u32 overallProgress;
+    u32 overallProgressTotal;
+    u32 prevProgress;
     QString rootPath;
     // Parallel to internalFiles when the caller decides the local layout itself;
     // empty means "derive it from rootPath" (the historical behaviour).
@@ -121,7 +121,7 @@ private:
 
     void operateOnNextFile();
 
-    friend void updateProgress(void *form, DWORD curProgress, DWORD total);
+    friend void updateProgress(void *form, u32 curProgress, u32 total);
     friend class ExtractionWorker;
 };
 

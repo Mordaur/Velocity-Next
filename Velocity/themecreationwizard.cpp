@@ -19,7 +19,7 @@ ThemeCreationWizard::ThemeCreationWizard(QStatusBar *statusBar, QWidget *parent)
 #endif
 
     // populate the sphere color combobox
-    for (DWORD i = 0; i < 16; i++)
+    for (u32 i = 0; i < 16; i++)
     {
         ui->cmbxSphereColor->insertItem(i, colorNames[i]);
         ui->cmbxSphereColor->setItemData(i, colors[i], Qt::DecorationRole);
@@ -61,18 +61,18 @@ void ThemeCreationWizard::onFinished(int status)
         QBuffer buffer1(&ba1);
         buffer1.open(QIODevice::WriteOnly);
         ui->imgThumbnail->pixmap().save(&buffer1, "PNG");
-    const auto *thumbStart = reinterpret_cast<const BYTE*>(ba1.constData());
+    const auto *thumbStart = reinterpret_cast<const u8*>(ba1.constData());
     theme->metaData->thumbnailImage.assign(thumbStart, thumbStart + ba1.size());
-    theme->metaData->thumbnailImageSize = static_cast<DWORD>(theme->metaData->thumbnailImage.size());
+    theme->metaData->thumbnailImageSize = static_cast<u32>(theme->metaData->thumbnailImage.size());
 
         // set title thumbnail image
         QByteArray ba2;
         QBuffer buffer2(&ba2);
         buffer2.open(QIODevice::WriteOnly);
         QPixmap(":/Images/defaultTitleImage.png").save(&buffer2, "PNG");
-    const auto *titleThumbStart = reinterpret_cast<const BYTE*>(ba2.constData());
+    const auto *titleThumbStart = reinterpret_cast<const u8*>(ba2.constData());
     theme->metaData->titleThumbnailImage.assign(titleThumbStart, titleThumbStart + ba2.size());
-    theme->metaData->titleThumbnailImageSize = static_cast<DWORD>(theme->metaData->titleThumbnailImage.size());
+    theme->metaData->titleThumbnailImageSize = static_cast<u32>(theme->metaData->titleThumbnailImage.size());
 
         theme->metaData->WriteMetaData();
         theme->RebuildHashes();
@@ -107,7 +107,7 @@ void ThemeCreationWizard::onFinished(int status)
         QString dashStyleFilePath = QDir::tempPath() + "/" + QUuid::createUuid().toString().replace("{",
                 "").replace("}", "").replace("-", "");
         FileIO ioD(dashStyleFilePath.toStdString(), true);
-        ioD.Write((DWORD)0);
+        ioD.Write((u32)0);
         ioD.Close();
 
         // inject the file
@@ -140,7 +140,7 @@ void ThemeCreationWizard::injectImage(StfsPackage *theme, QImage *image, QString
     buffer.open(QIODevice::WriteOnly);
     image->scaled(1280, 720).save(&buffer, "JPG");
 
-    theme->InjectData((BYTE*)ba.data(), ba.length(), fileName.toStdString());
+    theme->InjectData((u8*)ba.data(), ba.length(), fileName.toStdString());
 }
 
 void ThemeCreationWizard::onCurrentIdChanged(int index)

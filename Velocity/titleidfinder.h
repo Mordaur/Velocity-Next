@@ -14,11 +14,11 @@
 #include <QJsonArray>     // Updated to use Qt's built-in JSON parsing
 
 // other
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 
 struct TitleData {
     QString titleName;
-    DWORD titleID;
+    u32 titleID;
     QString bingId;  // For marketplace links
 };
 

@@ -40,11 +40,11 @@ void DashboardGpd::init()
                                                                                                 gamerBio.entry.type = (EntryType)0;
 
     // read in all the title entries
-    for (DWORD i = 0; i < xdbf->titlesPlayed.entries.size(); i++)
+    for (u32 i = 0; i < xdbf->titlesPlayed.entries.size(); i++)
         gamesPlayed.push_back(readTitleEntry(xdbf->titlesPlayed.entries.at(i)));
 
     // find the avatar image
-    for (DWORD i = 0; i < images.size(); i++)
+    for (u32 i = 0; i < images.size(); i++)
         if (images.at(i).entry.id == AvatarImage)
         {
             avatarImage = images.at(i);
@@ -52,7 +52,7 @@ void DashboardGpd::init()
         }
 
     // read in all of the IMPOTANT setting entries
-    for (DWORD i = 0; i < settings.size(); i++)
+    for (u32 i = 0; i < settings.size(); i++)
     {
         switch (settings.at(i).entry.id)
         {
@@ -127,8 +127,8 @@ TitleEntry DashboardGpd::readTitleEntry(XdbfEntry entry)
     toReturn.flags = io->ReadDword();
 
     // read the last time played
-    WINFILETIME time = { io->ReadDword(), io->ReadDword() };
-    if (time.dwHighDateTime == 0 && time.dwLowDateTime == 0)
+    FileTime time = { io->ReadDword(), io->ReadDword() };
+    if (time.highDateTime == 0 && time.lowDateTime == 0)
         toReturn.lastPlayed = 0;
     else
         toReturn.lastPlayed = XdbfHelpers::FILETIMEtoTimeT(time);
@@ -163,7 +163,7 @@ string DashboardGpd::GetLargeBoxArtURL(TitleEntry *entry)
 
 void DashboardGpd::WriteTitleEntry(TitleEntry *entry)
 {
-    DWORD calculatedLength = 0x28 + ((entry->gameName.size() + 1) * 2);
+    u32 calculatedLength = 0x28 + ((entry->gameName.size() + 1) * 2);
 
     if (calculatedLength != entry->initialLength)
     {
@@ -198,9 +198,9 @@ void DashboardGpd::WriteTitleEntry(TitleEntry *entry)
         io->SetPosition(xdbf->GetRealAddress(entry->entry.addressSpecifier) + 0x28);
     else
     {
-        WINFILETIME time = XdbfHelpers::TimeTtoFILETIME(entry->lastPlayed);
-        io->Write(time.dwHighDateTime);
-        io->Write(time.dwLowDateTime);
+        FileTime time = XdbfHelpers::TimeTtoFILETIME(entry->lastPlayed);
+        io->Write(time.highDateTime);
+        io->Write(time.lowDateTime);
     }
 
     io->Write(entry->gameName);
@@ -213,7 +213,7 @@ void DashboardGpd::WriteTitleEntry(TitleEntry *entry)
 void DashboardGpd::DeleteTitleEntry(TitleEntry *entry)
 {
     // remove the entry from the list
-    DWORD i;
+    u32 i;
     for (i = 0 ; i < gamesPlayed.size(); i++)
     {
         if (gamesPlayed.at(i).entry.id == entry->entry.id)

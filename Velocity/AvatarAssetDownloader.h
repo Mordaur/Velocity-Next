@@ -13,7 +13,7 @@
 #include <QNetworkReply>
 
 // other
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/IO/FileIO.h>
 
 class AvatarAssetDownloader : public QObject

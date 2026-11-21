@@ -21,8 +21,8 @@ ProfileCreatorWizard::ProfileCreatorWizard(QStatusBar *statusBar, QWidget *paren
     // generate profile ID
     profileID = 0xE000000000000000;
     srand(time(nullptr));
-    profileID |= ((UINT64)rand() & 0xFFFF) + (((UINT64)rand() & 0xFFFF) + (((
-                UINT64)rand() & 0xFFFF) << 32));
+    profileID |= ((u64)rand() & 0xFFFF) + (((u64)rand() & 0xFFFF) + (((
+                u64)rand() & 0xFFFF) << 32));
 
     ui->lblSavePath->setText(QtHelpers::DefaultLocation().replace("\\",
             "/") + "/" + QString::number(profileID, 16).toUpper());
@@ -63,12 +63,12 @@ void ProfileCreatorWizard::onFinished(int status)
         newProfile.metaData->titleID = 0xFFFE07D1;
 
         // set the profile id
-        UINT64 temp = profileID;
-        for (DWORD i = 0; i < 8; i++)
-            ((BYTE*)&temp)[i] = ((BYTE*)&profileID)[7 - i];
+        u64 temp = profileID;
+        for (u32 i = 0; i < 8; i++)
+            ((u8*)&temp)[i] = ((u8*)&profileID)[7 - i];
         memcpy(newProfile.metaData->profileID, &temp, 8);
 
-        std::wstring s = QtHelpers::ByteArrayToString((BYTE*)&temp, 8, false).toStdWString();
+        std::wstring s = QtHelpers::ByteArrayToString((u8*)&temp, 8, false).toStdWString();
         newProfile.metaData->displayName = s;
         newProfile.metaData->transferFlags = 0x40;
 
@@ -77,18 +77,18 @@ void ProfileCreatorWizard::onFinished(int status)
         QBuffer buffer1(&ba1);
         buffer1.open(QIODevice::WriteOnly);
         ui->listWidget->currentItem()->icon().pixmap(64, 64).save(&buffer1, "PNG");
-    const auto *thumbStart = reinterpret_cast<const BYTE*>(ba1.constData());
+    const auto *thumbStart = reinterpret_cast<const u8*>(ba1.constData());
     newProfile.metaData->thumbnailImage.assign(thumbStart, thumbStart + ba1.size());
-    newProfile.metaData->thumbnailImageSize = static_cast<DWORD>(newProfile.metaData->thumbnailImage.size());
+    newProfile.metaData->thumbnailImageSize = static_cast<u32>(newProfile.metaData->thumbnailImage.size());
 
         // set title thumbnail image
         QByteArray ba2;
         QBuffer buffer2(&ba2);
         buffer2.open(QIODevice::WriteOnly);
         QPixmap(":/Images/defaultTitleImage.png").save(&buffer2, "PNG");
-    const auto *titleThumbStart = reinterpret_cast<const BYTE*>(ba2.constData());
+    const auto *titleThumbStart = reinterpret_cast<const u8*>(ba2.constData());
     newProfile.metaData->titleThumbnailImage.assign(titleThumbStart, titleThumbStart + ba2.size());
-    newProfile.metaData->titleThumbnailImageSize = static_cast<DWORD>(newProfile.metaData->titleThumbnailImage.size());
+    newProfile.metaData->titleThumbnailImageSize = static_cast<u32>(newProfile.metaData->titleThumbnailImage.size());
 
         newProfile.metaData->WriteMetaData();
 
@@ -98,7 +98,7 @@ void ProfileCreatorWizard::onFinished(int status)
 
         FileIO accountIo(accountTempPath.toStdString(), true);
 
-        BYTE tempBuffer[380] = {0};
+        u8 tempBuffer[380] = {0};
         accountIo.Write(tempBuffer, 380);
         accountIo.Close();
 
@@ -158,8 +158,8 @@ void ProfileCreatorWizard::onFinished(int status)
 
         // inject the image
         ImageEntry image;
-    image.image.assign(reinterpret_cast<const BYTE*>(ba3.data()),
-               reinterpret_cast<const BYTE*>(ba3.data()) + ba3.length());
+    image.image.assign(reinterpret_cast<const u8*>(ba3.data()),
+               reinterpret_cast<const u8*>(ba3.data()) + ba3.length());
     image.length = ba3.length();
 
         dashGpd.CreateImageEntry(&image, AvatarImage);

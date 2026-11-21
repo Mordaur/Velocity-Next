@@ -37,7 +37,7 @@ private:
     BoxArtRetriever *boxArtRetriever;
     BaseIO *ownedIo;
 
-    void AddExecutableProperty(QString name, DWORD value);
+    void AddExecutableProperty(QString name, u32 value);
 
     void AddExecutableProperty(QString name, QString value);
 };

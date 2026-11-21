@@ -395,7 +395,7 @@ void MultiProgressDialog::start()
     }
 }
 
-void MultiProgressDialog::onProgressUpdate(int fileIndex, DWORD curProgress, DWORD total)
+void MultiProgressDialog::onProgressUpdate(int fileIndex, u32 curProgress, u32 total)
 {
     (void)fileIndex;
     QMutexLocker locker(&progressMutex_);
@@ -676,7 +676,7 @@ void MultiProgressDialog::operateOnNextFile()
     }
 }
 
-void updateProgress(void *form, DWORD curProgress, DWORD total)
+void updateProgress(void *form, u32 curProgress, u32 total)
 {
     // get the dialog back
     MultiProgressDialog *dialog = reinterpret_cast<MultiProgressDialog*>(form);

@@ -78,7 +78,7 @@ public:
     void RemoveFile(FatxFileEntry *entry, void(*progress)(void*) = NULL, void *arg = NULL);
 
     // inject the file
-    void InjectFile(FatxFileEntry *parent, std::string name, std::string filePath, void(*progress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
+    void InjectFile(FatxFileEntry *parent, std::string name, std::string filePath, void(*progress)(void*, u32, u32) = NULL, void *arg = NULL);
 
     // determines if a file at the specified path exists
     bool FileExists(std::string filePath);
@@ -96,25 +96,25 @@ public:
     void Close();
 
     // Write the entire contents of the drive to the local disk
-    void CreateBackup(std::string outPath, void(*progress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
+    void CreateBackup(std::string outPath, void(*progress)(void*, u32, u32) = NULL, void *arg = NULL);
 
     // re-Write the entire contents of the drive using a backup from the local disk
-    void RestoreFromBackup(std::string backupPath, void(*progress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
+    void RestoreFromBackup(std::string backupPath, void(*progress)(void*, u32, u32) = NULL, void *arg = NULL);
 
     // get the amount of free bytes on the device
-    UINT64 GetFreeMemory(Partition *part, void(*progress)(void*, bool) = NULL, void *arg = NULL, bool finish = true);
+    u64 GetFreeMemory(Partition *part, void(*progress)(void*, bool) = NULL, void *arg = NULL, bool finish = true);
 
     // get the total amount of bytes that all the partitions occupy
-    UINT64 GetTotalSize();
+    u64 GetTotalSize();
 
     // get the total amount of bytes capable of being stored on the device
-    UINT64 GetDeviceSize();
+    u64 GetDeviceSize();
 
     // reload the entire drive, called after restoring
     void ReloadDrive();
 
     // convert a cluster to an offset
-    static INT64 ClusterToOffset(Partition *part, DWORD cluster);
+    static i64 ClusterToOffset(Partition *part, u32 cluster);
 
     // check to see whether or not a file name is valid
     static bool ValidFileName(std::string fileName);    
@@ -148,10 +148,10 @@ private:
     void loadProfiles();
 
     // inject a range of clustes into the chain
-    void injectRange(vector<DWORD> &clusters, Range &range);
+    void injectRange(vector<u32> &clusters, Range &range);
 
     // counts the largest amount of consecutive unset bits
-    static BYTE cntlzw(DWORD x);
+    static u8 cntlzw(u32 x);
 
     // check to see if a certain character is allowed as a file name
     static bool validFileChar(char c);

@@ -185,7 +185,7 @@ Metadata::Metadata(QStatusBar *statusBar, XContentHeader *header, bool pec, QWid
 
             // populate the subcategory combobox
             cmbxSubcategory = new QComboBox(this);
-            for (DWORD i = 0; i < 64; i++)
+            for (u32 i = 0; i < 64; i++)
             {
                 cmbxSubcategory->addItem(subcategoryStructs[i].name);
                 if (header->subCategory == subcategoryStructs[i].value)
@@ -311,7 +311,7 @@ Metadata::Metadata(QStatusBar *statusBar, XContentHeader *header, bool pec, QWid
                 // set resume state combobox
                 cmbxResumeState = new QComboBox(this);
                 int indexSet = -1;
-                for (DWORD i = 0; i < 6; i++)
+                for (u32 i = 0; i < 6; i++)
                 {
                     cmbxResumeState->addItem(resumeStates[i].name);
                     if (header->resumeState == resumeStates[i].value)
@@ -606,7 +606,7 @@ void Metadata::on_pushButton_clicked()
         }
 
         // update all the values
-        DWORD magics[3] = { CON, LIVE, PIRS };
+        u32 magics[3] = { CON, LIVE, PIRS };
         header->magic = (Magic)magics[cmbxMagic->currentIndex()];
         QtHelpers::ParseHexStringBuffer(ui->tableWidget->item(3, 0)->text(), header->headerHash, 0x14);
         header->headerSize = QtHelpers::ParseHexString(ui->tableWidget->item(4, 0)->text());

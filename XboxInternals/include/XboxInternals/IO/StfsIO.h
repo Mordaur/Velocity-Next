@@ -11,24 +11,24 @@ public:
 
     StfsFileEntry GetStfsFileEntry();
 
-    void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg) override;
-    UINT64 GetPosition() override;
-    UINT64 Length() override;
+    void SetPosition(u64 position, std::ios_base::seekdir dir = std::ios_base::beg) override;
+    u64 GetPosition() override;
+    u64 Length() override;
 
-    void ReadBytes(BYTE *outBuffer, DWORD len) override;
-    void WriteBytes(BYTE *buffer, DWORD len) override;
+    void ReadBytes(u8 *outBuffer, u32 len) override;
+    void WriteBytes(u8 *buffer, u32 len) override;
 
     void Flush() override;
     void Close() override;
 
-    void Resize(UINT64 size);
+    void Resize(u64 size);
 
 private:
     BaseIO *io;
     StfsPackage *package;
     StfsFileEntry entry;
 
-    UINT64 entryPosition;
+    u64 entryPosition;
     bool didChangeSize;
-    DWORD blocksAllocated;
+    u32 blocksAllocated;
 };

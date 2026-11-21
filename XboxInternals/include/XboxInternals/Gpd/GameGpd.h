@@ -31,7 +31,7 @@ public:
     void WriteAchievementEntry(AchievementEntry *entry);
 
     // Description: create an achievement
-    void CreateAchievement(AchievementEntry *entry, BYTE *thumbnail, DWORD thumbnailLen);
+    void CreateAchievement(AchievementEntry *entry, u8 *thumbnail, u32 thumbnailLen);
 
     // Description: delete an achievement
     void DeleteAchievement(AchievementEntry *entry);

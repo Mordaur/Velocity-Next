@@ -138,7 +138,7 @@ void GameAdderDialog::gameReplyFinished(QNetworkReply *aReply) {
         QString gameName = gameMap.value("nm").toString();
 
         // Extract and convert other fields, ensuring we use correct conversions
-        DWORD titleId = gameMap.value("tid").toString().toULong(nullptr, 16);
+        u32 titleId = gameMap.value("tid").toString().toULong(nullptr, 16);
 
         bool alreadyExists = false;
         for (size_t i = 0; i < gamesPlayed.size(); ++i) {
@@ -152,11 +152,11 @@ void GameAdderDialog::gameReplyFinished(QNetworkReply *aReply) {
         if (alreadyExists) continue;
 
         // Correctly convert all fields to ensure they are populated
-        DWORD achievementCount = static_cast<DWORD>(gameMap.value("achc").toInt());
-        DWORD totalGamerscore = static_cast<DWORD>(gameMap.value("ttlgs").toInt());
-        BYTE totalAwardCount = static_cast<BYTE>(gameMap.value("ttlac").toInt());
-        BYTE maleAwardCount = static_cast<BYTE>(gameMap.value("ttlmac").toInt());
-        BYTE femaleAwardCount = static_cast<BYTE>(gameMap.value("ttlfac").toInt());
+        u32 achievementCount = static_cast<u32>(gameMap.value("achc").toInt());
+        u32 totalGamerscore = static_cast<u32>(gameMap.value("ttlgs").toInt());
+        u8 totalAwardCount = static_cast<u8>(gameMap.value("ttlac").toInt());
+        u8 maleAwardCount = static_cast<u8>(gameMap.value("ttlmac").toInt());
+        u8 femaleAwardCount = static_cast<u8>(gameMap.value("ttlfac").toInt());
 
         // Create a new item for the tree widget
         QTreeWidgetItem *item = new QTreeWidgetItem(ui->treeWidgetAllGames);
@@ -385,8 +385,8 @@ void GameAdderDialog::gpdThumbnailDownloadFinished(QNetworkReply* reply) {
             
             ImageEntry thumbnailEntry;
             thumbnailEntry.image.assign(
-                reinterpret_cast<const BYTE*>(thumbnailData.constData()),
-                reinterpret_cast<const BYTE*>(thumbnailData.constData()) + thumbnailData.size()
+                reinterpret_cast<const u8*>(thumbnailData.constData()),
+                reinterpret_cast<const u8*>(thumbnailData.constData()) + thumbnailData.size()
             );
             thumbnailEntry.length = thumbnailData.size();
             
@@ -451,7 +451,7 @@ void GameAdderDialog::closeEvent(QCloseEvent *event)
 
 void GameAdderDialog::initializePecPackage() {
     try {
-        DWORD flags = StfsPackagePEC;
+        u32 flags = StfsPackagePEC;
 
         // Check if the PEC file exists in the package
         if (!package->FileExists("PEC")) {

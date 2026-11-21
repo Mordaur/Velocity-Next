@@ -1,34 +1,34 @@
 #include <XboxInternals/Cryptography/XeKeys.h>
 
-bool XeKeys::VerifyRSASignature(XeKeysRsaKeys key, BYTE *pbMessage, DWORD cbMessage,
-        BYTE *signature)
+bool XeKeys::VerifyRSASignature(XeKeysRsaKeys key, u8 *pbMessage, u32 cbMessage,
+        u8 *signature)
 {
-    BYTE *modulus1, *modulus2;
-    DWORD exponent1, exponent2;
+    u8 *modulus1, *modulus2;
+    u32 exponent1, exponent2;
 
     // get the correct key
     switch (key)
     {
         case PIRSKey:
-            modulus1 = const_cast<BYTE*>(PirsModulus1);
+            modulus1 = const_cast<u8*>(PirsModulus1);
             modulus2 = NULL;
             exponent1 = 3;
             exponent2 = 0;
             break;
         case LIVEKey:
-            modulus1 = const_cast<BYTE*>(LiveModulus1);
-            modulus2 = const_cast<BYTE*>(LiveDeviceModulus);
+            modulus1 = const_cast<u8*>(LiveModulus1);
+            modulus2 = const_cast<u8*>(LiveDeviceModulus);
             exponent1 = 0x10001;
             exponent2 = 3;
             break;
         case DeviceKey:
-            modulus1 = const_cast<BYTE*>(DeviceModulus1);
-            modulus2 = const_cast<BYTE*>(LiveDeviceModulus);
+            modulus1 = const_cast<u8*>(DeviceModulus1);
+            modulus2 = const_cast<u8*>(LiveDeviceModulus);
             exponent1 = exponent2 = 3;
             break;
         case UnknownKey:
-            modulus1 = const_cast<BYTE*>(UnknownModulus1);
-            modulus2 = const_cast<BYTE*>(UnknownModulus2);
+            modulus1 = const_cast<u8*>(UnknownModulus1);
+            modulus2 = const_cast<u8*>(UnknownModulus2);
             exponent1 = exponent2 = 3;
             break;
         default:

@@ -644,7 +644,7 @@ HelperDeviceIO::~HelperDeviceIO()
     }
 }
 
-void HelperDeviceIO::SetPosition(UINT64 newPosition, std::ios_base::seekdir dir)
+void HelperDeviceIO::SetPosition(u64 newPosition, std::ios_base::seekdir dir)
 {
     if (dir == std::ios_base::cur)
         position += newPosition;
@@ -657,33 +657,33 @@ void HelperDeviceIO::SetPosition(UINT64 newPosition, std::ios_base::seekdir dir)
         throw std::string("HelperDeviceIO: seek beyond device");
 }
 
-UINT64 HelperDeviceIO::GetPosition()
+u64 HelperDeviceIO::GetPosition()
 {
     return position;
 }
 
-UINT64 HelperDeviceIO::Length()
+u64 HelperDeviceIO::Length()
 {
     return device.size;
 }
 
-void HelperDeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void HelperDeviceIO::ReadBytes(u8 *outBuffer, u32 len)
 {
     // Serve small reads from an aligned window cache (see the header).
     if (len <= kCacheWindow && device.size != 0)
     {
-        const UINT64 requestStart = position;
-        const UINT64 requestEnd = position + len;
-        const UINT64 windowStart = requestStart - (requestStart % kCacheWindow);
+        const u64 requestStart = position;
+        const u64 requestEnd = position + len;
+        const u64 windowStart = requestStart - (requestStart % kCacheWindow);
 
         if (windowStart < device.size && requestEnd <= windowStart + kCacheWindow)
         {
             const bool hit = cacheLength != 0 && cacheStart == windowStart;
             if (!hit)
             {
-                const UINT64 available = device.size - windowStart;
+                const u64 available = device.size - windowStart;
                 const size_t windowLength = static_cast<size_t>(
-                        std::min<UINT64>(available, kCacheWindow));
+                        std::min<u64>(available, kCacheWindow));
 
                 cache = client->readAt(device.handle, windowStart,
                                        static_cast<uint32_t>(windowLength));
@@ -700,12 +700,12 @@ void HelperDeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
         }
     }
 
-    UINT64 remaining = len;
-    UINT64 offset = position;
+    u64 remaining = len;
+    u64 offset = position;
     while (remaining > 0)
     {
         const uint32_t chunk = static_cast<uint32_t>(
-                std::min<UINT64>(remaining, static_cast<UINT64>(vh::kMaxPayload)));
+                std::min<u64>(remaining, static_cast<u64>(vh::kMaxPayload)));
         const QByteArray data = client->readAt(device.handle, offset, chunk);
         if (static_cast<uint32_t>(data.size()) != chunk)
             throw std::string("HelperDeviceIO: short read");
@@ -718,7 +718,7 @@ void HelperDeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
     position = offset;
 }
 
-void HelperDeviceIO::WriteBytes(BYTE *buffer, DWORD len)
+void HelperDeviceIO::WriteBytes(u8 *buffer, u32 len)
 {
     // Never serve stale data after a write.
     cacheLength = 0;
@@ -726,12 +726,12 @@ void HelperDeviceIO::WriteBytes(BYTE *buffer, DWORD len)
     if (!device.writable)
         throw std::string("HelperDeviceIO: device handle is read-only");
 
-    UINT64 remaining = len;
-    UINT64 offset = position;
+    u64 remaining = len;
+    u64 offset = position;
     while (remaining > 0)
     {
         const uint32_t chunk = static_cast<uint32_t>(
-                std::min<UINT64>(remaining, static_cast<UINT64>(vh::kMaxPayload)));
+                std::min<u64>(remaining, static_cast<u64>(vh::kMaxPayload)));
         const QByteArray data(reinterpret_cast<const char *>(buffer), static_cast<int>(chunk));
         const uint32_t written = client->writeAt(device.handle, offset, data);
         if (written != chunk)

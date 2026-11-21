@@ -17,11 +17,11 @@ class XBOXINTERNALSSHARED_EXPORT XContentDeviceProfile : public XContentDeviceIt
 public:
     XContentDeviceProfile();
     XContentDeviceProfile(FatxFileEntry *fileEntry, std::shared_ptr<IXContentHeader> profile);
-    XContentDeviceProfile(std::string pathOnDevice, std::string rawName, std::shared_ptr<IXContentHeader> profile, DWORD fileSize = 0);
+    XContentDeviceProfile(std::string pathOnDevice, std::string rawName, std::shared_ptr<IXContentHeader> profile, u32 fileSize = 0);
 
     std::vector<XContentDeviceTitle> titles;
 
-    BYTE* GetProfileID();
+    u8* GetProfileID();
 
     virtual std::wstring GetName();
 

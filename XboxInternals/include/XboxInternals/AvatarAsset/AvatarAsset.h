@@ -46,19 +46,19 @@ private:
     void readBlocks();
 
     // Description: parse v1 asset metadata
-    void parseMetadataLegacyV1(DWORD pos);
+    void parseMetadataLegacyV1(u32 pos);
 
     // Description: parse either version of the metadata
-    void parseMetadata(DWORD pos);
+    void parseMetadata(u32 pos);
 
     // Description: parse a color table
-    void parseColorTable(DWORD pos);
+    void parseColorTable(u32 pos);
 
     // Description: read some of the basic animation information
-    void readAnimationInfo(DWORD pos);
+    void readAnimationInfo(u32 pos);
 
     // Description: round the number to a block boundry
-    DWORD roundUpToBlockAlignment(DWORD valueToRound);
+    u32 roundUpToBlockAlignment(u32 valueToRound);
 };
 
 

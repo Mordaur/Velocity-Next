@@ -46,7 +46,7 @@ namespace
 
     QString contentTypesLabel(const std::string &upper)
     {
-        const DWORD value = static_cast<DWORD>(std::strtoul(upper.c_str(), nullptr, 16));
+        const u32 value = static_cast<u32>(std::strtoul(upper.c_str(), nullptr, 16));
 
         switch (static_cast<ContentType>(value))
         {

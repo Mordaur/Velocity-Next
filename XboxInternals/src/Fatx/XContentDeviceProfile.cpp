@@ -13,12 +13,12 @@ XContentDeviceProfile::XContentDeviceProfile(FatxFileEntry *fileEntry, std::shar
 {
 }
 
-XContentDeviceProfile::XContentDeviceProfile(std::string pathOnDevice, std::string rawName, std::shared_ptr<IXContentHeader> profile, DWORD fileSize) :
+XContentDeviceProfile::XContentDeviceProfile(std::string pathOnDevice, std::string rawName, std::shared_ptr<IXContentHeader> profile, u32 fileSize) :
     XContentDeviceItem(pathOnDevice, rawName, std::move(profile), fileSize)
 {
 }
 
-BYTE *XContentDeviceProfile::GetProfileID()
+u8 *XContentDeviceProfile::GetProfileID()
 {
     if (content)
     {

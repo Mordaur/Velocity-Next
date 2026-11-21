@@ -69,12 +69,12 @@ public:
     HelperDeviceIO(std::shared_ptr<HelperClient> client, HelperDeviceHandle handle);
     ~HelperDeviceIO() override;
 
-    void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg) override;
-    UINT64 GetPosition() override;
-    UINT64 Length() override;
+    void SetPosition(u64 position, std::ios_base::seekdir dir = std::ios_base::beg) override;
+    u64 GetPosition() override;
+    u64 Length() override;
 
-    void ReadBytes(BYTE *outBuffer, DWORD len) override;
-    void WriteBytes(BYTE *buffer, DWORD len) override;
+    void ReadBytes(u8 *outBuffer, u32 len) override;
+    void WriteBytes(u8 *buffer, u32 len) override;
 
     void Close() noexcept override;
     void Flush() override;
@@ -83,14 +83,14 @@ private:
     // FATX parsing issues a lot of tiny reads (dirents, FAT entries, STFS
     // headers); each one would otherwise be a separate pipe round trip. A read
     // that fits inside one aligned window is served from this cache instead.
-    static constexpr UINT64 kCacheWindow = 0x10000;
+    static constexpr u64 kCacheWindow = 0x10000;
     QByteArray cache;
-    UINT64 cacheStart = 0;
+    u64 cacheStart = 0;
     size_t cacheLength = 0;
 
     std::shared_ptr<HelperClient> client;
     HelperDeviceHandle device;
-    UINT64 position;
+    u64 position;
     bool closed;
 };
 

@@ -138,7 +138,7 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
                 0 : 1);
 
         // load passcode
-        BYTE passCode[4];
+        u8 passCode[4];
         account->GetPasscode(passCode);
         ui->cmbxPass1->setCurrentIndex(passCode[0]);
         ui->cmbxPass2->setCurrentIndex(passCode[1]);
@@ -170,11 +170,11 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
         ui->cmbxNetwork->setEnabled(account->IsLiveEnabled());
 
         // populate the years on live combo box
-        for (DWORD i = 0; i <= 20; i++)
+        for (u32 i = 0; i <= 20; i++)
             ui->cmbxTenure->addItem(QString::number(i));
 
         // populate the regions combo box
-        for (DWORD i = 0; i < 109; i++)
+        for (u32 i = 0; i < 109; i++)
             ui->cmbxRegion->addItem(regions[i].name);
 
     // load the gamerpicture
@@ -292,7 +292,7 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
     QMap<QString, GpdPaths> paths;
 
     // load all the games played
-    for (DWORD i = 0; i < dashGpd->gamesPlayed.size(); i++)
+    for (u32 i = 0; i < dashGpd->gamesPlayed.size(); i++)
     {
         // if the game doesn't have any achievements, no need to load it
         if (dashGpd->gamesPlayed.at(i).achievementCount == 0 &&
@@ -451,7 +451,7 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
     }
 
     // extract and parse all of the Gpds in the PEC
-    for (DWORD i = 0; i < aaGames.size(); i++)
+    for (u32 i = 0; i < aaGames.size(); i++)
     {
         QString titleIDStr = QString::number(aaGames.at(i).titleEntry->titleID, 16).toUpper();
 
@@ -651,16 +651,16 @@ void ProfileEditor::onAssetsDoneDownloading()
         QBuffer buffThumb(&baThumb);
         buffThumb.open(QIODevice::WriteOnly);
         ui->imgAw->pixmap().save(&buffThumb, "PNG");
-        newAsset.InjectData((BYTE*)baThumb.data(), baThumb.length(), "icon.png");
+        newAsset.InjectData((u8*)baThumb.data(), baThumb.length(), "icon.png");
 
         QByteArray baScaled;
         QBuffer buffScaled(&baScaled);
         buffScaled.open(QIODevice::WriteOnly);
         QPixmap scaled = ui->imgAw->pixmap().scaled(QSize(64, 64));
         scaled.save(&buffScaled, "PNG");
-        const auto *thumbStart = reinterpret_cast<const BYTE*>(baScaled.constData());
+        const auto *thumbStart = reinterpret_cast<const u8*>(baScaled.constData());
         newAsset.metaData->thumbnailImage.assign(thumbStart, thumbStart + baScaled.size());
-        newAsset.metaData->thumbnailImageSize = static_cast<DWORD>(newAsset.metaData->thumbnailImage.size());
+        newAsset.metaData->thumbnailImageSize = static_cast<u32>(newAsset.metaData->thumbnailImage.size());
 
         GameGpd *gpd = entry->gameGpd;
         if (gpd != nullptr && !gpd->thumbnail.image.empty())
@@ -671,7 +671,7 @@ void ProfileEditor::onAssetsDoneDownloading()
         {
             newAsset.metaData->titleThumbnailImage.clear();
         }
-        newAsset.metaData->titleThumbnailImageSize = static_cast<DWORD>(newAsset.metaData->titleThumbnailImage.size());
+        newAsset.metaData->titleThumbnailImageSize = static_cast<u32>(newAsset.metaData->titleThumbnailImage.size());
 
         // We created this package ourselves, so rebuilding the hashes is safe
         // even though PIRS signatures cannot be recomputed; Rehash() would
@@ -698,7 +698,7 @@ void ProfileEditor::onAssetsDoneDownloading()
 }
 
 
-void ProfileEditor::addToDashGpd(SettingEntry *entry, SettingEntryType type, UINT64 id)
+void ProfileEditor::addToDashGpd(SettingEntry *entry, SettingEntryType type, u64 id)
 {
     entry->type = type;
 
@@ -762,11 +762,11 @@ ProfileEditor::~ProfileEditor()
         awardThumbnailManager->clearAccessCache();
 
     // free all the game gpd memory
-    for (DWORD i = 0; i < games.size(); i++)
+    for (u32 i = 0; i < games.size(); i++)
         delete games.at(i).gpd;
 
     // free all of the avatar award gpds
-    for (DWORD i = 0; i < aaGames.size(); i++)
+    for (u32 i = 0; i < aaGames.size(); i++)
     {
         if (aaGames.at(i).titleEntry->achievementCount == 0)
             delete aaGames.at(i).gameGpd;
@@ -786,7 +786,7 @@ ProfileEditor::~ProfileEditor()
         delete profile;
 
     // delete all of the temp files
-    for (DWORD i = 0; i < tempFiles.size(); i++)
+    for (u32 i = 0; i < tempFiles.size(); i++)
     {
         const std::string &tempPath = tempFiles.at(i);
         if (tempPath.empty())
@@ -894,7 +894,7 @@ void ProfileEditor::loadGameInfo(int index)
     ui->achievementsList->clear();
 
     // load all the achievements
-    for (DWORD i = 0; i < curGpd->achievements.size(); i++)
+    for (u32 i = 0; i < curGpd->achievements.size(); i++)
     {
         QTreeWidgetItem *item = new QTreeWidgetItem(ui->achievementsList);
         item->setText(0, QString::fromStdWString(curGpd->achievements.at(i).name).replace("\n", ""));
@@ -1042,7 +1042,7 @@ void ProfileEditor::loadAwardGameInfo(int index)
     AvatarAwardGpd *gpd = entry->gpd;
 
     // load all the avatar awards for the game
-    for (DWORD i = 0; i < gpd->avatarAwards.size(); i++)
+    for (u32 i = 0; i < gpd->avatarAwards.size(); i++)
     {
         QTreeWidgetItem *item = new QTreeWidgetItem(ui->avatarAwardsList);
         item->setText(0, QString::fromStdWString(gpd->avatarAwards.at(i).name).replace("\n", ""));
@@ -1194,9 +1194,9 @@ void ProfileEditor::replyFinishedAwImg(QNetworkReply *aReply)
             buffer.open(QIODevice::WriteOnly);
 
             ui->imgAw->pixmap().scaled(64, 64).save(&buffer, "PNG");
-            image.image.assign(reinterpret_cast<const BYTE*>(ba.constData()),
-                reinterpret_cast<const BYTE*>(ba.constData()) + ba.size());
-            image.length = static_cast<DWORD>(image.image.size());
+            image.image.assign(reinterpret_cast<const u8*>(ba.constData()),
+                reinterpret_cast<const u8*>(ba.constData()) + ba.size());
+            image.length = static_cast<u32>(image.image.size());
             image.initialLength = image.length;
 
                         try
@@ -1410,7 +1410,7 @@ void ProfileEditor::updateAchievement(TitleEntry *entry, AchievementEntry *chiev
         // make sure that the settings exist
         SettingEntry settingGamerscore, settingAchievements;
         settingGamerscore.int32 = settingAchievements.int32 = 0xFFFFFFFF;
-        for (DWORD i = 0; i < gpd->settings.size(); i++)
+        for (u32 i = 0; i < gpd->settings.size(); i++)
             if (gpd->settings.at(i).entry.id == GamercardTitleAchievementsEarned)
                 settingAchievements = gpd->settings.at(i);
             else if (gpd->settings.at(i).entry.id == GamercardTitleCredEarned)
@@ -1531,7 +1531,7 @@ void ProfileEditor::saveAll()
     if (PEC != nullptr)
     {
         // put all the avatar award gpds back in the PEC
-        for (DWORD i = 0; i < aaGames.size(); i++)
+        for (u32 i = 0; i < aaGames.size(); i++)
             if (aaGames.at(i).updated)
                 PEC->ReplaceFile(aaGames.at(i).tempFileName, aaGames.at(i).gpdName);
 
@@ -1566,7 +1566,7 @@ void ProfileEditor::saveAll()
     }
 
     // save the achievements
-    for (DWORD i = 0; i < games.size(); i++)
+    for (u32 i = 0; i < games.size(); i++)
         if (games.at(i).updated)
             profile->ReplaceFile(games.at(i).tempFileName, games.at(i).gpdName);
 
@@ -1579,7 +1579,7 @@ void ProfileEditor::saveAll()
     account->SetLiveEnabled(ui->chxLIVE->checkState() >> 1);
     account->SetRecovering(ui->chxRecovering->checkState() >> 1);
 
-    BYTE passcode[4] = { (BYTE)ui->cmbxPass1->currentIndex(), (BYTE)ui->cmbxPass2->currentIndex(), (BYTE)ui->cmbxPass3->currentIndex(), (BYTE)ui->cmbxPass4->currentIndex() };
+    u8 passcode[4] = { (u8)ui->cmbxPass1->currentIndex(), (u8)ui->cmbxPass2->currentIndex(), (u8)ui->cmbxPass3->currentIndex(), (u8)ui->cmbxPass4->currentIndex() };
     account->SetPasscode(passcode);
 
     switch (ui->cmbxNetwork->currentIndex())
@@ -1656,7 +1656,7 @@ void ProfileEditor::saveAll()
     }
 }
 
-State ProfileEditor::getStateFromFlags(DWORD flags)
+State ProfileEditor::getStateFromFlags(u32 flags)
 {
     if (flags & UnlockedOnline)
         return StateUnlockedOnline;
@@ -1691,7 +1691,7 @@ void ProfileEditor::on_btnCreateAch_clicked()
         QPixmap::fromImage(thumbnail).save(&buffer, "PNG");
 
         // get the next available image id
-        DWORD max = 0;
+        u32 max = 0;
         for (size_t i = 0; i < game->achievements.size(); i++)
             if (max < game->achievements.at(i).imageID)
                 max = game->achievements.at(i).imageID;
@@ -1700,7 +1700,7 @@ void ProfileEditor::on_btnCreateAch_clicked()
         // add the achievement to the game
         try
         {
-            game->CreateAchievement(&entry, (BYTE*)ba.data(), ba.length());
+            game->CreateAchievement(&entry, (u8*)ba.data(), ba.length());
         }
         catch (string error)
         {
@@ -2021,7 +2021,7 @@ void ProfileEditor::onUnlockEverything()
     statusBar->showMessage("Unlocking... 0/" + max);
     ui->tabWidget->setEnabled(false);
 
-    DWORD totalGamerscore = 0;
+    u32 totalGamerscore = 0;
 
     // unlock all achievements
     for (int i = 0; i < ui->gamesList->topLevelItemCount(); i++)
@@ -2071,8 +2071,8 @@ void ProfileEditor::unlockAllAchievements(int index)
         return;
 
     GameGpd *gpd = entry->gpd;
-    DWORD gamerscoreToAdd = 0;
-    for (DWORD i = 0; i < gpd->achievements.size(); i++)
+    u32 gamerscoreToAdd = 0;
+    for (u32 i = 0; i < gpd->achievements.size(); i++)
         if ((gpd->achievements.at(i).flags & Unlocked) == 0)
             gamerscoreToAdd += gpd->achievements.at(i).gamerscore;
 
@@ -2083,7 +2083,7 @@ void ProfileEditor::unlockAllAchievements(int index)
     // make sure that the settings exist
     SettingEntry settingGamerscore, settingAchievements;
     settingGamerscore.int32 = settingAchievements.int32 = 0xFFFFFFFF;
-    for (DWORD i = 0; i < gpd->settings.size(); i++)
+    for (u32 i = 0; i < gpd->settings.size(); i++)
         if (gpd->settings.at(i).entry.id == GamercardTitleAchievementsEarned)
             settingAchievements = gpd->settings.at(i);
         else if (gpd->settings.at(i).entry.id == GamercardTitleCredEarned)

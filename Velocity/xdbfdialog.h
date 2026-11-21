@@ -35,7 +35,7 @@ class XdbfDialog;
 struct Entry
 {
     EntryType type = Undefined;
-    DWORD index = 0;
+    u32 index = 0;
 };
 
 class XdbfDialog : public QDialog
@@ -60,7 +60,7 @@ private:
 
     void addEntriesToTable(vector<XdbfEntry> entries, QString type);
 
-    std::optional<Entry> indexToEntry(DWORD index);
+    std::optional<Entry> indexToEntry(u32 index);
 
     void loadEntries();
 };

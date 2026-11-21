@@ -16,7 +16,7 @@ SvodFileInfoDialog::SvodFileInfoDialog(SVOD *svod, GdfxFileEntry *entry, QString
                 entry->size) + ")");
     ui->lblSector->setText("0x" + QString::number(entry->sector, 16).toUpper());
 
-    DWORD sizeOnDisk = (entry->size + 0x7FF) & 0xFFFFF800;
+    u32 sizeOnDisk = (entry->size + 0x7FF) & 0xFFFFF800;
     ui->lblSizeOnDisk->setText(QString::fromStdString(ByteSizeToString(sizeOnDisk)) + " (" +
             QString::number(sizeOnDisk) + " + bytes)");
     ui->lblTypeOfFile->setText(getFileType(QString::fromStdString(entry->name)));
@@ -94,13 +94,13 @@ void SvodFileInfoDialog::on_pushButton_3_clicked()
     entry->name = ui->txtName->text().toStdString();
     entry->attributes = 0;
 
-    entry->attributes |= static_cast<BYTE>(ui->chReadOnly->isChecked());
-    entry->attributes |= static_cast<BYTE>(ui->chHidden->isChecked()) << 1;
-    entry->attributes |= static_cast<BYTE>(ui->chSystem->isChecked()) << 2;
-    entry->attributes |= static_cast<BYTE>(ui->chDirectory->isChecked()) << 4;
-    entry->attributes |= static_cast<BYTE>(ui->chArchive->isChecked()) << 5;
-    entry->attributes |= static_cast<BYTE>(ui->chDevice->isChecked()) << 6;
-    entry->attributes |= static_cast<BYTE>(ui->chNormal->isChecked()) << 7;
+    entry->attributes |= static_cast<u8>(ui->chReadOnly->isChecked());
+    entry->attributes |= static_cast<u8>(ui->chHidden->isChecked()) << 1;
+    entry->attributes |= static_cast<u8>(ui->chSystem->isChecked()) << 2;
+    entry->attributes |= static_cast<u8>(ui->chDirectory->isChecked()) << 4;
+    entry->attributes |= static_cast<u8>(ui->chArchive->isChecked()) << 5;
+    entry->attributes |= static_cast<u8>(ui->chDevice->isChecked()) << 6;
+    entry->attributes |= static_cast<u8>(ui->chNormal->isChecked()) << 7;
 
     svod->WriteFileEntry(entry);
     close();

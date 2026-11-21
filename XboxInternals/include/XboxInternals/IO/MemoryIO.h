@@ -1,31 +1,31 @@
 #ifndef MEMORYSTREAM_H
 #define MEMORYSTREAM_H
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <string.h>
 #include <XboxInternals/IO/BaseIO.h>
 
 class XBOXINTERNALS_EXPORT MemoryIO : public BaseIO
 {
 public:
-    MemoryIO(BYTE *data, size_t length);
+    MemoryIO(u8 *data, size_t length);
     virtual ~MemoryIO();
 
-    void SetPosition(UINT64 pos, std::ios_base::seekdir dir = std::ios_base::beg);
-    UINT64 GetPosition();
-    UINT64 Length();
+    void SetPosition(u64 pos, std::ios_base::seekdir dir = std::ios_base::beg);
+    u64 GetPosition();
+    u64 Length();
 
-    void ReadBytes(BYTE *outBuffer, DWORD len);
-    void WriteBytes(BYTE *buffer, DWORD len);
+    void ReadBytes(u8 *outBuffer, u32 len);
+    void WriteBytes(u8 *buffer, u32 len);
 
     void Close();
     void Flush();
 
 private:
-    BYTE *memory;
+    u8 *memory;
     size_t length;
 
-    UINT64 pos;
+    u64 pos;
 };
 
 #endif // MEMORYSTREAM_H

@@ -21,19 +21,19 @@ public:
     MultiFileIO& operator=(const MultiFileIO&) = delete;
 
     // seek to a position in a file
-    void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg);
+    void SetPosition(u64 position, std::ios_base::seekdir dir = std::ios_base::beg);
 
     // get current address in the file
-    UINT64 GetPosition();
+    u64 GetPosition();
 
     // get the length of all the files
-    UINT64 Length();
+    u64 Length();
 
     // read len bytes from the current file at the current position into buffer
-    void ReadBytes(BYTE *outBuffer, DWORD len);
+    void ReadBytes(u8 *outBuffer, u32 len);
 
     // Write len bytes from the current file at the current position into buffer
-    void WriteBytes(BYTE *buffer, DWORD len);
+    void WriteBytes(u8 *buffer, u32 len);
 
     // flushes the stream
     void Flush();
@@ -42,9 +42,9 @@ public:
     void Close();
 
 private:
-    UINT64 pos, lengthOfFiles;
+    u64 pos, lengthOfFiles;
     bool isClosed;
-    DWORD currentIOIndex;
+    u32 currentIOIndex;
     std::vector<std::unique_ptr<BaseIO>> files;
 
     void calculateLengthOfAllFiles();

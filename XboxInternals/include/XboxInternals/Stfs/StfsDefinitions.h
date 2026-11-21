@@ -1,7 +1,7 @@
 #ifndef STFSDEFINITIONS_H
 #define STFSDEFINITIONS_H
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/Stfs/StfsConstants.h>
 #include <XboxInternals/IO/FileIO.h>
 #include <iostream>
@@ -10,6 +10,10 @@
 
 using std::string;
 
+// STFS block numbers are 24-bit on disk and held in a u32.
+// 0xFFFFFF ends a hash-entry chain and marks an empty file's start block.
+inline constexpr u32 kBlockChainTerminator = 0xFFFFFF;
+inline constexpr u32 kBlockNumberMask = 0xFFFFFF;
 enum LicenseType
 {
     Unused = 0x0000,
@@ -27,72 +31,72 @@ enum LicenseType
 struct LicenseEntry
 {
     LicenseType type;
-    UINT64 data;
-    DWORD bits;
-    DWORD flags;
+    u64 data;
+    u32 bits;
+    u32 flags;
 };
 
 struct StfsVolumeDescriptor
 {
-    BYTE size;
-    BYTE reserved;
-    BYTE blockSeparation;
-    WORD fileTableBlockCount;
-    INT24 fileTableBlockNum;
-    BYTE topHashTableHash[0x14];
-    DWORD allocatedBlockCount;
-    DWORD unallocatedBlockCount;
+    u8 size;
+    u8 reserved;
+    u8 blockSeparation;
+    u16 fileTableBlockCount;
+    u32 fileTableBlockNum;
+    u8 topHashTableHash[0x14];
+    u32 allocatedBlockCount;
+    u32 unallocatedBlockCount;
 };
 
 struct SvodVolumeDescriptor
 {
-    BYTE size;
-    BYTE blockCacheElementCount;
-    BYTE workerThreadProcessor;
-    BYTE workerThreadPriority;
-    BYTE rootHash[0x14];
-    BYTE flags;
-    INT24 dataBlockCount;
-    INT24 dataBlockOffset;
-    BYTE reserved[5];
+    u8 size;
+    u8 blockCacheElementCount;
+    u8 workerThreadProcessor;
+    u8 workerThreadPriority;
+    u8 rootHash[0x14];
+    u8 flags;
+    u32 dataBlockCount;
+    u32 dataBlockOffset;
+    u8 reserved[5];
 };
 
 struct Certificate
 {
-    WORD publicKeyCertificateSize;
-    BYTE ownerConsoleID[5];
+    u16 publicKeyCertificateSize;
+    u8 ownerConsoleID[5];
     string ownerConsolePartNumber;
     ConsoleType ownerConsoleType;
     ConsoleTypeFlags consoleTypeFlags;
     string dateGeneration;
-    DWORD publicExponent;
-    BYTE publicModulus[0x80];
-    BYTE certificateSignature[0x100];
-    BYTE signature[0x80];
+    u32 publicExponent;
+    u8 publicModulus[0x80];
+    u8 certificateSignature[0x100];
+    u8 signature[0x80];
 };
 
 struct MSTime
 {
-    WORD year;
-    BYTE month;
-    BYTE monthDay;
+    u16 year;
+    u8 month;
+    u8 monthDay;
 
-    BYTE hours;
-    BYTE minutes;
-    BYTE seconds;
+    u8 hours;
+    u8 minutes;
+    u8 seconds;
 };
 
-void ReadStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, DWORD address);
+void ReadStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, u32 address);
 
 XBOXINTERNALS_EXPORT void ReadSvodVolumeDescriptorEx(SvodVolumeDescriptor *descriptor, BaseIO *io);
 
-void WriteStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, DWORD address);
+void WriteStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, u32 address);
 
 XBOXINTERNALS_EXPORT void WriteSvodVolumeDescriptorEx(SvodVolumeDescriptor *descriptor, BaseIO *io);
 
-void ReadCertificateEx(Certificate *cert, BaseIO *io, DWORD address);
+void ReadCertificateEx(Certificate *cert, BaseIO *io, u32 address);
 
-void WriteCertificateEx(Certificate *cert, BaseIO *io, DWORD address);
+void WriteCertificateEx(Certificate *cert, BaseIO *io, u32 address);
 
 XBOXINTERNALS_EXPORT string MagicToString(Magic magic);
 
@@ -103,7 +107,7 @@ XBOXINTERNALS_EXPORT string ConsoleTypeToString(ConsoleType type);
 template <>
 struct EnumTraits<LicenseType>
 {
-    static LicenseType FromRaw(UINT64 raw)
+    static LicenseType FromRaw(u64 raw)
     {
         switch (raw)
         {
@@ -123,13 +127,13 @@ struct EnumTraits<LicenseType>
     }
 };
 
-XBOXINTERNALS_EXPORT string ByteSizeToString(UINT64 bytes);
+XBOXINTERNALS_EXPORT string ByteSizeToString(u64 bytes);
 
 XBOXINTERNALS_EXPORT string LicenseTypeToString(LicenseType type);
 
-XBOXINTERNALS_EXPORT MSTime DWORDToMSTime(DWORD winTime);
+XBOXINTERNALS_EXPORT MSTime DWORDToMSTime(u32 winTime);
 
-XBOXINTERNALS_EXPORT DWORD MSTimeToDWORD(MSTime time);
+XBOXINTERNALS_EXPORT u32 MSTimeToDWORD(MSTime time);
 
 XBOXINTERNALS_EXPORT MSTime TimetToMSTime(time_t time);
 

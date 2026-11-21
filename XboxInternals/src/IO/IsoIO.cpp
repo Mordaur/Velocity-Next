@@ -14,7 +14,7 @@ IsoIO::IsoIO(BaseIO *isoIO, std::string isoFilePath, XboxInternals::Iso::IsoImag
     SetPosition(0);
 }
 
-void IsoIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void IsoIO::ReadBytes(u8 *outBuffer, u32 len)
 {
     SetPosition(GetPosition());
 
@@ -26,7 +26,7 @@ void IsoIO::ReadBytes(BYTE *outBuffer, DWORD len)
     virtualPosition += len;
 }
 
-void IsoIO::WriteBytes(BYTE *buffer, DWORD len)
+void IsoIO::WriteBytes(u8 *buffer, u32 len)
 {
     SetPosition(GetPosition());
 
@@ -38,14 +38,14 @@ void IsoIO::WriteBytes(BYTE *buffer, DWORD len)
     virtualPosition += len;
 }
 
-UINT64 IsoIO::GetPosition()
+u64 IsoIO::GetPosition()
 {
     return virtualPosition;
 }
 
-void IsoIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
+void IsoIO::SetPosition(u64 position, std::ios_base::seekdir dir)
 {
-    UINT64 newVirtualPosition = position;
+    u64 newVirtualPosition = position;
     switch (dir)
     {
         case std::ios_base::beg:
@@ -66,11 +66,11 @@ void IsoIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
     virtualPosition = newVirtualPosition;
 
     // calculate the real position
-    UINT64 realPosition = iso->SectorToAddress(entry->sector) + newVirtualPosition;
+    u64 realPosition = iso->SectorToAddress(entry->sector) + newVirtualPosition;
     isoIO->SetPosition(realPosition);
 }
 
-UINT64 IsoIO::Length()
+u64 IsoIO::Length()
 {
     return entry->size;
 }

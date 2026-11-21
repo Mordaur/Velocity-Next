@@ -8,7 +8,7 @@
 #include <QUrl>
 #include <QPixmap>
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 
 enum BoxArtSize
 {
@@ -22,7 +22,7 @@ class BoxArtRetriever : public QObject
 public:
     explicit BoxArtRetriever(QObject *parent = 0);
 
-    void FetchBoxArt(DWORD titleID, BoxArtSize size);
+    void FetchBoxArt(u32 titleID, BoxArtSize size);
 
 signals:
     void largeBoxArtRetrieved(QPixmap boxart);

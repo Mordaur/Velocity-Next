@@ -1,6 +1,7 @@
 #pragma once
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
+#include <XboxInternals/EnumTraits.h>
 #include <vector>
 
 enum AssetSubcategory
@@ -123,18 +124,18 @@ enum AssetGender
 struct STRBHeader
 {
     // in the file
-    DWORD magic;
+    u32 magic;
     bool blockAlignmentStored;
     bool littleEndian;
-    BYTE guid[0x10];
-    BYTE blockIDSize;
-    BYTE blockSpanSize;
-    WORD unused;
-    BYTE blockAlignment;
+    u8 guid[0x10];
+    u8 blockIDSize;
+    u8 blockSpanSize;
+    u16 unused;
+    u8 blockAlignment;
 
     // calculated
     int blockHeaderSize;
-    DWORD blockStartAddress;
+    u32 blockStartAddress;
 };
 
 enum STRRBBlockId
@@ -154,7 +155,7 @@ enum STRRBBlockId
 template <>
 struct EnumTraits<AssetSubcategory>
 {
-    static AssetSubcategory FromRaw(UINT64 raw)
+    static AssetSubcategory FromRaw(u64 raw)
     {
         return raw <= 0x44C ? static_cast<AssetSubcategory>(raw) : AssetSubcategoryUnknown;
     }
@@ -163,7 +164,7 @@ struct EnumTraits<AssetSubcategory>
 template <>
 struct EnumTraits<AssetGender>
 {
-    static AssetGender FromRaw(UINT64 raw)
+    static AssetGender FromRaw(u64 raw)
     {
         return (raw >= Male && raw <= Both) ? static_cast<AssetGender>(raw) : GenderUnknown;
     }
@@ -172,7 +173,7 @@ struct EnumTraits<AssetGender>
 template <>
 struct EnumTraits<BinaryAssetType>
 {
-    static BinaryAssetType FromRaw(UINT64 raw)
+    static BinaryAssetType FromRaw(u64 raw)
     {
         return (raw >= Component && raw <= ShapeOverridePost)
                    ? static_cast<BinaryAssetType>(raw)
@@ -183,7 +184,7 @@ struct EnumTraits<BinaryAssetType>
 template <>
 struct EnumTraits<SkeletonVersion>
 {
-    static SkeletonVersion FromRaw(UINT64 raw)
+    static SkeletonVersion FromRaw(u64 raw)
     {
         return raw <= 3 ? static_cast<SkeletonVersion>(raw) : SkeletonVersionUnknown;
     }
@@ -192,7 +193,7 @@ struct EnumTraits<SkeletonVersion>
 template <>
 struct EnumTraits<STRRBBlockId>
 {
-    static STRRBBlockId FromRaw(UINT64 raw)
+    static STRRBBlockId FromRaw(u64 raw)
     {
         if (raw == 0xFFFFFFFFull)
             return STRBEof;
@@ -204,26 +205,26 @@ struct EnumTraits<STRRBBlockId>
 
 struct AssetMetadata
 {
-    BYTE metadataVersion;
+    u8 metadataVersion;
     AssetGender gender;
     BinaryAssetType type;
-    DWORD assetTypeDetails;
+    u32 assetTypeDetails;
     AssetSubcategory category;
     SkeletonVersion skeletonVersion;
 };
 
 struct RGBColor
 {
-    BYTE blue;
-    BYTE green;
-    BYTE red;
-    BYTE alpha;
+    u8 blue;
+    u8 green;
+    u8 red;
+    u8 alpha;
 };
 
 struct ColorGroup
 {
     RGBColor color;
-    DWORD unknown;
+    u32 unknown;
 };
 
 struct ColorTableEntry
@@ -233,13 +234,13 @@ struct ColorTableEntry
 
 struct ColorTable
 {
-    DWORD count;
+    u32 count;
     std::vector<ColorTableEntry> entries;
 };
 
 struct Animation
 {
-    DWORD frameCount;
+    u32 frameCount;
     float duration;
     float framesPerSecond;
 };
@@ -250,8 +251,8 @@ struct STRBBlock
     int dataLength;
     int fieldSize;
 
-    std::vector<BYTE> data;
-    DWORD dataAddress;
+    std::vector<u8> data;
+    u32 dataAddress;
 };
 
 

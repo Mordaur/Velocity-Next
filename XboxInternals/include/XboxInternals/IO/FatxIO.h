@@ -13,8 +13,8 @@
 
 struct Range
 {
-    UINT64 start;
-    UINT64 len;
+    u64 start;
+    u64 len;
 };
 
 class XBOXINTERNALS_EXPORT FatxIO : public BaseIO
@@ -29,25 +29,25 @@ public:
     FatxFileEntry *GetFatxFileEntry();
 
     // set the position
-    void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg);
+    void SetPosition(u64 position, std::ios_base::seekdir dir = std::ios_base::beg);
 
     // get the current position
-    UINT64 GetPosition();
+    u64 GetPosition();
 
     // returns the length
-    UINT64 Length();
+    u64 Length();
 
     // get the drive's current position
-    UINT64 GetDrivePosition();
+    u64 GetDrivePosition();
 
     // read bytes at the current position
-    void ReadBytes(BYTE *outBuffer, DWORD len);
+    void ReadBytes(u8 *outBuffer, u32 len);
 
     // Write bytes at the current position
-    void WriteBytes(BYTE *buffer, DWORD len);
+    void WriteBytes(u8 *buffer, u32 len);
 
     // save the file to disk
-    void SaveFile(std::string savePath, void(*progress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
+    void SaveFile(std::string savePath, void(*progress)(void*, u32, u32) = NULL, void *arg = NULL);
 
     // does nothing, required implementation
     void Flush();
@@ -56,36 +56,36 @@ public:
     void Close();
 
     // expands the cluster chain if necessary, returns the amount of new clusters allocated
-    int AllocateMemory(DWORD byteAmount);
+    int AllocateMemory(u32 byteAmount);
 
     // Write the entry to disk
-    void WriteEntryToDisk(std::vector<DWORD> *clusterChain = NULL);
+    void WriteEntryToDisk(std::vector<u32> *clusterChain = NULL);
 
     // replace the file with one from a local disk
-    void ReplaceFile(std::string sourcePath, void(*progress)(void*, DWORD, DWORD) = NULL,
+    void ReplaceFile(std::string sourcePath, void(*progress)(void*, u32, u32) = NULL,
             void *arg = NULL);
 
     // convert a cluster to an offset
-    static UINT64 ClusterToOffset(Partition *part, DWORD cluster);
+    static u64 ClusterToOffset(Partition *part, u32 cluster);
 
     // sets all the clusters equal to value
-    static void SetAllClusters(BaseIO *device, Partition *part, std::vector<DWORD> &clusters,
-            DWORD value);
+    static void SetAllClusters(BaseIO *device, Partition *part, std::vector<u32> &clusters,
+            u32 value);
 
     // get the ranges of consecutive numbers in list where it's sorted
-    static void GetConsecutive(std::vector<DWORD> &list, std::vector<Range> &outRanges,
+    static void GetConsecutive(std::vector<u32> &list, std::vector<Range> &outRanges,
             bool includeNonConsec = false);
 
 private:
     // find count amount of free custers
-    std::vector<DWORD> getFreeClusters(Partition *part, DWORD count);
+    std::vector<u32> getFreeClusters(Partition *part, u32 count);
 
     // Writes the cluster chain (and links them correctly) starting from startingCluster
-    void WriteClusterChain(Partition *part, DWORD startingCluster, std::vector<DWORD> clusterChain);
+    void WriteClusterChain(Partition *part, u32 startingCluster, std::vector<u32> clusterChain);
 
     BaseIO *device;
-    UINT64 pos;
-    DWORD maxReadConsecutive;
+    u64 pos;
+    u32 maxReadConsecutive;
 };
 
 bool compareRanges(Range a, Range b);

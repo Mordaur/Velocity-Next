@@ -503,7 +503,7 @@ void IsoDialog::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
     }
     
     // Get magic number and path from item data
-    DWORD magic = item->data(0, static_cast<int>(Qt::UserRole) + IsoTreeWidgetItemDataMagic).toUInt();
+    u32 magic = item->data(0, static_cast<int>(Qt::UserRole) + IsoTreeWidgetItemDataMagic).toUInt();
     QString pathInISO = item->data(0, static_cast<int>(Qt::UserRole) + IsoTreeWidgetItemDataPathInISO).toString();
     
     // Handle based on magic number like Gualdimar does
@@ -757,7 +757,7 @@ void IsoDialog::openFileInViewer(const XboxInternals::Iso::IsoEntry& entry) {
     
     // For other files, show info including magic number for debugging
     // Get the stored magic number from the tree item
-    DWORD magic = 0;
+    u32 magic = 0;
     QTreeWidgetItemIterator it(tree_);
     while (*it) {
         QString itemPath = (*it)->data(0, static_cast<int>(Qt::UserRole) + IsoTreeWidgetItemDataPathInISO).toString();
@@ -833,8 +833,8 @@ void IsoDialog::showContextMenu(const QPoint& point) {
                     }
                     
                     // Read the entire file
-                    UINT64 fileSize = io->Length();
-                    std::vector<BYTE> buffer(fileSize);
+                    u64 fileSize = io->Length();
+                    std::vector<u8> buffer(fileSize);
                     io->SetPosition(0);
                     io->ReadBytes(buffer.data(), fileSize);
                     

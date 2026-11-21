@@ -63,7 +63,7 @@ private:
     QPushButton *btnVolDesc;
     QPushButton *btnLicense;
     QPushButton *btnTransFlags;
-    DWORD offset;
+    u32 offset;
 
 private slots:
     void btnCertificateClicked();

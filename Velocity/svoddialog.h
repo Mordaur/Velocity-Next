@@ -65,10 +65,10 @@ private:
 
     void loadListing(QTreeWidgetItem *parent, vector<GdfxFileEntry> *files);
 
-    friend void UpdateProgress(DWORD cur, DWORD total, void *arg);
+    friend void UpdateProgress(u32 cur, u32 total, void *arg);
 };
 
-void UpdateProgress(DWORD cur, DWORD total, void *arg);
+void UpdateProgress(u32 cur, u32 total, void *arg);
 
 #endif // SVODDIALOG_H
 

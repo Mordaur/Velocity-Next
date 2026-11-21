@@ -1,7 +1,7 @@
 #include "fatxfiledialog.h"
 #include "ui_fatxfiledialog.h"
 
-FatxFileDialog::FatxFileDialog(FatxDrive *drive, FatxFileEntry *entry, DWORD clusterSize,
+FatxFileDialog::FatxFileDialog(FatxDrive *drive, FatxFileEntry *entry, u32 clusterSize,
         QString type, QWidget *parent) :
     QDialog(parent), ui(new Ui::FatxFileDialog), entry(entry), type(type), drive(drive)
 {
@@ -20,16 +20,16 @@ FatxFileDialog::FatxFileDialog(FatxDrive *drive, FatxFileEntry *entry, DWORD clu
     {
         ui->lblSize->setText(QString::fromStdString(ByteSizeToString(entry->fileSize)));
 
-        UINT64 sizeOnDisk = (entry->fileSize + (clusterSize - 1)) & ~(clusterSize - 1);
+        u64 sizeOnDisk = (entry->fileSize + (clusterSize - 1)) & ~(clusterSize - 1);
         ui->lblSizeOnDisk->setText(QString::fromStdString(ByteSizeToString(sizeOnDisk)));
     }
     else
     {
         // Calculate the size of the directory and all its contents
-        UINT64 totalSize = calculateDirectorySize(entry, clusterSize);
+        u64 totalSize = calculateDirectorySize(entry, clusterSize);
         ui->lblSize->setText(QString::fromStdString(ByteSizeToString(totalSize)));
         
-        UINT64 sizeOnDisk = (totalSize + (clusterSize - 1)) & ~static_cast<UINT64>(clusterSize - 1);
+        u64 sizeOnDisk = (totalSize + (clusterSize - 1)) & ~static_cast<u64>(clusterSize - 1);
         ui->lblSizeOnDisk->setText(QString::fromStdString(ByteSizeToString(sizeOnDisk)));
     }
 
@@ -49,7 +49,7 @@ FatxFileDialog::~FatxFileDialog()
     delete ui;
 }
 
-QString FatxFileDialog::msTimeToString([[maybe_unused]] DWORD time)
+QString FatxFileDialog::msTimeToString([[maybe_unused]] u32 time)
 {
     MSTime msTime = DWORDToMSTime(entry->creationDate);
 
@@ -144,9 +144,9 @@ void FatxFileDialog::on_btnCancel_clicked()
     close();
 }
 
-UINT64 FatxFileDialog::calculateDirectorySize(FatxFileEntry *directory, DWORD clusterSize)
+u64 FatxFileDialog::calculateDirectorySize(FatxFileEntry *directory, u32 clusterSize)
 {
-    UINT64 totalSize = 0;
+    u64 totalSize = 0;
     
     // Ensure the directory's child entries are loaded
     if (directory->cachedFiles.empty())

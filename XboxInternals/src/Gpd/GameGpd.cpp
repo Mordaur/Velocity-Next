@@ -39,7 +39,7 @@ AchievementEntry GameGpd::readAchievementEntry(XdbfEntry entry)
     toReturn.gamerscore = io->ReadDword();
     toReturn.flags = io->ReadDword();
 
-    WINFILETIME timeStamp = { io->ReadDword(), io->ReadDword() };
+    FileTime timeStamp = { io->ReadDword(), io->ReadDword() };
     toReturn.unlockTime = XdbfHelpers::FILETIMEtoTimeT(timeStamp);
     toReturn.unlockTimeMilliseconds = XdbfHelpers::FILETIMEtoMilliseconds(timeStamp);
 
@@ -55,7 +55,7 @@ AchievementEntry GameGpd::readAchievementEntry(XdbfEntry entry)
 
 void GameGpd::WriteAchievementEntry(AchievementEntry *entry)
 {
-    DWORD calculatedLength = 0x1C + ((entry->name.size() + entry->unlockedDescription.size() +
+    u32 calculatedLength = 0x1C + ((entry->name.size() + entry->unlockedDescription.size() +
             entry->lockedDescription.size() + 3) * 2);
     if (calculatedLength != entry->initialLength)
     {
@@ -86,12 +86,12 @@ void GameGpd::WriteAchievementEntry(AchievementEntry *entry)
               because a timestamp of 0000-00-00 00:00:00.123
               surely wouldn't be suspicious.
             */
-            io->Write((UINT64)0);
+            io->Write((u64)0);
         else
         {
-            WINFILETIME time = XdbfHelpers::TimeTtoFILETIME(entry->unlockTime, entry->unlockTimeMilliseconds);
-            io->Write(time.dwHighDateTime);
-            io->Write(time.dwLowDateTime);
+            FileTime time = XdbfHelpers::TimeTtoFILETIME(entry->unlockTime, entry->unlockTimeMilliseconds);
+            io->Write(time.highDateTime);
+            io->Write(time.lowDateTime);
         }
     }
     else
@@ -107,15 +107,15 @@ void GameGpd::WriteAchievementEntry(AchievementEntry *entry)
     io->Flush();
 }
 
-void GameGpd::CreateAchievement(AchievementEntry *entry, BYTE *thumbnail, DWORD thumbnailLen)
+void GameGpd::CreateAchievement(AchievementEntry *entry, u8 *thumbnail, u32 thumbnailLen)
 {
-    DWORD entryLen = 0x1C + ((entry->name.size() + entry->unlockedDescription.size() +
+    u32 entryLen = 0x1C + ((entry->name.size() + entry->unlockedDescription.size() +
             entry->lockedDescription.size() + 3) * 2);
     entry->initialLength = entryLen;
 
     // get the next id for the achievement
-    DWORD max = 0;
-    for (DWORD i = 0; i < achievements.size(); i++)
+    u32 max = 0;
+    for (u32 i = 0; i < achievements.size(); i++)
     {
         if (achievements.at(i).achievementID > max)
             max = achievements.at(i).achievementID;
@@ -136,7 +136,7 @@ void GameGpd::CreateAchievement(AchievementEntry *entry, BYTE *thumbnail, DWORD 
         return;
 
     // make sure that the image is a PNG
-    if (*(DWORD*)thumbnail != 0x474E5089)
+    if (*(u32*)thumbnail != 0x474E5089)
         throw string("Gpd: Error creating image entry. Image must be a PNG.\n");
 
     // create a new image entry for the thumbnail
@@ -166,7 +166,7 @@ string GameGpd::GetAchievementType(AchievementEntry *entry)
 void GameGpd::DeleteAchievement(AchievementEntry *entry)
 {
     // remove the entry from the list
-    DWORD i;
+    u32 i;
     for (i = 0 ; i < achievements.size(); i++)
     {
         if (achievements.at(i).entry.id == entry->entry.id)
@@ -184,7 +184,7 @@ void GameGpd::DeleteAchievement(AchievementEntry *entry)
 
 bool GameGpd::GetAchievementThumbnail(AchievementEntry *entry, ImageEntry *out)
 {
-    for (DWORD i = 0; i < images.size(); i++)
+    for (u32 i = 0; i < images.size(); i++)
     {
         if (images.at(i).entry.id == entry->imageID)
         {
@@ -198,7 +198,7 @@ bool GameGpd::GetAchievementThumbnail(AchievementEntry *entry, ImageEntry *out)
 void GameGpd::UnlockAllAchievementsOffline()
 {
     // iterate through all of the achievements
-    for (DWORD i = 0; i < achievements.size(); i++)
+    for (u32 i = 0; i < achievements.size(); i++)
     {
         // unlock the achievement
         achievements.at(i).flags |= (Unlocked | 0x100000);
@@ -215,16 +215,16 @@ void GameGpd::UnlockAllAchievementsOffline()
 void GameGpd::init()
 {
     // read all of the achievement entries
-    for (DWORD i = 0; i < xdbf->achievements.entries.size(); i++)
+    for (u32 i = 0; i < xdbf->achievements.entries.size(); i++)
         achievements.push_back(readAchievementEntry(xdbf->achievements.entries.at(i)));
 
     // find the thumbnail for the game
-    for (DWORD i = 0; i < images.size(); i++)
+    for (u32 i = 0; i < images.size(); i++)
         if (images.at(i).entry.id == 0x8000)
             thumbnail = images.at(i);
 
     // find the game name string
-    for (DWORD i = 0; i < strings.size(); i++)
+    for (u32 i = 0; i < strings.size(); i++)
         if (strings.at(i).entry.id == 0x8000)
             gameName = strings.at(i);
 }

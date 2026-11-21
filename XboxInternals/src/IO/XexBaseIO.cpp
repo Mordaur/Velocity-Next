@@ -8,7 +8,7 @@ XexBaseIO::XexBaseIO(BaseIO *io, Xex *xex) :
 
 }
 
-void XexBaseIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
+void XexBaseIO::SetPosition(u64 position, std::ios_base::seekdir dir)
 {
     if (position != 0 || dir != std::ios_base::beg)
         throw std::string("XexBaseIO: Can only seek to the beginning.");
@@ -17,7 +17,7 @@ void XexBaseIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
     this->position = 0;
 }
 
-UINT64 XexBaseIO::GetPosition()
+u64 XexBaseIO::GetPosition()
 {
     return position;
 }

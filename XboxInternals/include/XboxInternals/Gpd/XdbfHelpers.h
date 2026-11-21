@@ -1,6 +1,6 @@
 #pragma once
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/Gpd/XdbfDefinitions.h>
 #include <iostream>
 #include <time.h>
@@ -19,13 +19,13 @@ public:
 
     static bool CompareEntries(XdbfEntry a, XdbfEntry b);
 
-    static time_t FILETIMEtoTimeT(WINFILETIME time);
+    static time_t FILETIMEtoTimeT(FileTime time);
 
-    static unsigned int FILETIMEtoMilliseconds(WINFILETIME time);
+    static unsigned int FILETIMEtoMilliseconds(FileTime time);
 
-    static WINFILETIME TimeTtoFILETIME(time_t time);
+    static FileTime TimeTtoFILETIME(time_t time);
 
-    static WINFILETIME TimeTtoFILETIME(time_t time, unsigned int milliseconds);
+    static FileTime TimeTtoFILETIME(time_t time, unsigned int milliseconds);
 
     static string AchievementTypeToString(AchievementFlags type);
 
@@ -35,7 +35,7 @@ public:
 
     static string AssetGenderToString(AssetGender gender);
 
-    static string IDtoString(UINT64 id);
+    static string IDtoString(u64 id);
 
     static string GetAchievementState(AchievementEntry *entry);
 };

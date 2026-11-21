@@ -1,7 +1,7 @@
 #ifndef XEXDEFINITIONS_H
 #define XEXDEFINITIONS_H
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 
 #include <string>
@@ -17,11 +17,11 @@
 #define XEX_COMPRESSION_BLOCK_SIZE			0x8
 #define XEX_COPY_BUFFER_SIZE				0x100000
 
-const BYTE XEX_RETAIL_KEY[XEX_AES_BLOCK_SIZE] = { 0x20, 0xB1, 0x85, 0xA5, 0x9D, 0x28, 0xFD, 0xC3,
+const u8 XEX_RETAIL_KEY[XEX_AES_BLOCK_SIZE] = { 0x20, 0xB1, 0x85, 0xA5, 0x9D, 0x28, 0xFD, 0xC3,
                                               0x40, 0x58, 0x3F, 0xBB, 0x08, 0x96, 0xBF, 0x91 };
 
 // the correct dev key is NULL
-const BYTE XEX_DEVKIT_KEY[XEX_AES_BLOCK_SIZE] = { 0 };
+const u8 XEX_DEVKIT_KEY[XEX_AES_BLOCK_SIZE] = { 0 };
 
 
 enum XexOptionHeaderEntryID
@@ -198,18 +198,18 @@ enum XexCompressionState
 
 struct XexHeader
 {
-    DWORD magic;
-    DWORD moduleFlags;
-    DWORD dataAddress;
-    DWORD reserved;
-    DWORD headerAddress;
-    DWORD optionalHeaderEntryCount;
+    u32 magic;
+    u32 moduleFlags;
+    u32 dataAddress;
+    u32 reserved;
+    u32 headerAddress;
+    u32 optionalHeaderEntryCount;
 };
 
 struct XexOptionalHeaderEntry
 {
     XexOptionHeaderEntryID id;
-    DWORD data;
+    u32 data;
 };
 
 struct XexStaticLibraryInfo
@@ -229,41 +229,41 @@ struct XexRatingBlock
 
 struct XexExecutionInfo
 {
-    DWORD mediaID;
-    DWORD version;
-    DWORD baseVersion;
-    DWORD titleID;
-    BYTE executionTable;
-    BYTE platform;
-    BYTE discNumber;
-    BYTE discCount;
-    DWORD savegameID;
+    u32 mediaID;
+    u32 version;
+    u32 baseVersion;
+    u32 titleID;
+    u8 executionTable;
+    u8 platform;
+    u8 discNumber;
+    u8 discCount;
+    u32 savegameID;
 };
 
 struct XexResourceFileEntry
 {
     std::string name; 	// max length is 8 characters
-    DWORD address;
-    DWORD size;
+    u32 address;
+    u32 size;
 };
 
 struct XexSecurityInfo
 {
-    DWORD size;
-    DWORD imageSize;
-    BYTE pirsRsaSignature[0x100];
-    DWORD imageInfoSize;
-    DWORD imageFlags;
-    DWORD loadAddress;
-    BYTE sectionHash[0x14];
-    DWORD importTableSize;
-    BYTE importTableHash[0x14];
-    BYTE mediaID[0x10];
-    BYTE key[XEX_AES_BLOCK_SIZE];
-    DWORD exportTableSize;
-    BYTE headerHash[0x14];
-    DWORD regions;
-    DWORD allowedMediaTypes;
+    u32 size;
+    u32 imageSize;
+    u8 pirsRsaSignature[0x100];
+    u32 imageInfoSize;
+    u32 imageFlags;
+    u32 loadAddress;
+    u8 sectionHash[0x14];
+    u32 importTableSize;
+    u8 importTableHash[0x14];
+    u8 mediaID[0x10];
+    u8 key[XEX_AES_BLOCK_SIZE];
+    u32 exportTableSize;
+    u8 headerHash[0x14];
+    u32 regions;
+    u32 allowedMediaTypes;
 };
 
 enum XexSectionType
@@ -284,14 +284,14 @@ enum XexEncryptionState
 struct XexSectionEntry
 {
     XexSectionType type;
-    DWORD totalSize;
-    BYTE hash[0x14];
+    u32 totalSize;
+    u8 hash[0x14];
 };
 
 struct XexCompressionBlock
 {
-    DWORD size;
-    DWORD nullSize;
+    u32 size;
+    u32 nullSize;
 };
 
 #endif // XEXDEFINITIONS_H

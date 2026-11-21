@@ -19,7 +19,7 @@ std::wstring XContentDeviceTitle::GetName()
     return titleSaves.at(0).content->metaData->titleName;
 }
 
-BYTE *XContentDeviceTitle::GetThumbnail()
+u8 *XContentDeviceTitle::GetThumbnail()
 {
     if (titleSaves.size() == 0)
         return nullptr;
@@ -31,21 +31,21 @@ BYTE *XContentDeviceTitle::GetThumbnail()
     return nullptr;
 }
 
-DWORD XContentDeviceTitle::GetThumbnailSize()
+u32 XContentDeviceTitle::GetThumbnailSize()
 {
     if (titleSaves.size() == 0)
         return 0;
     return titleSaves.at(0).content->metaData->titleThumbnailImageSize;
 }
 
-DWORD XContentDeviceTitle::GetTitleID()
+u32 XContentDeviceTitle::GetTitleID()
 {
     if (titleSaves.size() == 0)
         return 0;
     return titleSaves.at(0).content->metaData->titleID;
 }
 
-BYTE *XContentDeviceTitle::GetProfileID()
+u8 *XContentDeviceTitle::GetProfileID()
 {
     if (titleSaves.size() == 0)
         return nullptr;

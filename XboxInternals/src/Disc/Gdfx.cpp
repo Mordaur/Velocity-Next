@@ -7,15 +7,15 @@ void GdfxReadHeader(BaseIO *io, GdfxHeader *header)
     io->SetEndian(LittleEndian);
 
     // verify the magic
-    io->ReadBytes((BYTE*)header->magic, 0x14);
+    io->ReadBytes((u8*)header->magic, 0x14);
     if (memcmp(header->magic, "MICROSOFT*XBOX*MEDIA", 0x14) != 0)
         throw string("GDFX: Invalid header magic\n");
 
     // read the rest of the header
     header->rootSector = io->ReadDword();
     header->rootSize = io->ReadDword();
-    header->creationTime.dwLowDateTime = io->ReadDword();
-    header->creationTime.dwHighDateTime = io->ReadDword();
+    header->creationTime.lowDateTime = io->ReadDword();
+    header->creationTime.highDateTime = io->ReadDword();
 }
 
 bool GdfxReadFileEntry(BaseIO *io, GdfxFileEntry *entry)
@@ -24,7 +24,7 @@ bool GdfxReadFileEntry(BaseIO *io, GdfxFileEntry *entry)
     io->SetEndian(LittleEndian);
 
     // check to see if we're at the end
-    DWORD nextBytes = io->ReadDword();
+    u32 nextBytes = io->ReadDword();
     if (nextBytes == 0xFFFFFFFF)
         return false;
 
@@ -38,7 +38,7 @@ bool GdfxReadFileEntry(BaseIO *io, GdfxFileEntry *entry)
     // GDF names are opaque bytes; ReadString would truncate at an embedded NUL.
     entry->name.resize(entry->nameLen);
     if (entry->nameLen != 0)
-        io->ReadBytes(reinterpret_cast<BYTE *>(&entry->name[0]), entry->nameLen);
+        io->ReadBytes(reinterpret_cast<u8 *>(&entry->name[0]), entry->nameLen);
 
     return true;
 }

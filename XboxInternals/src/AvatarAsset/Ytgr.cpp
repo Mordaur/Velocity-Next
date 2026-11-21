@@ -38,7 +38,7 @@ void Ytgr::Parse()
 
     // read the version
     io->SetEndian(LittleEndian);
-    DWORD tempV = io->ReadDword();
+    u32 tempV = io->ReadDword();
     XSignerMinimumVersion.major = tempV >> 28;
     XSignerMinimumVersion.minor = (tempV >> 24) & 0xF;
     XSignerMinimumVersion.build = (tempV >> 8) & 0xFFFF;
@@ -49,9 +49,9 @@ void Ytgr::Parse()
         throw std::string("Ytgr: Invalid struct size.");
 
     // parse the timestamp
-    WINFILETIME fileTime;
-    fileTime.dwLowDateTime = io->ReadDword();
-    fileTime.dwHighDateTime = io->ReadDword();
+    FileTime fileTime;
+    fileTime.lowDateTime = io->ReadDword();
+    fileTime.highDateTime = io->ReadDword();
     dateAddedToServer = XdbfHelpers::FILETIMEtoTimeT(fileTime);
 
     contentLength = io->ReadDword();
@@ -60,19 +60,19 @@ void Ytgr::Parse()
     io->ReadBytes(rsaSignature, 0x100);
 
     // verify the signature
-    BYTE message[0x30];
+    u8 message[0x30];
     io->SetPosition(0);
     io->ReadBytes(message, 0x30);
     valid = XeKeys::VerifyRSASignature(LIVEKey, message, 0x30, rsaSignature) ||
             XeKeys::VerifyRSASignature(UnknownKey, message, 0x30, rsaSignature);
 
     // verify the hash
-    BYTE block[0x1000];
-    BYTE calculatedHash[0x14];
+    u8 block[0x1000];
+    u8 calculatedHash[0x14];
     const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
 
     io->SetPosition(0x130);
-    DWORD tempLen = contentLength;
+    u32 tempLen = contentLength;
 
     while (tempLen >= 0x1000)
     {

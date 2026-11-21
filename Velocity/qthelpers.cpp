@@ -2,39 +2,39 @@
 
 #include <QFileInfo>
 
-QString QtHelpers::ByteArrayToString(BYTE *buffer, DWORD len, bool spacesBetween)
+QString QtHelpers::ByteArrayToString(u8 *buffer, u32 len, bool spacesBetween)
 {
     if (spacesBetween)
     {
         QString builder = "";
-        for (DWORD i = 0; i < len; i++)
-            builder += QString("%1").arg((BYTE)buffer[i], 2, 16, QChar('0')).toUpper() + " ";
+        for (u32 i = 0; i < len; i++)
+            builder += QString("%1").arg((u8)buffer[i], 2, 16, QChar('0')).toUpper() + " ";
         return builder;
     }
     else
     {
         QString builder = "";
-        for (DWORD i = 0; i < len; i++)
-            builder += QString("%1").arg((BYTE)buffer[i], 2, 16, QChar('0')).toUpper();
+        for (u32 i = 0; i < len; i++)
+            builder += QString("%1").arg((u8)buffer[i], 2, 16, QChar('0')).toUpper();
         return builder;
     }
 }
 
-QString QtHelpers::ByteArrayToHexQString(BYTE *buffer, DWORD len)
+QString QtHelpers::ByteArrayToHexQString(u8 *buffer, u32 len)
 {
     QString result = "";
-    for (DWORD i = 0; i < len; i++)
-        result += QString("%1").arg((BYTE)buffer[i], 2, 16, QChar('0')).toUpper();
+    for (u32 i = 0; i < len; i++)
+        result += QString("%1").arg((u8)buffer[i], 2, 16, QChar('0')).toUpper();
     return result;
 }
 
-DWORD QtHelpers::ParseHexString(QString string)
+u32 QtHelpers::ParseHexString(QString string)
 {
     string.replace("0x", "");
     return string.toULong(0, 16);
 }
 
-void QtHelpers::ParseHexStringBuffer(QString bytes, BYTE *outBuffer, int len)
+void QtHelpers::ParseHexStringBuffer(QString bytes, u8 *outBuffer, int len)
 {
     bytes = bytes.trimmed().replace(" ", "");
 
@@ -346,7 +346,7 @@ void QtHelpers::CollapseAllChildren(QTreeWidgetItem *item)
         QtHelpers::CollapseAllChildren(item->child(i));
 }
 
-void QtHelpers::GetFileIcon(DWORD magic, QString fileName, QIcon &icon, QTreeWidgetItem &item,
+void QtHelpers::GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidgetItem &item,
                             FileSystem fileSystem)
 {
     item.setData(1, Qt::UserRole, "");

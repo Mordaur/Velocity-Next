@@ -504,8 +504,8 @@ void DeviceContentViewer::UpdateDevicePanel()
     else
         ui->imgDeviceType->setPixmap(QPixmap(":/Images/usb drive.png"));
 
-    const UINT64 total = currentDevice->GetTotalMemory();
-    const UINT64 free = currentDevice->GetFreeMemory();
+    const u64 total = currentDevice->GetTotalMemory();
+    const u64 free = currentDevice->GetFreeMemory();
     ui->lblFeeMemory->setText(QString::fromStdString(ByteSizeToString(free)));
     ui->lblUsedMem->setText(QString::fromStdString(ByteSizeToString(total - free)));
 }
@@ -712,7 +712,7 @@ void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStrin
                     : static_cast<IXContentHeader *>(new SVOD(filePath.toStdString()));
             contentFiles.push_back(content);
 
-            const UINT64 required = static_cast<UINT64>(QFileInfo(filePath).size()) +
+            const u64 required = static_cast<u64>(QFileInfo(filePath).size()) +
                     content->metaData->dataFileCombinedSize;
             if (device->GetFreeMemory() < required)
             {
@@ -741,7 +741,7 @@ void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStrin
             if (content->metaData->contentType != SavedGame)
                 continue;
 
-            UINT64 contentProfileID = 0;
+            u64 contentProfileID = 0;
             std::memcpy(&contentProfileID, content->metaData->profileID, sizeof(contentProfileID));
 
             bool found = false;
@@ -750,7 +750,7 @@ void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStrin
                 if (profile.GetFileSize() == 0)
                     continue;
 
-                UINT64 profileID = 0;
+                u64 profileID = 0;
                 std::memcpy(&profileID, profile.GetProfileID(), sizeof(profileID));
                 if (profileID == contentProfileID)
                 {

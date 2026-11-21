@@ -14,11 +14,11 @@
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data, std::size_t size)
 {
     XexLzxDecoder decoder;
-    BYTE output[0x400] = {};
+    u8 output[0x400] = {};
 
     try
     {
-        decoder.DecodeChunk(reinterpret_cast<const BYTE *>(data), size, output, sizeof(output));
+        decoder.DecodeChunk(reinterpret_cast<const u8 *>(data), size, output, sizeof(output));
     }
     catch (const std::string &)
     {

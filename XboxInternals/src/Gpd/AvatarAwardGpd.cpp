@@ -22,7 +22,7 @@ void AvatarAwardGpd::CleanGpd()
 void AvatarAwardGpd::init()
 {
     // read in all of the avatar award entries
-    for (DWORD i = 0; i < xdbf->avatarAwards.entries.size(); i++)
+    for (u32 i = 0; i < xdbf->avatarAwards.entries.size(); i++)
         avatarAwards.push_back(readAvatarAwardEntry(xdbf->avatarAwards.entries.at(i)));
 }
 
@@ -52,7 +52,7 @@ AvatarAwardData AvatarAwardGpd::readAvatarAwardEntry(XdbfEntry entry)
     award.flags = io->ReadDword();
 
     // read the unlock time
-    WINFILETIME time = { io->ReadDword(), io->ReadDword() };
+    FileTime time = { io->ReadDword(), io->ReadDword() };
     award.unlockTime = XdbfHelpers::FILETIMEtoTimeT(time);
     award.unlockTimeMilliseconds = XdbfHelpers::FILETIMEtoMilliseconds(time);
 
@@ -73,7 +73,7 @@ AvatarAwardData AvatarAwardGpd::readAvatarAwardEntry(XdbfEntry entry)
 void AvatarAwardGpd::UnlockAllAwards()
 {
     // iterate through all of the avtar awards
-    for (DWORD i = 0; i < avatarAwards.size(); i++)
+    for (u32 i = 0; i < avatarAwards.size(); i++)
     {
         // set it to unlocked
         avatarAwards.at(i).flags |= (Unlocked | 0x100000);
@@ -92,7 +92,7 @@ void AvatarAwardGpd::UnlockAllAwards()
 string AvatarAwardGpd::GetGUID(AvatarAwardData *award)
 {
     char guid[38];
-    WORD *seg = (WORD*)&award->awardFlags;
+    u16 *seg = (u16*)&award->awardFlags;
     snprintf(guid, sizeof(guid), "%08x-%04x-%04x-%04x-%04x%08x", static_cast<unsigned int>(award->clothingType), seg[3], seg[2], seg[1], seg[0],
             static_cast<unsigned int>(award->titleID));
 
@@ -122,7 +122,7 @@ string AvatarAwardGpd::GetLargeAwardImageURL(AvatarAwardData *award)
 
 void AvatarAwardGpd::WriteAvatarAward(AvatarAwardData *award)
 {
-    DWORD calculatedLength = 0x2C + ((award->name.size() + award->unlockedDescription.size() +
+    u32 calculatedLength = 0x2C + ((award->name.size() + award->unlockedDescription.size() +
             award->lockedDescription.size() + 3) * 2);
 
     if (calculatedLength != award->initialSize)
@@ -145,13 +145,13 @@ void AvatarAwardGpd::WriteAvatarAward(AvatarAwardData *award)
     io->Write(award->flags);
 
     // Write the unlock time
-    WINFILETIME time = XdbfHelpers::TimeTtoFILETIME(award->unlockTime, award->unlockTimeMilliseconds);
-    io->Write(time.dwHighDateTime);
-    io->Write(time.dwLowDateTime);
+    FileTime time = XdbfHelpers::TimeTtoFILETIME(award->unlockTime, award->unlockTimeMilliseconds);
+    io->Write(time.highDateTime);
+    io->Write(time.lowDateTime);
 
     // Write the rest of the entry
-    io->Write((DWORD)award->subcategory);
-    io->Write((DWORD)award->colorizable);
+    io->Write((u32)award->subcategory);
+    io->Write((u32)award->colorizable);
     io->Write(award->name);
     io->Write(award->unlockedDescription);
     io->Write(award->lockedDescription);
@@ -167,7 +167,7 @@ void AvatarAwardGpd::CreateAvatarAward(AvatarAwardData *award)
             award->lockedDescription.size() + 3) * 2);
 
     // create a new xdbf entry for the award
-    UINT64 entryID = ((UINT64)award->titleID << 32) | ((DWORD)getNextAwardIndex() << 16) |
+    u64 entryID = ((u64)award->titleID << 32) | ((u32)getNextAwardIndex() << 16) |
             GetAssetGender(award);
     award->entry = xdbf->CreateEntry(AvatarAward, entryID, award->initialSize);
 
@@ -180,7 +180,7 @@ void AvatarAwardGpd::CreateAvatarAward(AvatarAwardData *award)
 void AvatarAwardGpd::DeleteAvatarAward(AvatarAwardData *award)
 {
     // remove the entry from the list
-    DWORD i;
+    u32 i;
     for (i = 0 ; i < avatarAwards.size(); i++)
     {
         if (avatarAwards.at(i).entry.id == award->entry.id)
@@ -196,13 +196,13 @@ void AvatarAwardGpd::DeleteAvatarAward(AvatarAwardData *award)
     xdbf->DeleteEntry(award->entry);
 }
 
-WORD AvatarAwardGpd::getNextAwardIndex()
+u16 AvatarAwardGpd::getNextAwardIndex()
 {
     // get the highest index
-    WORD highest = 0;
-    for (DWORD i = 0; i < xdbf->avatarAwards.entries.size(); i++)
+    u16 highest = 0;
+    for (u32 i = 0; i < xdbf->avatarAwards.entries.size(); i++)
     {
-        WORD currentID = (xdbf->avatarAwards.entries.at(i).id & 0xFFFF0000) >> 16;
+        u16 currentID = (xdbf->avatarAwards.entries.at(i).id & 0xFFFF0000) >> 16;
         if (highest < currentID)
             highest = currentID;
     }

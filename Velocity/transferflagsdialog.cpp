@@ -1,7 +1,7 @@
 #include "transferflagsdialog.h"
 #include "ui_transferflagsdialog.h"
 
-TransferFlagsDialog::TransferFlagsDialog(QStatusBar *statusBar, BYTE *flags, QWidget *parent) :
+TransferFlagsDialog::TransferFlagsDialog(QStatusBar *statusBar, u8 *flags, QWidget *parent) :
     QDialog(parent), ui(new Ui::TransferFlagsDialog), flags(flags), statusBar(statusBar)
 {
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
@@ -39,9 +39,9 @@ TransferFlagsDialog::TransferFlagsDialog(QStatusBar *statusBar, BYTE *flags, QWi
     temp.value = 0x80;
     availableFlags.push_back(temp);
 
-    DWORD added = 0;
-    BYTE tempFlag = *flags;
-    for (DWORD i = 0; i < 8; i++)
+    u32 added = 0;
+    u8 tempFlag = *flags;
+    for (u32 i = 0; i < 8; i++)
     {
         if (tempFlag & 1)
         {
@@ -56,7 +56,7 @@ TransferFlagsDialog::TransferFlagsDialog(QStatusBar *statusBar, BYTE *flags, QWi
         tempFlag >>= 1;
     }
 
-    for (DWORD i = 0; i < availableFlags.size(); i++)
+    for (u32 i = 0; i < availableFlags.size(); i++)
         ui->comboBox->addItem(availableFlags.at(i).name);
 
     ui->treeWidget->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -85,7 +85,7 @@ void TransferFlagsDialog::showRemoveContextMenu(QPoint pos)
         ui->comboBox->addItem(item->text(0));
 
         // add it to the available
-        Flag flag = { item->text(0), (BYTE)QtHelpers::ParseHexString(item->text(1)) };
+        Flag flag = { item->text(0), (u8)QtHelpers::ParseHexString(item->text(1)) };
         availableFlags.push_back(flag);
 
         delete item;

@@ -4,7 +4,7 @@
 #include <cstring>
 
 
-XexAesIO::XexAesIO(BaseIO *io, Xex *xex, const BYTE *key) :
+XexAesIO::XexAesIO(BaseIO *io, Xex *xex, const u8 *key) :
     XexBaseIO(io, xex), curAesBlockAddress(0)
 {
     // the initialization vector starts out as all zeros
@@ -15,7 +15,7 @@ XexAesIO::XexAesIO(BaseIO *io, Xex *xex, const BYTE *key) :
     aes->set_key(key, XEX_AES_BLOCK_SIZE);
 
     // decrypt the first block in the file
-    BYTE buffer[XEX_AES_BLOCK_SIZE];
+    u8 buffer[XEX_AES_BLOCK_SIZE];
     xex->io->SetPosition(xex->header.dataAddress);
     xex->io->ReadBytes(buffer, XEX_AES_BLOCK_SIZE);
     AesCbcDecrypt(buffer);
@@ -25,13 +25,13 @@ XexAesIO::~XexAesIO()
 {
 }
 
-void XexAesIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
+void XexAesIO::ReadBytes(u8 *outBuffer, u32 readLength)
 {
     if (position + readLength > Length())
         throw std::string("XexAesIO: Cannot read beyond end of file.\n");
 
-    DWORD bytesRead = 0;
-    DWORD bytesLeft = readLength;
+    u32 bytesRead = 0;
+    u32 bytesLeft = readLength;
 
     // check to see if we already have decrypted the data the caller requested
     if (position >= curAesBlockAddress &&
@@ -39,12 +39,12 @@ void XexAesIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
     {
         // calculate the number of bytes to read, clamped to the request and the
         // cached block
-        DWORD bytesToRead = (curAesBlockAddress + XEX_AES_BLOCK_SIZE) - position;
+        u32 bytesToRead = (curAesBlockAddress + XEX_AES_BLOCK_SIZE) - position;
         if (bytesToRead > bytesLeft)
             bytesToRead = bytesLeft;
 
         // calculate the offset into the decrypted block to start 'reading' from
-        DWORD offset = position - curAesBlockAddress;
+        u32 offset = position - curAesBlockAddress;
 
         // read them into the buffer
         memcpy(outBuffer, curDecryptedBlock + offset, bytesToRead);
@@ -54,11 +54,11 @@ void XexAesIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
     }
 
     // as long as there are bytes left to read, read them in
-    BYTE encryptedBuffer[XEX_AES_BLOCK_SIZE];
+    u8 encryptedBuffer[XEX_AES_BLOCK_SIZE];
     while (bytesLeft != 0)
     {
         // seek to the beginning of the next AES block to read
-        UINT64 nextAesBlockAddress = xex->header.dataAddress + curAesBlockAddress + XEX_AES_BLOCK_SIZE;
+        u64 nextAesBlockAddress = xex->header.dataAddress + curAesBlockAddress + XEX_AES_BLOCK_SIZE;
         xex->io->SetPosition(nextAesBlockAddress);
 
         xex->io->ReadBytes(encryptedBuffer, XEX_AES_BLOCK_SIZE);
@@ -66,7 +66,7 @@ void XexAesIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
         curAesBlockAddress += XEX_AES_BLOCK_SIZE;
 
         // calculate the amount of bytes to copy over
-        DWORD bytesToCopy = XEX_AES_BLOCK_SIZE;
+        u32 bytesToCopy = XEX_AES_BLOCK_SIZE;
         if (bytesLeft < XEX_AES_BLOCK_SIZE)
             bytesToCopy = bytesLeft;
 
@@ -86,22 +86,22 @@ void XexAesIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
     }
 }
 
-void XexAesIO::WriteBytes(BYTE *buffer, DWORD len)
+void XexAesIO::WriteBytes(u8 *buffer, u32 len)
 {
     (void)buffer;
     (void)len;
 }
 
-UINT64 XexAesIO::Length()
+u64 XexAesIO::Length()
 {
     return xex->io->Length() - xex->header.dataAddress;
 }
 
-void XexAesIO::AesCbcDecrypt(const BYTE *bufferEnc)
+void XexAesIO::AesCbcDecrypt(const u8 *bufferEnc)
 {
     aes->decrypt(bufferEnc, curDecryptedBlock);
 
-    for (DWORD x = 0; x < XEX_AES_BLOCK_SIZE; x++)
+    for (u32 x = 0; x < XEX_AES_BLOCK_SIZE; x++)
     {
         // xor the data with the old IV
         curDecryptedBlock[x] ^= curIV[x];

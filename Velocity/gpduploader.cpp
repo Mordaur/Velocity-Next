@@ -62,18 +62,18 @@ void GpdUploader::uploadGpd(QString gamePath, QString awardPath, QString titleID
 
         // calculate total gamerscore
         int totalGamerscore = 0;
-        for (DWORD x = 0; x < gpd->achievements.size(); x++)
+        for (u32 x = 0; x < gpd->achievements.size(); x++)
             totalGamerscore += gpd->achievements.at(x).gamerscore;
 
         // check for award Gpd
-        DWORD awards = 0, mAwards = 0, fAwards = 0;
+        u32 awards = 0, mAwards = 0, fAwards = 0;
         if (QFile::exists(awardPath))
         {
             // open the award gpd, get the amount of awards
         AvatarAwardGpd agpd(awardPath.toStdString());
             awards = agpd.avatarAwards.size();
 
-            for (DWORD x = 0; x < agpd.avatarAwards.size(); x++)
+            for (u32 x = 0; x < agpd.avatarAwards.size(); x++)
             {
                 AvatarAwardData award = agpd.avatarAwards.at(x);
                 AssetGender g = AvatarAwardGpd::GetAssetGender(&award);
@@ -116,7 +116,7 @@ void GpdUploader::uploadGpd(QString gamePath, QString awardPath, QString titleID
         }
 
         // lock all achievements
-        for (DWORD x = 0; x < gpd->achievements.size(); x++)
+        for (u32 x = 0; x < gpd->achievements.size(); x++)
         {
             AchievementEntry chiev = gpd->achievements.at(x);
             chiev.flags &= 0xF;
@@ -133,7 +133,7 @@ void GpdUploader::uploadGpd(QString gamePath, QString awardPath, QString titleID
 
         // get the arguments before deleting the gpd
     QString titleName = QString::fromStdWString(gpd->gameName.ws);
-    DWORD achievementCount = gpd->achievements.size();
+    u32 achievementCount = gpd->achievements.size();
     gpd.reset();
 
         // send the Gpd(s) to the server
@@ -170,8 +170,8 @@ void GpdUploader::reply(QNetworkReply *reply)
 }
 
 void GpdUploader::sendRequest(QString filePath, QString awardFilePath, QString gameName,
-        QString titleID, DWORD achievementCount, DWORD gamerscoreTotal, DWORD awards, DWORD mAwards,
-        DWORD fAwards)
+        QString titleID, u32 achievementCount, u32 gamerscoreTotal, u32 awards, u32 mAwards,
+        u32 fAwards)
 {
     try
     {

@@ -54,9 +54,9 @@ SvodDialog::~SvodDialog()
 
 void SvodDialog::loadListing(QTreeWidgetItem *parent, vector<GdfxFileEntry> *files)
 {
-    DWORD addr, index;
+    u32 addr, index;
 
-    for (DWORD i = 0; i < files->size(); i++)
+    for (u32 i = 0; i < files->size(); i++)
     {
         QTreeWidgetItem *item;
         if (parent == nullptr)
@@ -191,7 +191,7 @@ void SvodDialog::on_pushButton_3_clicked()
     }
 }
 
-void UpdateProgress(DWORD cur, DWORD total, void *arg)
+void UpdateProgress(u32 cur, u32 total, void *arg)
 {
     SvodDialog *dialog = reinterpret_cast<SvodDialog*>(arg);
 
@@ -255,14 +255,14 @@ void SvodDialog::on_btnResign_clicked()
         return;
 
     // open kv
-    BYTE consoleID[5] = {};
-    DWORD adder = 0;
+    u8 consoleID[5] = {};
+    u32 adder = 0;
     try
     {
         FileIO kvIO(kvPath.toStdString());
         kvIO.SetPosition(0, ios_base::end);
 
-        const UINT64 kvSize = kvIO.GetPosition();
+        const u64 kvSize = kvIO.GetPosition();
         if (kvSize != 0x4000 && kvSize != 0x4010)
             throw string("The selected file is not a keyvault "
                          "(expected 0x4000 or 0x4010 bytes).\n");

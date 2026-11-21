@@ -30,25 +30,25 @@ public:
     XdbfEntryGroup avatarAwards;
 
     // Description: extract the bytes of a given entry to the out buffer
-    void ExtractEntry(XdbfEntry entry, BYTE *outBuffer);
+    void ExtractEntry(XdbfEntry entry, u8 *outBuffer);
 
     // Description: delete an entry from the file
     void DeleteEntry(XdbfEntry entry);
 
     // Description: convert a specifier address into a real address
-    DWORD GetRealAddress(DWORD specifier);
+    u32 GetRealAddress(u32 specifier);
 
     // Description: convert a real address into a specifier
-    DWORD GetSpecifier(DWORD address);
+    u32 GetSpecifier(u32 address);
 
     // Description: create a new entry and new sync in the file and return the entry
-    XdbfEntry CreateEntry(EntryType type, UINT64 id, DWORD length);
+    XdbfEntry CreateEntry(EntryType type, u64 id, u32 length);
 
     // Description: allocate memory in the file
-    DWORD AllocateMemory(DWORD size);
+    u32 AllocateMemory(u32 size);
 
     // Description: free memory in the file at the specifier address
-    void DeallocateMemory(DWORD addr, DWORD size);
+    void DeallocateMemory(u32 addr, u32 size);
 
     // Description: move the sync to the queue
     void UpdateEntry(XdbfEntry *entry);
@@ -57,7 +57,7 @@ public:
     void Clean();
 
     // Description: re-Write an entry
-    void ReWriteEntry(XdbfEntry entry, BYTE *entryBuffer);
+    void ReWriteEntry(XdbfEntry entry, u8 *entryBuffer);
     shared_ptr<FileIO> io;
 
 private:

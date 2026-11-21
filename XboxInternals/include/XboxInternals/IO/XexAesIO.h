@@ -16,22 +16,22 @@ class Xex;
 class XexAesIO : public XexBaseIO
 {
 public:
-    XexAesIO(BaseIO *io, Xex *xex, const BYTE *key);
+    XexAesIO(BaseIO *io, Xex *xex, const u8 *key);
     ~XexAesIO();
 
-    void ReadBytes(BYTE *outBuffer, DWORD readLength);
+    void ReadBytes(u8 *outBuffer, u32 readLength);
 
-    void WriteBytes(BYTE *buffer, DWORD len);
+    void WriteBytes(u8 *buffer, u32 len);
 
-    UINT64 Length();
+    u64 Length();
 
 private:
-    BYTE curIV[XEX_AES_BLOCK_SIZE];
-    BYTE curDecryptedBlock[XEX_AES_BLOCK_SIZE];
-    UINT64 curAesBlockAddress;
+    u8 curIV[XEX_AES_BLOCK_SIZE];
+    u8 curDecryptedBlock[XEX_AES_BLOCK_SIZE];
+    u64 curAesBlockAddress;
     std::unique_ptr<Botan::BlockCipher> aes;
 
-    void AesCbcDecrypt(const BYTE *bufferEnc);
+    void AesCbcDecrypt(const u8 *bufferEnc);
 };
 
 #endif // XEXAESIO_H

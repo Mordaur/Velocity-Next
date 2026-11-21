@@ -19,14 +19,14 @@ public:
     Ytgr(const Ytgr &) = delete;
     Ytgr &operator=(const Ytgr &) = delete;
 
-    DWORD magic;
+    u32 magic;
     Version XSignerMinimumVersion;
-    DWORD structSize;
+    u32 structSize;
     time_t dateAddedToServer;
-    DWORD contentLength;
-    DWORD reserved;
-    BYTE contentHash[0x14];
-    BYTE rsaSignature[0x100];
+    u32 contentLength;
+    u32 reserved;
+    u8 contentHash[0x14];
+    u8 rsaSignature[0x100];
     bool valid;
 
 private:

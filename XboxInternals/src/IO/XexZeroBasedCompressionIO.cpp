@@ -10,25 +10,25 @@ XexZeroBasedCompressionIO::XexZeroBasedCompressionIO(BaseIO *io, Xex *xex) :
     xex->io->SetPosition(xex->header.dataAddress);
 }
 
-void XexZeroBasedCompressionIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
+void XexZeroBasedCompressionIO::ReadBytes(u8 *outBuffer, u32 readLength)
 {
     if (Length() < (position + readLength))
         throw std::string("XexZeroBasedCompressionIO: Cannot read beyond end of data.");
 
-    DWORD bytesRemaining = readLength;
+    u32 bytesRemaining = readLength;
     while (bytesRemaining > 0)
     {
         bool isData = false;
         bool foundBlock = false;
         XexCompressionBlock curBlock{};
-        DWORD offset = 0;
-        DWORD byteCounter = 0;
+        u32 offset = 0;
+        u32 byteCounter = 0;
 
         // find the location in the zero compression table
         for (size_t i = 0; i < xex->compressionBlocks.size(); i++)
         {
             curBlock = xex->compressionBlocks.at(i);
-            DWORD curBlockTotalSize = curBlock.size + curBlock.nullSize;
+            u32 curBlockTotalSize = curBlock.size + curBlock.nullSize;
 
             // check to see if the position is in this compression block
             if ((position - byteCounter) < curBlockTotalSize)
@@ -62,7 +62,7 @@ void XexZeroBasedCompressionIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
         // read the data bytes in
         if (isData)
         {
-            DWORD dataBytesToRead;
+            u32 dataBytesToRead;
             if (bytesRemaining > curBlock.size - offset)
                 dataBytesToRead = curBlock.size - offset;
             else
@@ -83,25 +83,25 @@ void XexZeroBasedCompressionIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
         if (bytesRemaining != 0)
         {
             // calculate the number of null bytes to copy
-            DWORD nullBytesToCopy;
+            u32 nullBytesToCopy;
             if (bytesRemaining > curBlock.nullSize - offset)
                 nullBytesToCopy = curBlock.nullSize - offset;
             else
                 nullBytesToCopy = bytesRemaining;
 
             // allocate a null buffer
-            std::array<BYTE, XEX_NULL_BUFFER_SIZE> nullBuffer {};
+            std::array<u8, XEX_NULL_BUFFER_SIZE> nullBuffer {};
 
             // calculate the number of copies to do
-            DWORD copyIterations = nullBytesToCopy / XEX_NULL_BUFFER_SIZE;
+            u32 copyIterations = nullBytesToCopy / XEX_NULL_BUFFER_SIZE;
             if (nullBytesToCopy % XEX_NULL_BUFFER_SIZE != 0)
                 copyIterations++;
 
             // copy over the null bytes in chunks
-            for (DWORD i = 0; i < copyIterations; i++)
+            for (u32 i = 0; i < copyIterations; i++)
             {
                 // calculate the number of bytes to copy
-                DWORD bytesToCopy = XEX_NULL_BUFFER_SIZE;
+                u32 bytesToCopy = XEX_NULL_BUFFER_SIZE;
                 if (i + 1 == copyIterations && nullBytesToCopy % XEX_NULL_BUFFER_SIZE != 0)
                     bytesToCopy = nullBytesToCopy % XEX_NULL_BUFFER_SIZE;
 
@@ -114,15 +114,15 @@ void XexZeroBasedCompressionIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
     }
 }
 
-void XexZeroBasedCompressionIO::WriteBytes(BYTE *buffer, DWORD len)
+void XexZeroBasedCompressionIO::WriteBytes(u8 *buffer, u32 len)
 {
     (void)buffer;
     (void)len;
 }
 
-UINT64 XexZeroBasedCompressionIO::Length()
+u64 XexZeroBasedCompressionIO::Length()
 {
-    UINT64 length = 0;
+    u64 length = 0;
     for (size_t i = 0; i < xex->compressionBlocks.size(); i++)
     {
         length += xex->compressionBlocks.at(i).size;

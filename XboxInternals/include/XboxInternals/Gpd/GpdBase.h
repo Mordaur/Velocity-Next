@@ -34,10 +34,10 @@ public:
     void DeleteImageEntry(ImageEntry image);
 
     // Description: create a new setting entry, leave the entry field of the setting entry struct blank, this function will set that info
-    void CreateSettingEntry(SettingEntry *setting, UINT64 entryID);
+    void CreateSettingEntry(SettingEntry *setting, u64 entryID);
 
     // Description: create a new image entry
-    void CreateImageEntry(ImageEntry *image, UINT64 entryID);
+    void CreateImageEntry(ImageEntry *image, u64 entryID);
 
     // Description: Write the setting entry to the file
     void WriteSettingEntry(SettingEntry setting);
@@ -52,7 +52,7 @@ public:
     void Clean();
 
     // Description: get a setting entry from its id
-    SettingEntry GetSetting(UINT64 id);
+    SettingEntry GetSetting(u64 id);
 
 protected:
     shared_ptr<FileIO> io;

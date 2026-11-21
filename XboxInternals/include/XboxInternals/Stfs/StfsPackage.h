@@ -24,18 +24,18 @@ class StfsIO;
 
 struct StfsFileEntry
 {
-    DWORD entryIndex = 0;
+    u32 entryIndex = 0;
     string name;
-    BYTE nameLen = 0;
-    BYTE flags = 0;
-    INT24 blocksForFile = 0;
-    INT24 startingBlockNum = 0;
-    WORD pathIndicator = 0;
-    DWORD fileSize = 0;
-    DWORD createdTimeStamp = 0;
-    DWORD accessTimeStamp = 0;
-    DWORD fileEntryAddress = 0;
-    vector<INT24> blockChain;
+    u8 nameLen = 0;
+    u8 flags = 0;
+    u32 blocksForFile = 0;
+    u32 startingBlockNum = 0;
+    u16 pathIndicator = 0;
+    u32 fileSize = 0;
+    u32 createdTimeStamp = 0;
+    u32 accessTimeStamp = 0;
+    u32 fileEntryAddress = 0;
+    vector<u32> blockChain;
 };
 
 struct StfsFileListing
@@ -48,19 +48,19 @@ struct StfsFileListing
 #pragma pack(push, 1)
 struct HashEntry
 {
-    BYTE blockHash[0x14];
-    BYTE status;
-    DWORD nextBlock;
+    u8 blockHash[0x14];
+    u8 status;
+    u32 nextBlock;
 };
 #pragma pack(pop)
 
 struct HashTable
 {
     Level level;
-    DWORD trueBlockNumber;
-    DWORD entryCount;
+    u32 trueBlockNumber;
+    u32 entryCount;
     HashEntry entries[0xAA];
-    DWORD addressInFile;
+    u32 addressInFile;
 };
 
 class XBOXINTERNALS_EXPORT StfsPackage : public IXContentHeader
@@ -69,21 +69,21 @@ public:
         using IXContentHeader::metaData;
 
     // Description: initialize a stfs package from an already opened io
-    StfsPackage(BaseIO *io, DWORD flags = 0);
+    StfsPackage(BaseIO *io, u32 flags = 0);
 
     // Description: initialize a stfs package
-    StfsPackage(string packgePath, DWORD flags = 0);
+    StfsPackage(string packgePath, u32 flags = 0);
 
     // Description: get the file listing of the package, forceUpdate reads from the package regardless
     StfsFileListing GetFileListing(bool forceUpdate = false);
 
     // Description: extract a file to designated file path
-    void ExtractFile(string pathInPackage, string outPath, void(*extractProgress)(void*, DWORD,
-            DWORD) = NULL, void *arg = NULL);
+    void ExtractFile(string pathInPackage, string outPath, void(*extractProgress)(void*, u32,
+            u32) = NULL, void *arg = NULL);
 
     // Description: extract a file (by FileEntry) to a designated file path
-    void ExtractFile(StfsFileEntry *entry, string outPath, void(*extractProgress)(void*, DWORD,
-            DWORD) = NULL, void *arg = NULL);
+    void ExtractFile(StfsFileEntry *entry, string outPath, void(*extractProgress)(void*, u32,
+            u32) = NULL, void *arg = NULL);
 
     // Description: get the file entry of a file's path, sets nameLen to '0' if not found
     StfsFileEntry GetFileEntry(string pathInPackage, bool checkFolders = false,
@@ -96,10 +96,10 @@ public:
     StfsIO* GetStfsIO(StfsFileEntry entry);
 
     // Description: get the first 4 bytes of a file
-    DWORD GetFileMagic(string pathInPackage);
+    u32 GetFileMagic(string pathInPackage);
 
     // Description: get the first 4 bytes of a file
-    DWORD GetFileMagic(StfsFileEntry entry);
+    u32 GetFileMagic(StfsFileEntry entry);
 
     // Description: check if the file exists
     bool FileExists(string pathInPackage, bool useWildcards = true);
@@ -114,10 +114,10 @@ public:
     // Description: number of 4 KiB data blocks that fit in a block budget once
     // STFS hash blocks are reserved (kernel StfsComputeNumberOfDataBlocks,
     // male volumes; the kernel skips the inverse for female volumes).
-    static DWORD ComputeNumberOfDataBlocks(UINT64 blocks);
+    static u32 ComputeNumberOfDataBlocks(u64 blocks);
 
     // Description: ceil(sizeBytes / 0x1000) run through ComputeNumberOfDataBlocks.
-    static DWORD ComputeAllocatedBlocksForSize(UINT64 sizeBytes);
+    static u32 ComputeAllocatedBlocksForSize(u64 sizeBytes);
 
     // Description: fix all the hashes used in the file
     void Rehash();
@@ -135,7 +135,7 @@ public:
     void Resign(string kvPath);
 
     // Description: resign the file
-    void Resign(BYTE* kvData, size_t length);
+    void Resign(u8* kvData, size_t length);
 
     // Description: remove a file entry from the file listing
     void RemoveFile(StfsFileEntry entry);
@@ -144,29 +144,29 @@ public:
     void RemoveFile(string pathInPackage);
 
     // Description: inject a file into the package
-    StfsFileEntry InjectFile(string path, string pathInPackage, void(*injectProgress)(void*, DWORD,
-            DWORD) = NULL, void *arg = NULL);
+    StfsFileEntry InjectFile(string path, string pathInPackage, void(*injectProgress)(void*, u32,
+            u32) = NULL, void *arg = NULL);
 
     // Description: inject raw data into the package
-    StfsFileEntry InjectData(BYTE *data, DWORD length, string pathInPackage,
-            void(*injectProgress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
+    StfsFileEntry InjectData(u8 *data, u32 length, string pathInPackage,
+            void(*injectProgress)(void*, u32, u32) = NULL, void *arg = NULL);
 
     // Description: replace an existing file into the package
-    void ReplaceFile(string path, string pathInPackage, void(*replaceProgress)(void*, DWORD,
-            DWORD) = NULL, void *arg = NULL);
+    void ReplaceFile(string path, string pathInPackage, void(*replaceProgress)(void*, u32,
+            u32) = NULL, void *arg = NULL);
 
     // Description: replace an existing file into the package
     void ReplaceFile(string path, StfsFileEntry *entry, string pathInPackage,
-            void(*replaceProgress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
+            void(*replaceProgress)(void*, u32, u32) = NULL, void *arg = NULL);
 
     // Description: rename an existing file in the package
     void RenameFile(string newName, string pathInPackage);
 
     // Description: convert a block into an address in the file
-    DWORD BlockToAddress(DWORD blockNum);
+    u32 BlockToAddress(u32 blockNum);
 
     // Description: get the address of a hash for a data block
-    DWORD GetHashAddressOfBlock(DWORD blockNum);
+    u32 GetHashAddressOfBlock(u32 blockNum);
 
     // Description: returns whether the 'isPEC' parameter is set
     bool IsPEC();
@@ -194,60 +194,60 @@ private:
     stringstream except;
 
     Sex packageSex;
-    DWORD blockStep[2];
-    DWORD firstHashTableAddress;
-    BYTE hashOffset;
+    u32 blockStep[2];
+    u32 firstHashTableAddress;
+    u8 hashOffset;
     Level topLevel;
     HashTable topTable;
     HashTable cached;
-    DWORD tablesPerLevel[3];
+    u32 tablesPerLevel[3];
 
-    DWORD flags;
+    u32 flags;
 
     // Description: read the file listing from the file
     void ReadFileListing();
 
     // Description: set the out buffer to the sha1 of the block
-    void HashBlock(BYTE *block, BYTE *outBuffer);
+    void HashBlock(u8 *block, u8 *outBuffer);
 
     // Description: swap the table used so there is a backup of the data modified
-    void SwapTable(DWORD index, Level lvl);
+    void SwapTable(u32 index, Level lvl);
 
     // Description: extract a block's data
-    void ExtractBlock(DWORD blockNum, BYTE *data, DWORD length = 0x1000);
+    void ExtractBlock(u32 blockNum, u8 *data, u32 length = 0x1000);
 
     // Description: convert a block number into a true block number, where the first block is the first hash table
-    DWORD ComputeBackingDataBlockNumber(DWORD blockNum);
+    u32 ComputeBackingDataBlockNumber(u32 blockNum);
 
     // Description: get a block's hash entry
-    HashEntry GetBlockHashEntry(DWORD blockNum);
+    HashEntry GetBlockHashEntry(u32 blockNum);
 
     // Description: get the true block number for the hash table that hashes the block at the level passed in
-    DWORD ComputeLevelNBackingHashBlockNumber(DWORD blockNum, Level level);
+    u32 ComputeLevelNBackingHashBlockNumber(u32 blockNum, Level level);
 
     // Description: get the true block number for the hash table that hashes the block at level 0
-    DWORD ComputeLevel0BackingHashBlockNumber(DWORD blockNum);
+    u32 ComputeLevel0BackingHashBlockNumber(u32 blockNum);
 
     // Description: get the true block number for the hash table that hashes the block at level 1 (female)
-    DWORD ComputeLevel1BackingHashBlockNumber(DWORD blockNum);
+    u32 ComputeLevel1BackingHashBlockNumber(u32 blockNum);
 
     // Description: get the true block number for the hash table that hashes the block at level 2
-    DWORD ComputeLevel2BackingHashBlockNumber(DWORD blockNum);
+    u32 ComputeLevel2BackingHashBlockNumber(u32 blockNum);
 
     // Descrption: get the address of a hash table in the package
-    DWORD GetHashTableAddress(DWORD index, Level lvl);
+    u32 GetHashTableAddress(u32 index, Level lvl);
 
     // Description: get the base address of a hash table in the package
-    DWORD GetBaseHashTableAddress(DWORD index, Level lvl);
+    u32 GetBaseHashTableAddress(u32 index, Level lvl);
 
     // Description: get the amount of hash entries in a hash table
-    DWORD GetHashTableEntryCount(DWORD index, Level lvl);
+    u32 GetHashTableEntryCount(u32 index, Level lvl);
 
     // Description: get the hash table at the current index on the specified level
-    HashTable GetLevelNHashTable(DWORD index, Level lvl);
+    HashTable GetLevelNHashTable(u32 index, Level lvl);
 
     // Description: build the table in memory for preperation to Write
-    void BuildTableInMemory(HashTable *table, BYTE *outBuffer);
+    void BuildTableInMemory(HashTable *table, u8 *outBuffer);
 
     // Description: add the file entry to the file listing
     void AddToListing(StfsFileListing *fullListing, StfsFileListing *out);
@@ -265,13 +265,13 @@ private:
     vector<string> SplitString(string str, string delimeter);
 
     // Description: get the hash address in the parent hash table to the corresponding table
-    DWORD GetTableHashAddress(DWORD index, Level lvl);
+    u32 GetTableHashAddress(u32 index, Level lvl);
 
     // Description: set the status of the block in the corresponding hash table
-    void SetBlockStatus(DWORD blockNum, BlockStatusLevelZero status);
+    void SetBlockStatus(u32 blockNum, BlockStatusLevelZero status);
 
     // Description: set the next block of the current block
-    void SetNextBlock(DWORD blockNum, INT24 nextBlockNum);
+    void SetNextBlock(u32 blockNum, u32 nextBlockNum);
 
     // Description: discard the current file listing and reWrite it
     void WriteFileListing(bool usePassed = false, vector<StfsFileEntry> *outFis = NULL,
@@ -281,10 +281,10 @@ private:
     void WriteFileEntry(StfsFileEntry *entry);
 
     // Description: allocate a data block in the package, and return a block number
-    UINT24 AllocateBlock();
+    u32 AllocateBlock();
 
     // Description: allocate 'blockCount' consecutive data blocks
-    UINT24 AllocateBlocks(DWORD blockCount);
+    u32 AllocateBlocks(u32 blockCount);
 
     // Description: calculate the level of the topmost hash table
     Level CalcualateTopLevel();
@@ -297,10 +297,10 @@ private:
     void UpdateEntry(string pathInPackage, StfsFileEntry entry);
 
     // Description: get the number of bytes to skip over the hash table
-    DWORD GetHashTableSkipSize(DWORD tableAddress);
+    u32 GetHashTableSkipSize(u32 tableAddress);
 
     // Description: get the number of blocks until the next hash table
-    DWORD GetBlocksUntilNextHashTable(DWORD currentBlock);
+    u32 GetBlocksUntilNextHashTable(u32 currentBlock);
 
     // Description: parse the file
     void Parse();

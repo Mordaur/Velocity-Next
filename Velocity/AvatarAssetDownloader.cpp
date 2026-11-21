@@ -52,7 +52,7 @@ void AvatarAssetDownloader::onRequestFinished(QNetworkReply *aReply)
         return;
     }
 
-    DWORD fileSize = aReply->bytesAvailable();
+    u32 fileSize = aReply->bytesAvailable();
 
     // All assets have a Ytgr header that's 0x140 bytes
     if (fileSize < 0x140)
@@ -71,7 +71,7 @@ void AvatarAssetDownloader::onRequestFinished(QNetworkReply *aReply)
     }
 
     // Skip 0x140 byte Ytgr header
-    BYTE temp[0x140];
+    u8 temp[0x140];
     aReply->read((char*)temp, 0x140);
 
     QString tempPath = QDir::tempPath() + "/" + QUuid::createUuid().toString().replace("{",

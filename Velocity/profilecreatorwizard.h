@@ -50,7 +50,7 @@ private slots:
 
 private:
     Ui::ProfileCreatorWizard *ui;
-    UINT64 profileID;
+    u64 profileID;
     QStatusBar *statusBar;
     ConsoleType consoleType;
 

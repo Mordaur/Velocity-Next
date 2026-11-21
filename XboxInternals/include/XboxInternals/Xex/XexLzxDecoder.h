@@ -1,7 +1,7 @@
 #ifndef XEXLZXDECODER_H
 #define XEXLZXDECODER_H
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/Export.h>
 
 #include <array>
@@ -30,10 +30,10 @@
 class XBOXINTERNALS_EXPORT XexLzxDecoder
 {
 public:
-    static constexpr DWORD DefaultWindowSize = 0x8000;
-    static constexpr DWORD MaxWindowSize = 0x200000; // LZX limit: 21 window bits
-    static constexpr DWORD FrameSize = 0x8000;
-    static constexpr DWORD MaxNumPositionSlots = 50;
+    static constexpr u32 DefaultWindowSize = 0x8000;
+    static constexpr u32 MaxWindowSize = 0x200000; // LZX limit: 21 window bits
+    static constexpr u32 FrameSize = 0x8000;
+    static constexpr u32 MaxNumPositionSlots = 50;
     static constexpr int MaxMainSymbols = 256 + 8 * static_cast<int>(MaxNumPositionSlots);
 
     XexLzxDecoder();
@@ -42,15 +42,15 @@ public:
     // The frame size stays 0x8000; only the history window and the position
     // slot count change (16 -> 32 slots, 20 -> 42 slots, ...). Call before the
     // first DecodeChunk(); a different size after that is a programming error.
-    void SetWindowSize(DWORD bytes);
-    DWORD GetWindowSize() const;
+    void SetWindowSize(u32 bytes);
+    u32 GetWindowSize() const;
 
     // Forget all decode state (start of a new image).
     void Reset();
 
     // Decode exactly outLength bytes of the next chunk into outBuffer.
     // Throws std::string on malformed input.
-    void DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBuffer, size_t outLength);
+    void DecodeChunk(const u8 *data, size_t dataLength, u8 *outBuffer, size_t outLength);
 
     // Stored (uncompressed) LZX blocks carry a 12-byte big-endian R0/R1/R2
     // header; disable only if a stream turns out not to have one.
@@ -62,27 +62,27 @@ public:
     bool IsE8TranslationEnabled() const;
 
     // Diagnostics for the last DecodeChunk() call.
-    DWORD GetIntelFileSize() const;
+    u32 GetIntelFileSize() const;
     size_t GetConsumedBytes() const;
     int GetLeftoverBits() const;
 
 private:
     struct BitReader
     {
-        BitReader(const BYTE *data, size_t length);
+        BitReader(const u8 *data, size_t length);
 
         void Ensure(int bits);
-        DWORD Get(int bits);
+        u32 Get(int bits);
         void AlignToWord();
         void Skip(size_t bytes);
-        void ReadRaw(BYTE *outBuffer, size_t bytes);
+        void ReadRaw(u8 *outBuffer, size_t bytes);
         int GetLeftoverBits() const;
         size_t GetConsumedBytes() const;
 
-        const BYTE *data;
+        const u8 *data;
         size_t length;
         size_t position;
-        UINT64 buffer;
+        u64 buffer;
         int bitCount;
     };
 
@@ -95,7 +95,7 @@ private:
 
         // Build a canonical MSB-first decode table. Returns false when the
         // code lengths are over-subscribed.
-        bool Build(const BYTE *lengths, int symbolCount);
+        bool Build(const u8 *lengths, int symbolCount);
         int Decode(BitReader &bits) const;
 
         int count[MaxCodeLength + 1];
@@ -104,23 +104,23 @@ private:
     };
 
     void ReadBlockHeader(BitReader &bits);
-    void ReadCodeLengths(BitReader &bits, BYTE *lengths, int first, int last);
+    void ReadCodeLengths(BitReader &bits, u8 *lengths, int first, int last);
     void DecodeSymbols(BitReader &bits, size_t end, size_t &produced);
-    void ApplyE8Translation(BYTE *data, size_t length);
+    void ApplyE8Translation(u8 *data, size_t length);
 
-    std::vector<BYTE> window;
-    DWORD windowSize;
-    DWORD windowMask;
-    DWORD numPositionSlots;
-    DWORD mainSymbols;
-    DWORD windowPosition;
-    UINT64 totalOutput;
+    std::vector<u8> window;
+    u32 windowSize;
+    u32 windowMask;
+    u32 numPositionSlots;
+    u32 mainSymbols;
+    u32 windowPosition;
+    u64 totalOutput;
 
-    DWORD repeatOffsets[3];
+    u32 repeatOffsets[3];
 
-    std::array<BYTE, MaxMainSymbols> mainCodeLengths;
-    std::array<BYTE, 249> lengthCodeLengths;
-    std::array<BYTE, 8> alignedCodeLengths;
+    std::array<u8, MaxMainSymbols> mainCodeLengths;
+    std::array<u8, 249> lengthCodeLengths;
+    std::array<u8, 8> alignedCodeLengths;
 
     Huffman mainTree;
     Huffman lengthTree;
@@ -128,14 +128,14 @@ private:
 
     int blockType;
     int previousBlockType;
-    DWORD blockLength;
-    DWORD blockRemaining;
-    DWORD previousBlockLength;
+    u32 blockLength;
+    u32 blockRemaining;
+    u32 previousBlockLength;
 
     bool headerRead;
     bool intelStarted;
-    DWORD intelFileSize;
-    UINT64 chunkCount;
+    u32 intelFileSize;
+    u64 chunkCount;
 
     bool restoreRepeatOffsets;
     bool e8Translation;

@@ -4,7 +4,7 @@
 #ifndef FATXCONSTANTS_H
 #define FATXCONSTANTS_H
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 #include <XboxInternals/Stfs/XContentHeader.h>
@@ -27,13 +27,13 @@
 #define FATX_HEADER_SIZE 0x1000
 #define FATX_SECTOR_SIZE 0x200
 
-#define FAT_CLUSTER_AVAILABLE (DWORD)0x00000000
-#define FAT_CLUSTER_RESERVED (DWORD)0xfffffff0
-#define FAT_CLUSTER_LAST (DWORD)0xffffffff
+#define FAT_CLUSTER_AVAILABLE (u32)0x00000000
+#define FAT_CLUSTER_RESERVED (u32)0xfffffff0
+#define FAT_CLUSTER_LAST (u32)0xffffffff
 
-#define FAT_CLUSTER16_AVAILABLE (WORD)0x0000
-#define FAT_CLUSTER16_RESERVED (WORD)0xfff0
-#define FAT_CLUSTER16_LAST (WORD)0xffff
+#define FAT_CLUSTER16_AVAILABLE (u16)0x0000
+#define FAT_CLUSTER16_RESERVED (u16)0xfff0
+#define FAT_CLUSTER16_LAST (u16)0xffff
 
 class FatxDrive;
 struct Partition;
@@ -49,13 +49,13 @@ struct SecurityInfo
     std::string serialNumber;
     std::string firmwareRevision;
     std::string modelNumber;
-    BYTE msLogoHash[0x14];
-    DWORD userAddressableSectors;
-    BYTE rsaSignature[0x100];
+    u8 msLogoHash[0x14];
+    u32 userAddressableSectors;
+    u8 rsaSignature[0x100];
     bool validSignature;
 
-    DWORD msLogoSize;
-    std::vector<BYTE> msLogo;
+    u32 msLogoSize;
+    std::vector<u8> msLogo;
 };
 
 struct FlashDriveConfigurationData
@@ -64,69 +64,69 @@ struct FlashDriveConfigurationData
     Certificate certificate;
 
     // type2
-    BYTE deviceSignature[0x100];
+    u8 deviceSignature[0x100];
 
-    BYTE deviceID[0x14];
-    DWORD securityLength; // must be 0x228 or 0x100
-    UINT64 deviceLength;
-    WORD readSpeed;
-    WORD WriteSpeed;
+    u8 deviceID[0x14];
+    u32 securityLength; // must be 0x228 or 0x100
+    u64 deviceLength;
+    u16 readSpeed;
+    u16 WriteSpeed;
 };
 
 struct FatxFileEntry
 {
     Partition *partition = nullptr;
 
-    BYTE nameLen = 0;
-    BYTE fileAttributes = 0;
+    u8 nameLen = 0;
+    u8 fileAttributes = 0;
 
     std::string name;
-    DWORD startingCluster = 0;
-    DWORD fileSize = 0;
+    u32 startingCluster = 0;
+    u32 fileSize = 0;
 
     // times
-    DWORD creationDate = 0;
-    DWORD lastWriteDate = 0;
-    DWORD lastAccessDate = 0;
+    u32 creationDate = 0;
+    u32 lastWriteDate = 0;
+    u32 lastAccessDate = 0;
 
     bool readDirectories = false;
-    INT64 address = 0;
-    DWORD magic = 0;
+    i64 address = 0;
+    u32 magic = 0;
     FileSystem fileSystem = FileSystemSTFS;
     // std::deque, not std::vector: callers (and the GUI tree) hold raw
     // FatxFileEntry* for children. push_back on a deque never invalidates
     // references to existing elements, while a vector reallocation freed every
     // sibling pointer handed out earlier.
     std::deque<FatxFileEntry> cachedFiles;
-    std::vector<DWORD> clusterChain;
+    std::vector<u32> clusterChain;
     std::string path;
 };
 
 struct Partition
 {
     std::string name;
-    INT64 address;
-    UINT64 size;
+    i64 address;
+    u64 size;
     FatxDrive *drive;
 
     // header
-    DWORD magic;
-    DWORD partitionId;
-    DWORD sectorsPerCluster;
-    DWORD rootDirectoryCluster;
+    u32 magic;
+    u32 partitionId;
+    u32 sectorsPerCluster;
+    u32 rootDirectoryCluster;
 
     // partition entries
     FatxFileEntry root;
 
     // calculated information
-    DWORD lastFreeClusterFound;
-    BYTE clusterEntrySize;
-    DWORD clusterCount;
-    DWORD clusterSize;
-    UINT64 clusterStartingAddress;
-    UINT64 chainmapSize;
-    UINT64 freeMemory;
-    std::vector<DWORD> freeClusters;
+    u32 lastFreeClusterFound;
+    u8 clusterEntrySize;
+    u32 clusterCount;
+    u32 clusterSize;
+    u64 clusterStartingAddress;
+    u64 chainmapSize;
+    u64 freeMemory;
+    std::vector<u32> freeClusters;
 };
 
 // Copyable snapshot of a partition's metadata. Consumers such as dialogs and
@@ -135,20 +135,20 @@ struct Partition
 struct PartitionInfo
 {
     std::string name;
-    DWORD partitionId = 0;
-    DWORD sectorsPerCluster = 0;
-    DWORD rootDirectoryCluster = 0;
-    DWORD clusterCount = 0;
-    DWORD clusterSize = 0;
-    INT64 address = 0;
-    UINT64 size = 0;
-    UINT64 clusterStartingAddress = 0;
-    UINT64 freeMemory = 0;
+    u32 partitionId = 0;
+    u32 sectorsPerCluster = 0;
+    u32 rootDirectoryCluster = 0;
+    u32 clusterCount = 0;
+    u32 clusterSize = 0;
+    i64 address = 0;
+    u64 size = 0;
+    u64 clusterStartingAddress = 0;
+    u64 freeMemory = 0;
 
     // Byte offset of a cluster inside the partition; FATX clusters start at 1.
-    UINT64 ClusterToOffset(DWORD cluster) const
+    u64 ClusterToOffset(u32 cluster) const
     {
-        return clusterStartingAddress + static_cast<UINT64>(clusterSize) * (cluster - 1);
+        return clusterStartingAddress + static_cast<u64>(clusterSize) * (cluster - 1);
     }
 };
 
@@ -165,39 +165,39 @@ enum FatxDirentAttributes
 
 struct HddSizes
 {
-    static const INT64 SystemCache = 0x80000000;
-    static const INT64 GameCache = 0xA0E30000;
-    static const INT64 SystemPartition = 0x10000000;
-    static const INT64 SystemAuxiliary = 0xCE30000;
-    static const INT64 SystemExtended = 0x8000000;
+    static const i64 SystemCache = 0x80000000;
+    static const i64 GameCache = 0xA0E30000;
+    static const i64 SystemPartition = 0x10000000;
+    static const i64 SystemAuxiliary = 0xCE30000;
+    static const i64 SystemExtended = 0x8000000;
 };
 
 struct HddOffsets
 {
-    static const INT64 Data = 0x130EB0000;
-    static const INT64 Josh = 0x800;
-    static const INT64 SecuritySector = 0x2000;
-    static const INT64 SystemCache = 0x80000;
-    static const INT64 GameCache = 0x80080000;
-    static const INT64 SystemAuxiliary = 0x10C080000;
-    static const INT64 SystemExtended = 0x118EB0000;
-    static const INT64 SystemPartition = 0x120EB0000;
+    static const i64 Data = 0x130EB0000;
+    static const i64 Josh = 0x800;
+    static const i64 SecuritySector = 0x2000;
+    static const i64 SystemCache = 0x80000;
+    static const i64 GameCache = 0x80080000;
+    static const i64 SystemAuxiliary = 0x10C080000;
+    static const i64 SystemExtended = 0x118EB0000;
+    static const i64 SystemPartition = 0x120EB0000;
 };
 
 struct UsbOffsets
 {
-    static const INT64 SystemAuxiliary = 0x8115200;
-    static const INT64 SystemExtended = 0x12000400;
-    static const INT64 SystemCache = 0x8000400;
-    static const INT64 Data = 0x20000000;
+    static const i64 SystemAuxiliary = 0x8115200;
+    static const i64 SystemExtended = 0x12000400;
+    static const i64 SystemCache = 0x8000400;
+    static const i64 Data = 0x20000000;
 };
 
 struct UsbSizes
 {
-    static const INT64 CacheNoSystem = 0x4000000;
-    static const INT64 SystemCache = 0x47FF000;
-    static const INT64 SystemAuxiliary = 0x8000000;
-    static const INT64 SystemExtended = 0xDFFFC00;
+    static const i64 CacheNoSystem = 0x4000000;
+    static const i64 SystemCache = 0x47FF000;
+    static const i64 SystemAuxiliary = 0x8000000;
+    static const i64 SystemExtended = 0xDFFFC00;
 };
 
 #endif // FATXCONSTANTS_H

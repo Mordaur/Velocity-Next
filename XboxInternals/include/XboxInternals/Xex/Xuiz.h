@@ -3,7 +3,7 @@
 
 #include <XboxInternals/IO/BaseIO.h>
 #include <XboxInternals/IO/FileIO.h>
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <XboxInternals/Export.h>
 
 #include <memory>
@@ -16,9 +16,9 @@
 
 struct XuizFileEntry
 {
-    DWORD size;
-    DWORD offset;
-    DWORD realAddress;
+    u32 size;
+    u32 offset;
+    u32 realAddress;
     std::string path;
 };
 

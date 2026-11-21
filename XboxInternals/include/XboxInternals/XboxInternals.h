@@ -8,7 +8,8 @@
 #include <XboxInternals/Export.h>
 
 // Type definitions
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
+#include <XboxInternals/EnumTraits.h>
 
 // Account module
 #include <XboxInternals/Account/Account.h>

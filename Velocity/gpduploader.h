@@ -46,7 +46,7 @@ private:
 
     QNetworkAccessManager *networkAccessManager;
     void sendRequest(QString filePath, QString awardFilePath, QString gameName, QString titleID,
-            DWORD achievementCount, DWORD gamerscoreTotal, DWORD awards, DWORD mAwards, DWORD fAwards);
+            u32 achievementCount, u32 gamerscoreTotal, u32 awards, u32 mAwards, u32 fAwards);
     void uploadGpd(QString gamePath, QString awardPath, QString titleID);
 };
 

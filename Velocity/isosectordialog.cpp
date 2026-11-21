@@ -27,7 +27,7 @@ IsoSectorDialog::~IsoSectorDialog()
 
 void IsoSectorDialog::onSectorValueChanged(int value)
 {
-    UINT64 sectorAddress = iso_->SectorToAddress(value);
+    u64 sectorAddress = iso_->SectorToAddress(value);
     QString addressText = QString("0x%1").arg(sectorAddress, 0, 16).toUpper();
     ui->lblAddress->setText(addressText);
 }

@@ -12,26 +12,26 @@
 
 namespace
 {
-    constexpr DWORD kMinMatch = 2;
-    constexpr DWORD kMaxMatch = 257;
+    constexpr u32 kMinMatch = 2;
+    constexpr u32 kMaxMatch = 257;
 
-    constexpr BYTE ExtraBits(int slot)
+    constexpr u8 ExtraBits(int slot)
     {
         // extra_bits[] = 0,0,0,0,1,1,2,2,3,3,4,4,...,17
-        return slot < 4 ? 0 : (slot < 36 ? static_cast<BYTE>(slot / 2 - 1) : 17);
+        return slot < 4 ? 0 : (slot < 36 ? static_cast<u8>(slot / 2 - 1) : 17);
     }
 
     // position_base[slot] = sum(1 << extra_bits[i]) for i < slot; the kernel
     // precomputes base - 2 in its context (ctx+3016, see sub_801589F8).
     struct PositionBaseTable
     {
-        DWORD base[XexLzxDecoder::MaxNumPositionSlots];
+        u32 base[XexLzxDecoder::MaxNumPositionSlots];
 
         constexpr PositionBaseTable() : base()
         {
-            DWORD sum = 0;
+            u32 sum = 0;
 
-            for (DWORD i = 0; i < XexLzxDecoder::MaxNumPositionSlots; i++)
+            for (u32 i = 0; i < XexLzxDecoder::MaxNumPositionSlots; i++)
             {
                 base[i] = sum;
                 sum += 1u << ExtraBits(static_cast<int>(i));
@@ -52,7 +52,7 @@ namespace
 // keeps the valid bits at the top of a 32-bit register and shifts in one word
 // at a time, sub_80159260 / sub_801592C8).
 // ---------------------------------------------------------------------------
-XexLzxDecoder::BitReader::BitReader(const BYTE *data, size_t length) :
+XexLzxDecoder::BitReader::BitReader(const u8 *data, size_t length) :
     data(data), length(length), position(0), buffer(0), bitCount(0)
 {
 }
@@ -61,18 +61,18 @@ void XexLzxDecoder::BitReader::Ensure(int bits)
 {
     while (bitCount < bits)
     {
-        DWORD word = 0;
+        u32 word = 0;
 
         if (position + 1 < length)
         {
-            word = static_cast<DWORD>(data[position]) |
-                   (static_cast<DWORD>(data[position + 1]) << 8);
+            word = static_cast<u32>(data[position]) |
+                   (static_cast<u32>(data[position + 1]) << 8);
             position += 2;
         }
         else if (position < length)
         {
             // defensive: a trailing odd byte is used as the high half
-            word = static_cast<DWORD>(data[position]) << 8;
+            word = static_cast<u32>(data[position]) << 8;
             position += 1;
         }
 
@@ -81,7 +81,7 @@ void XexLzxDecoder::BitReader::Ensure(int bits)
     }
 }
 
-DWORD XexLzxDecoder::BitReader::Get(int bits)
+u32 XexLzxDecoder::BitReader::Get(int bits)
 {
     if (bits <= 0)
         return 0;
@@ -89,7 +89,7 @@ DWORD XexLzxDecoder::BitReader::Get(int bits)
     Ensure(bits);
     bitCount -= bits;
 
-    return static_cast<DWORD>((buffer >> bitCount) & ((1ull << bits) - 1));
+    return static_cast<u32>((buffer >> bitCount) & ((1ull << bits) - 1));
 }
 
 void XexLzxDecoder::BitReader::AlignToWord()
@@ -109,7 +109,7 @@ void XexLzxDecoder::BitReader::Skip(size_t bytes)
     position += bytes;
 }
 
-void XexLzxDecoder::BitReader::ReadRaw(BYTE *outBuffer, size_t bytes)
+void XexLzxDecoder::BitReader::ReadRaw(u8 *outBuffer, size_t bytes)
 {
     if (bytes > length - position)
         Throw("stored block header runs past the end of the chunk");
@@ -137,7 +137,7 @@ XexLzxDecoder::Huffman::Huffman() :
 {
 }
 
-bool XexLzxDecoder::Huffman::Build(const BYTE *lengths, int symbolCount)
+bool XexLzxDecoder::Huffman::Build(const u8 *lengths, int symbolCount)
 {
     for (int i = 0; i <= MaxCodeLength; i++)
         count[i] = 0;
@@ -227,16 +227,16 @@ XexLzxDecoder::XexLzxDecoder() :
     repeatOffsets[2] = 1;
 }
 
-void XexLzxDecoder::SetWindowSize(DWORD bytes)
+void XexLzxDecoder::SetWindowSize(u32 bytes)
 {
     if (bytes < DefaultWindowSize || bytes > MaxWindowSize || (bytes & (bytes - 1)) != 0)
         Throw("Invalid LZX window size.");
 
-    DWORD bits = 0;
+    u32 bits = 0;
     while ((1u << bits) < bytes)
         ++bits;
 
-    DWORD slots;
+    u32 slots;
     switch (bits)
     {
         case 15: slots = 30; break;
@@ -260,7 +260,7 @@ void XexLzxDecoder::SetWindowSize(DWORD bytes)
     windowPosition = 0;
 }
 
-DWORD XexLzxDecoder::GetWindowSize() const
+u32 XexLzxDecoder::GetWindowSize() const
 {
     return windowSize;
 }
@@ -313,7 +313,7 @@ bool XexLzxDecoder::IsE8TranslationEnabled() const
     return e8Translation;
 }
 
-DWORD XexLzxDecoder::GetIntelFileSize() const
+u32 XexLzxDecoder::GetIntelFileSize() const
 {
     return intelFileSize;
 }
@@ -328,7 +328,7 @@ int XexLzxDecoder::GetLeftoverBits() const
     return lastLeftoverBits;
 }
 
-void XexLzxDecoder::DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBuffer, size_t outLength)
+void XexLzxDecoder::DecodeChunk(const u8 *data, size_t dataLength, u8 *outBuffer, size_t outLength)
 {
     if (outLength > FrameSize)
         Throw("chunk output is larger than one frame");
@@ -337,7 +337,7 @@ void XexLzxDecoder::DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBu
         Throw("null buffer");
 
     BitReader bits(data, dataLength);
-    const DWORD chunkStart = windowPosition;
+    const u32 chunkStart = windowPosition;
     size_t produced = 0;
 
     while (produced < outLength)
@@ -358,7 +358,7 @@ void XexLzxDecoder::DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBu
             bits.Skip(toProduce);
             std::memcpy(window.data() + windowPosition, data + sourceOffset, toProduce);
 
-            windowPosition += static_cast<DWORD>(toProduce);
+            windowPosition += static_cast<u32>(toProduce);
             produced += toProduce;
         }
         else
@@ -366,7 +366,7 @@ void XexLzxDecoder::DecodeChunk(const BYTE *data, size_t dataLength, BYTE *outBu
             DecodeSymbols(bits, produced + toProduce, produced);
         }
 
-        blockRemaining -= static_cast<DWORD>(toProduce);
+        blockRemaining -= static_cast<u32>(toProduce);
     }
 
     if (windowPosition - chunkStart > outLength)
@@ -403,8 +403,8 @@ void XexLzxDecoder::ReadBlockHeader(BitReader &bits)
 
         if (bits.Get(1) != 0)
         {
-            const DWORD high = bits.Get(16);
-            const DWORD low = bits.Get(16);
+            const u32 high = bits.Get(16);
+            const u32 low = bits.Get(16);
             intelFileSize = (high << 16) | low;
         }
         else
@@ -417,9 +417,9 @@ void XexLzxDecoder::ReadBlockHeader(BitReader &bits)
 
     // separate statements: the evaluation order of several Get() calls inside
     // one expression is unspecified
-    const DWORD lengthHigh = bits.Get(8);
-    const DWORD lengthMiddle = bits.Get(8);
-    const DWORD lengthLow = bits.Get(8);
+    const u32 lengthHigh = bits.Get(8);
+    const u32 lengthMiddle = bits.Get(8);
+    const u32 lengthLow = bits.Get(8);
     blockLength = (lengthHigh << 16) | (lengthMiddle << 8) | lengthLow;
     blockRemaining = blockLength;
 
@@ -429,7 +429,7 @@ void XexLzxDecoder::ReadBlockHeader(BitReader &bits)
     if (blockType == 2)
     {
         for (size_t i = 0; i < alignedCodeLengths.size(); i++)
-            alignedCodeLengths[i] = static_cast<BYTE>(bits.Get(3));
+            alignedCodeLengths[i] = static_cast<u8>(bits.Get(3));
 
         if (!alignedTree.Build(alignedCodeLengths.data(), static_cast<int>(alignedCodeLengths.size())))
             Throw("invalid aligned-offset tree");
@@ -460,19 +460,19 @@ void XexLzxDecoder::ReadBlockHeader(BitReader &bits)
         bits.AlignToWord();
 
         // stored blocks start with 12 bytes of big-endian R0/R1/R2
-        BYTE repeatHeader[12];
+        u8 repeatHeader[12];
         bits.ReadRaw(repeatHeader, sizeof(repeatHeader));
 
         if (restoreRepeatOffsets)
         {
             for (int i = 0; i < 3; i++)
             {
-                const BYTE *entry = repeatHeader + i * 4;
+                const u8 *entry = repeatHeader + i * 4;
 
-                repeatOffsets[i] = (static_cast<DWORD>(entry[0]) << 24) |
-                                   (static_cast<DWORD>(entry[1]) << 16) |
-                                   (static_cast<DWORD>(entry[2]) << 8) |
-                                   static_cast<DWORD>(entry[3]);
+                repeatOffsets[i] = (static_cast<u32>(entry[0]) << 24) |
+                                   (static_cast<u32>(entry[1]) << 16) |
+                                   (static_cast<u32>(entry[2]) << 8) |
+                                   static_cast<u32>(entry[3]);
 
                 if (repeatOffsets[i] > windowSize)
                     Throw("stored block repeated offset out of range");
@@ -488,12 +488,12 @@ void XexLzxDecoder::ReadBlockHeader(BitReader &bits)
     previousBlockLength = blockLength;
 }
 
-void XexLzxDecoder::ReadCodeLengths(BitReader &bits, BYTE *lengths, int first, int last)
+void XexLzxDecoder::ReadCodeLengths(BitReader &bits, u8 *lengths, int first, int last)
 {
-    BYTE preTreeLengths[20];
+    u8 preTreeLengths[20];
 
     for (size_t i = 0; i < sizeof(preTreeLengths); i++)
-        preTreeLengths[i] = static_cast<BYTE>(bits.Get(4));
+        preTreeLengths[i] = static_cast<u8>(bits.Get(4));
 
     Huffman preTree;
     if (!preTree.Build(preTreeLengths, static_cast<int>(sizeof(preTreeLengths))))
@@ -537,7 +537,7 @@ void XexLzxDecoder::ReadCodeLengths(BitReader &bits, BYTE *lengths, int first, i
                 value += 17;
 
             while (runLength-- > 0 && index < last)
-                lengths[index++] = static_cast<BYTE>(value);
+                lengths[index++] = static_cast<u8>(value);
         }
         else
         {
@@ -545,7 +545,7 @@ void XexLzxDecoder::ReadCodeLengths(BitReader &bits, BYTE *lengths, int first, i
             if (value < 0)
                 value += 17;
 
-            lengths[index++] = static_cast<BYTE>(value);
+            lengths[index++] = static_cast<u8>(value);
         }
     }
 }
@@ -564,14 +564,14 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
             if (windowPosition >= windowSize)
                 Throw("literal past the frame boundary");
 
-            window[windowPosition++] = static_cast<BYTE>(symbol);
+            window[windowPosition++] = static_cast<u8>(symbol);
             produced++;
             continue;
         }
 
         const int element = symbol - 256;
 
-        DWORD matchLength = static_cast<DWORD>(element) & 7;
+        u32 matchLength = static_cast<u32>(element) & 7;
         if (matchLength == 7)
         {
             if (lengthTree.empty)
@@ -581,7 +581,7 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
             if (footer < 0)
                 Throw("invalid length-tree symbol");
 
-            matchLength += static_cast<DWORD>(footer);
+            matchLength += static_cast<u32>(footer);
         }
 
         matchLength += kMinMatch;
@@ -593,7 +593,7 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
         if (slot >= static_cast<int>(numPositionSlots))
             Throw("position slot out of range");
 
-        DWORD matchOffset;
+        u32 matchOffset;
 
         if (slot == 0)
         {
@@ -613,7 +613,7 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
         }
         else
         {
-            const DWORD extra = ExtraBits(slot);
+            const u32 extra = ExtraBits(slot);
             matchOffset = kPositionBase.base[slot] - 2;
 
             if (extra >= 3 && blockType == 2)
@@ -625,7 +625,7 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
                 if (alignedSymbol < 0)
                     Throw("invalid aligned-offset symbol");
 
-                matchOffset += static_cast<DWORD>(alignedSymbol);
+                matchOffset += static_cast<u32>(alignedSymbol);
             }
             else if (extra != 0)
             {
@@ -645,9 +645,9 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
 
         // Overlapping copies are byte-by-byte; the source is masked per byte,
         // which is the equivalent of the kernel's 261-byte window mirror.
-        const DWORD source = (windowPosition - matchOffset) & windowMask;
+        const u32 source = (windowPosition - matchOffset) & windowMask;
 
-        for (DWORD i = 0; i < matchLength; i++)
+        for (u32 i = 0; i < matchLength; i++)
         {
             window[(windowPosition + i) & windowMask] =
                 window[(source + i) & windowMask];
@@ -658,7 +658,7 @@ void XexLzxDecoder::DecodeSymbols(BitReader &bits, size_t end, size_t &produced)
     }
 }
 
-void XexLzxDecoder::ApplyE8Translation(BYTE *data, size_t length)
+void XexLzxDecoder::ApplyE8Translation(u8 *data, size_t length)
 {
     if (!e8Translation || intelFileSize == 0 || !intelStarted || length <= 10)
         return;
@@ -667,8 +667,8 @@ void XexLzxDecoder::ApplyE8Translation(BYTE *data, size_t length)
     if (chunkCount >= 0x8000)
         return;
 
-    const INT32 fileSize = static_cast<INT32>(intelFileSize);
-    INT32 currentPosition = static_cast<INT32>(totalOutput - length);
+    const i32 fileSize = static_cast<i32>(intelFileSize);
+    i32 currentPosition = static_cast<i32>(totalOutput - length);
     const size_t limit = length - 10; // the last 6 bytes are never touched
     size_t i = 0;
 
@@ -681,22 +681,22 @@ void XexLzxDecoder::ApplyE8Translation(BYTE *data, size_t length)
             continue;
         }
 
-        const INT32 absoluteOffset = static_cast<INT32>(
-            static_cast<DWORD>(data[i + 1]) |
-            (static_cast<DWORD>(data[i + 2]) << 8) |
-            (static_cast<DWORD>(data[i + 3]) << 16) |
-            (static_cast<DWORD>(data[i + 4]) << 24));
+        const i32 absoluteOffset = static_cast<i32>(
+            static_cast<u32>(data[i + 1]) |
+            (static_cast<u32>(data[i + 2]) << 8) |
+            (static_cast<u32>(data[i + 3]) << 16) |
+            (static_cast<u32>(data[i + 4]) << 24));
 
         if (absoluteOffset >= -currentPosition && absoluteOffset < fileSize)
         {
-            const INT32 relativeOffset = (absoluteOffset >= 0)
+            const i32 relativeOffset = (absoluteOffset >= 0)
                 ? absoluteOffset - currentPosition
                 : absoluteOffset + fileSize;
 
-            data[i + 1] = static_cast<BYTE>(relativeOffset);
-            data[i + 2] = static_cast<BYTE>(relativeOffset >> 8);
-            data[i + 3] = static_cast<BYTE>(relativeOffset >> 16);
-            data[i + 4] = static_cast<BYTE>(relativeOffset >> 24);
+            data[i + 1] = static_cast<u8>(relativeOffset);
+            data[i + 2] = static_cast<u8>(relativeOffset >> 8);
+            data[i + 3] = static_cast<u8>(relativeOffset >> 16);
+            data[i + 4] = static_cast<u8>(relativeOffset >> 24);
         }
 
         i += 5;

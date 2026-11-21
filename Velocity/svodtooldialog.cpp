@@ -20,17 +20,17 @@ SvodToolDialog::SvodToolDialog(SVOD *svod, QWidget *parent) :
 
     const auto &descriptor = svod->metadata->svodVolumeDescriptor;
     const bool enhanced = XboxInternals::SvodLayout::IsEnhanced(descriptor.flags);
-    const UINT64 dataOffset = XboxInternals::SvodLayout::DataBlockOffset(
+    const u64 dataOffset = XboxInternals::SvodLayout::DataBlockOffset(
             descriptor.dataBlockOffset, enhanced);
-    const UINT64 sectorCount = svod->GetSectorCount();
+    const u64 sectorCount = svod->GetSectorCount();
 
     // SectorToAddress() rejects sector == count, so the spin box must stop one
-    // short. A DWORD sector count can also exceed QSpinBox's int range.
-    const UINT64 minSector = dataOffset * 2;
-    const UINT64 maxSector = sectorCount == 0 ? 0 : sectorCount - 1;
-    const int maxValue = maxSector > static_cast<UINT64>(INT_MAX)
+    // short. A u32 sector count can also exceed QSpinBox's int range.
+    const u64 minSector = dataOffset * 2;
+    const u64 maxSector = sectorCount == 0 ? 0 : sectorCount - 1;
+    const int maxValue = maxSector > static_cast<u64>(INT_MAX)
             ? INT_MAX : static_cast<int>(maxSector);
-    const int minValue = minSector > static_cast<UINT64>(maxValue)
+    const int minValue = minSector > static_cast<u64>(maxValue)
             ? maxValue : static_cast<int>(minSector);
 
     {
@@ -51,8 +51,8 @@ void SvodToolDialog::on_spinBox_valueChanged(int arg1)
 {
     try
     {
-        DWORD addr = 0, index = 0;
-        svod->SectorToAddress(static_cast<DWORD>(arg1), &addr, &index);
+        u32 addr = 0, index = 0;
+        svod->SectorToAddress(static_cast<u32>(arg1), &addr, &index);
         ui->lblAddress->setText("0x" + QString::number(addr, 16).toUpper());
         ui->lblFileIndex->setText(QString::number(index));
     }

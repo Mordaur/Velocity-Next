@@ -30,13 +30,13 @@ bool XdbfHelpers::CompareEntries(XdbfEntry a, XdbfEntry b)
         return a.id < b.type;
 }
 
-time_t XdbfHelpers::FILETIMEtoTimeT(WINFILETIME time)
+time_t XdbfHelpers::FILETIMEtoTimeT(FileTime time)
 {
-    INT64 i64 = (((INT64)(time.dwHighDateTime)) << 32) + time.dwLowDateTime;
-    return (time_t)((i64 - 116444736000000000) / 10000000);
+    i64 ticks = (((i64)(time.highDateTime)) << 32) + time.lowDateTime;
+    return (time_t)((ticks - 116444736000000000) / 10000000);
 }
 
-unsigned int XdbfHelpers::FILETIMEtoMilliseconds(WINFILETIME time)
+unsigned int XdbfHelpers::FILETIMEtoMilliseconds(FileTime time)
 {
     /* Effectively the same as FILETIMEtoTimeT, but we're leaving
       the milliseconds on, and stripping them out with a modulus.
@@ -44,30 +44,30 @@ unsigned int XdbfHelpers::FILETIMEtoMilliseconds(WINFILETIME time)
       TODO: Maybe just make this void with two reference parameters
       to fill a time_t and unsigned int.
       */
-    INT64 i64 = (((INT64)(time.dwHighDateTime)) << 32) + time.dwLowDateTime;
-    return (unsigned int)(((i64 - 116444736000000000) / 10000) % 1000);
+    i64 ticks = (((i64)(time.highDateTime)) << 32) + time.lowDateTime;
+    return (unsigned int)(((ticks - 116444736000000000) / 10000) % 1000);
 }
 
-WINFILETIME XdbfHelpers::TimeTtoFILETIME(time_t time)
+FileTime XdbfHelpers::TimeTtoFILETIME(time_t time)
 {
-    WINFILETIME toReturn;
+    FileTime toReturn;
 
-    UINT64 ll = ((UINT64)(time * (UINT64)10000000)) + 116444736000000000;
-    toReturn.dwLowDateTime = (DWORD)ll;
-    toReturn.dwHighDateTime = ll >> 32;
+    u64 ll = ((u64)(time * (u64)10000000)) + 116444736000000000;
+    toReturn.lowDateTime = (u32)ll;
+    toReturn.highDateTime = ll >> 32;
     return toReturn;
 }
 
-WINFILETIME XdbfHelpers::TimeTtoFILETIME(time_t time, unsigned int millis)
+FileTime XdbfHelpers::TimeTtoFILETIME(time_t time, unsigned int millis)
 {
     // TODO: Can just have the old function call this with 0ms
     millis = millis % 1000; // make sure 0-999 ms
 
-    WINFILETIME toReturn;
+    FileTime toReturn;
 
-    UINT64 ll = ((UINT64)(time * (UINT64)10000000)) + ((UINT64)(millis * (UINT64)10000)) + 116444736000000000;
-    toReturn.dwLowDateTime = (DWORD)ll;
-    toReturn.dwHighDateTime = ll >> 32;
+    u64 ll = ((u64)(time * (u64)10000000)) + ((u64)(millis * (u64)10000)) + 116444736000000000;
+    toReturn.lowDateTime = (u32)ll;
+    toReturn.highDateTime = ll >> 32;
     return toReturn;
 }
 
@@ -114,7 +114,7 @@ string XdbfHelpers::AssetGenderToString(AssetGender gender)
     return AssetHelpers::AssetGenderToString(gender);
 }
 
-string XdbfHelpers::IDtoString(UINT64 id)
+string XdbfHelpers::IDtoString(u64 id)
 {
     switch (id)
     {

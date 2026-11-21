@@ -14,10 +14,10 @@ public:
     XContentDeviceTitle(std::string pathOnDevice, std::string rawName);
 
     std::wstring GetName();
-    BYTE* GetThumbnail();
-    DWORD GetThumbnailSize();
-    DWORD GetTitleID();
-    BYTE* GetProfileID();
+    u8* GetThumbnail();
+    u32 GetThumbnailSize();
+    u32 GetTitleID();
+    u8* GetProfileID();
 
     std::vector<XContentDeviceItem> titleSaves;
 

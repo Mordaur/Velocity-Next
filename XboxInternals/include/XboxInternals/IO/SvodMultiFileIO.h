@@ -20,36 +20,36 @@ public:
     virtual ~SvodMultiFileIO();
 
     // seek to a certain address in the file, index of -1 for current file
-    void SetPosition(DWORD addressInFile, DWORD fileIndex = -1);
+    void SetPosition(u32 addressInFile, u32 fileIndex = -1);
 
     // get the current position of the io
-    void GetPosition(DWORD *addressInFile, DWORD *fileIndex);
+    void GetPosition(u32 *addressInFile, u32 *fileIndex);
 
     // read len bytes from the current file at the current position into buffer
-    void ReadBytes(BYTE *outBuffer, DWORD len);
+    void ReadBytes(u8 *outBuffer, u32 len);
 
     // Write len bytes to the file at the current position
-    void WriteBytes(BYTE *buffer, DWORD len);
+    void WriteBytes(u8 *buffer, u32 len);
 
     void Close();
 
     void Flush();
 
-    UINT64 Length();
+    u64 Length();
 
     // get the number of files in the directory
-    DWORD FileCount();
+    u32 FileCount();
 
     // get the number of bytes in the current file
-    DWORD CurrentFileLength();
+    u32 CurrentFileLength();
 
     // unused
-    void SetPosition(UINT64 position, std::ios_base::seekdir dir = std::ios_base::beg);
-    UINT64 GetPosition();
+    void SetPosition(u64 position, std::ios_base::seekdir dir = std::ios_base::beg);
+    u64 GetPosition();
 
 private:
-    DWORD addressInFile;
-    DWORD fileIndex;
+    u32 addressInFile;
+    u32 fileIndex;
 
     std::unique_ptr<FileIO> currentIO;
     vector<string> files;

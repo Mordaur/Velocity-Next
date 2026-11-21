@@ -59,7 +59,7 @@ private:
     void init();
 
     // Description: get the next award index, for the id of a new entry
-    WORD getNextAwardIndex();
+    u16 getNextAwardIndex();
 };
 
 

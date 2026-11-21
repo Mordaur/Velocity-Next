@@ -26,8 +26,8 @@ namespace {
 
 constexpr char kGdfMagic[] = "MICROSOFT*XBOX*MEDIA";
 constexpr size_t kGdfMagicLen = 20;
-constexpr UINT64 kDirRecordHeader = 14;
-constexpr UINT64 kDirRecordLimit = ISO_SECTOR_SIZE - kDirRecordHeader; // 0x7F2
+constexpr u64 kDirRecordHeader = 14;
+constexpr u64 kDirRecordLimit = ISO_SECTOR_SIZE - kDirRecordHeader; // 0x7F2
 
 bool IsoNameEquals(const std::string &a, const std::string &b)
 {
@@ -64,12 +64,12 @@ IsoImage::~IsoImage() {
     close();
 }
 
-bool IsoImage::ValidGDFXHeader(UINT64 address) {
-    const UINT64 length = impl_->io->Length();
+bool IsoImage::ValidGDFXHeader(u64 address) {
+    const u64 length = impl_->io->Length();
     if (address > length || length - address < ISO_SECTOR_SIZE)
         return false;
 
-    std::vector<BYTE> sector(ISO_SECTOR_SIZE);
+    std::vector<u8> sector(ISO_SECTOR_SIZE);
     try {
         impl_->io->SetPosition(address);
         impl_->io->ReadBytes(sector.data(), ISO_SECTOR_SIZE);
@@ -84,7 +84,7 @@ bool IsoImage::ValidGDFXHeader(UINT64 address) {
 }
 
 void IsoImage::ParseISO() {
-    struct Candidate { DWORD baseSector; IsoType type; const char *version; };
+    struct Candidate { u32 baseSector; IsoType type; const char *version; };
 
     // Probe the most specific layout first; an XGD3 video area can contain the
     // XGD2 offset's bytes, which used to make the first-match order misclassify.
@@ -94,9 +94,9 @@ void IsoImage::ParseISO() {
         { 0,       IsoType::GDF,  "XGD1" },
     };
 
-    auto tryLayout = [this](UINT32 stride, UINT32 userOffset) {
+    auto tryLayout = [this](u32 stride, u32 userOffset) {
         for (const Candidate &candidate : candidates) {
-            const UINT64 descriptor = (static_cast<UINT64>(candidate.baseSector) + 32) * stride
+            const u64 descriptor = (static_cast<u64>(candidate.baseSector) + 32) * stride
                     + userOffset;
             if (!ValidGDFXHeader(descriptor))
                 continue;
@@ -129,8 +129,8 @@ void IsoImage::ParseISO() {
     info_.rootDirSize = gdfxHeader.rootSize;
 }
 
-void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector,
-                               UINT64 size, std::string path, int depth,
+void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, u32 sector,
+                               u64 size, std::string path, int depth,
                                std::unordered_set<uint64_t> &visited) {
     auto finish = [entryList]() {
         std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
@@ -155,17 +155,17 @@ void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sect
         return;
     }
 
-    UINT64 offset = 0;
-    const UINT64 length = impl_->io->Length();
+    u64 offset = 0;
+    const u64 length = impl_->io->Length();
 
     while (offset < size) {
         if (size - offset < kDirRecordHeader)
             break;
 
-        const DWORD sectorIndex = sector + static_cast<DWORD>(offset / ISO_SECTOR_SIZE);
-        const DWORD inSector = static_cast<DWORD>(offset % ISO_SECTOR_SIZE);
+        const u32 sectorIndex = sector + static_cast<u32>(offset / ISO_SECTOR_SIZE);
+        const u32 inSector = static_cast<u32>(offset % ISO_SECTOR_SIZE);
 
-        const UINT64 address = SectorToAddress(sectorIndex) + inSector;
+        const u64 address = SectorToAddress(sectorIndex) + inSector;
         if (address > length || length - address < kDirRecordHeader)
             break;
 
@@ -175,7 +175,7 @@ void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sect
         // dword is the sector end marker, so the walk continues at the start of
         // the next sector; a directory is a contiguous run of sectors. This is
         // the normal padding path and it is not end-of-directory.
-        const DWORD marker = impl_->io->ReadDword();
+        const u32 marker = impl_->io->ReadDword();
         if (marker == 0xFFFFFFFF) {
             offset = (offset / ISO_SECTOR_SIZE + 1) * ISO_SECTOR_SIZE;
             continue;
@@ -206,15 +206,15 @@ void IsoImage::ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sect
         // An unused slot (no name) is not a usable entry; skip its aligned
         // record header instead of pushing an empty-named file.
         if (current.nameLen == 0) {
-            offset += (kDirRecordHeader + 3) & ~static_cast<UINT64>(3);
+            offset += (kDirRecordHeader + 3) & ~static_cast<u64>(3);
             continue;
         }
 
         current.name.resize(current.nameLen);
-        impl_->io->ReadBytes(reinterpret_cast<BYTE *>(&current.name[0]), current.nameLen);
+        impl_->io->ReadBytes(reinterpret_cast<u8 *>(&current.name[0]), current.nameLen);
 
-        const UINT64 stride =
-                (static_cast<UINT64>(current.nameLen) + 0x11) & ~static_cast<UINT64>(3);
+        const u64 stride =
+                (static_cast<u64>(current.nameLen) + 0x11) & ~static_cast<u64>(3);
         if (stride == 0)
             break;
 
@@ -245,17 +245,17 @@ void IsoImage::GetFileListing() {
     }
 }
 
-UINT64 IsoImage::SectorToAddress(DWORD sector) {
-    return (volumeBaseSector + static_cast<UINT64>(sector)) * info_.sectorStride
+u64 IsoImage::SectorToAddress(u32 sector) {
+    return (volumeBaseSector + static_cast<u64>(sector)) * info_.sectorStride
             + info_.sectorUserOffset;
 }
 
-bool IsoImage::ValidateExtent(DWORD sector, UINT64 size) const {
+bool IsoImage::ValidateExtent(u32 sector, u64 size) const {
     if (!impl_->io)
         return false;
 
-    const UINT64 base = volumeBaseSector * info_.sectorStride;
-    const UINT64 start = (volumeBaseSector + static_cast<UINT64>(sector)) * info_.sectorStride
+    const u64 base = volumeBaseSector * info_.sectorStride;
+    const u64 start = (volumeBaseSector + static_cast<u64>(sector)) * info_.sectorStride
             + info_.sectorUserOffset;
 
     if (start < base)
@@ -263,7 +263,7 @@ bool IsoImage::ValidateExtent(DWORD sector, UINT64 size) const {
     if (size == 0)
         return true;
 
-    const UINT64 length = impl_->io->Length();
+    const u64 length = impl_->io->Length();
     return start < length && size <= length - start;
 }
 
@@ -322,30 +322,30 @@ std::string IsoImage::GetXGDVersion() {
     return xgdVersion;
 }
 
-UINT64 IsoImage::GetTotalSectors() {
+u64 IsoImage::GetTotalSectors() {
     if (!impl_->io)
         return 0;
 
-    const UINT64 base = volumeBaseSector * info_.sectorStride;
-    const UINT64 length = impl_->io->Length();
+    const u64 base = volumeBaseSector * info_.sectorStride;
+    const u64 length = impl_->io->Length();
     if (length <= base)
         return 0;
 
     return (length - base) / info_.sectorStride;
 }
 
-DWORD IsoImage::GetFileMagic(GdfxFileEntry *entry) {
+u32 IsoImage::GetFileMagic(GdfxFileEntry *entry) {
     if (entry->size < 4)
         return 0;
     
-    UINT64 savedPosition = impl_->io->GetPosition();
+    u64 savedPosition = impl_->io->GetPosition();
     EndianType savedEndian = impl_->io->GetEndian();
     
-    UINT64 fileAddress = SectorToAddress(entry->sector);
+    u64 fileAddress = SectorToAddress(entry->sector);
     impl_->io->SetPosition(fileAddress);
     
     impl_->io->SetEndian(BigEndian);
-    DWORD magic = impl_->io->ReadDword();
+    u32 magic = impl_->io->ReadDword();
     
     impl_->io->SetEndian(savedEndian);
     impl_->io->SetPosition(savedPosition);
@@ -386,8 +386,8 @@ std::wstring IsoImage::GetTitleName() {
     return titleName;
 }
 
-DWORD IsoImage::GetTotalCopyIterations(const std::vector<GdfxFileEntry> *entryList) {
-    DWORD totalCopyIterations = 0;
+u32 IsoImage::GetTotalCopyIterations(const std::vector<GdfxFileEntry> *entryList) {
+    u32 totalCopyIterations = 0;
     
     for (size_t i = 0; i < entryList->size(); i++) {
         const GdfxFileEntry &entry = entryList->at(i);
@@ -396,7 +396,7 @@ DWORD IsoImage::GetTotalCopyIterations(const std::vector<GdfxFileEntry> *entryLi
             totalCopyIterations += GetTotalCopyIterations(&entry.files);
         }
         else {
-            DWORD sectionsPerFile = entry.size / (ISO_SECTOR_SIZE * 1000);
+            u32 sectionsPerFile = entry.size / (ISO_SECTOR_SIZE * 1000);
             if (entry.size % (ISO_SECTOR_SIZE * 1000) != 0)
                 sectionsPerFile++;
             
@@ -514,7 +514,7 @@ bool IsoImage::extractFile(const GdfxFileEntry& entry, const std::string& output
     uint64_t remaining = entry.size;
     uint64_t totalRead = 0;
     constexpr size_t bufferSize = 65536;
-    std::vector<BYTE> buffer(bufferSize);
+    std::vector<u8> buffer(bufferSize);
 
     try {
         while (remaining > 0) {
@@ -609,7 +609,7 @@ bool IsoImage::extractAll(const std::string& outputDir,
 
 void IsoImage::ExtractAllHelper(std::string outDirectory, std::vector<GdfxFileEntry> *entryList,
                                 void(*progress)(void*, uint32_t, uint32_t), void *arg,
-                                DWORD *curProgress, DWORD totalProgress) {
+                                u32 *curProgress, u32 totalProgress) {
     for (size_t i = 0; i < entryList->size(); i++) {
         GdfxFileEntry &entry = entryList->at(i);
         
@@ -627,24 +627,24 @@ void IsoImage::ExtractAllHelper(std::string outDirectory, std::vector<GdfxFileEn
 
 void IsoImage::ExtractFileHelper(std::string outDirectory, const GdfxFileEntry *toExtract,
                                  void(*progress)(void*, uint32_t, uint32_t), void *arg,
-                                 DWORD *curProgress, DWORD totalProgress) {
-    constexpr DWORD ISO_COPY_BUFFER_SIZE = ISO_SECTOR_SIZE * 1000;
-    std::vector<BYTE> copyBuffer(ISO_COPY_BUFFER_SIZE);
+                                 u32 *curProgress, u32 totalProgress) {
+    constexpr u32 ISO_COPY_BUFFER_SIZE = ISO_SECTOR_SIZE * 1000;
+    std::vector<u8> copyBuffer(ISO_COPY_BUFFER_SIZE);
     
     fs::create_directories(outDirectory);
     
     std::string outFilePath = outDirectory + "/" + toExtract->name;
     FileIO extractedFile(outFilePath, true);
     
-    DWORD totalReads = toExtract->size / ISO_COPY_BUFFER_SIZE;
+    u32 totalReads = toExtract->size / ISO_COPY_BUFFER_SIZE;
     if (toExtract->size % ISO_COPY_BUFFER_SIZE != 0)
         totalReads++;
     
-    UINT64 readAddress = SectorToAddress(toExtract->sector);
+    u64 readAddress = SectorToAddress(toExtract->sector);
     impl_->io->SetPosition(readAddress);
     
-    for (DWORD x = 0; x < totalReads; x++) {
-        DWORD numBytesToCopy = ISO_COPY_BUFFER_SIZE;
+    for (u32 x = 0; x < totalReads; x++) {
+        u32 numBytesToCopy = ISO_COPY_BUFFER_SIZE;
         if (x == totalReads - 1 && toExtract->size % ISO_COPY_BUFFER_SIZE != 0)
             numBytesToCopy = toExtract->size % ISO_COPY_BUFFER_SIZE;
         

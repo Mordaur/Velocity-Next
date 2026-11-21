@@ -66,7 +66,7 @@ private:
     QList<TitleData> *currentTitles;
     QList<QString> *searchedIDs;
     QList<QString> *addedIDs;
-    QList<DWORD> *searchedTitleIDs;
+    QList<u32> *searchedTitleIDs;
     QStatusBar *statusBar;
     QNetworkAccessManager *gpManager;
     

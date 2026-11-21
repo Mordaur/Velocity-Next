@@ -40,15 +40,15 @@ public:
 
     bool LoadDevice(void(*progress)(void*, bool) = NULL, void *arg = NULL);
     FatxDriveType GetDeviceType();
-    UINT64 GetFreeMemory(void(*progress)(void*, bool) = NULL, void *arg = NULL, bool finish = true);
-    UINT64 GetTotalMemory();
+    u64 GetFreeMemory(void(*progress)(void*, bool) = NULL, void *arg = NULL, bool finish = true);
+    u64 GetTotalMemory();
     std::wstring GetName();
     void SetName(std::wstring name);
     FatxDrive *GetFatxDrive();
 
-    void CopyFileToLocalDisk(std::string outPath, std::string inPath, void(*progress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
-    void CopyFileToDevice(std::string outPath, void(*progress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
-    void CopyFileToRawDevice(std::string outPath, std::string name, std::string inPath, void(*progress)(void*, DWORD, DWORD) = NULL, void *arg = NULL);
+    void CopyFileToLocalDisk(std::string outPath, std::string inPath, void(*progress)(void*, u32, u32) = NULL, void *arg = NULL);
+    void CopyFileToDevice(std::string outPath, void(*progress)(void*, u32, u32) = NULL, void *arg = NULL);
+    void CopyFileToRawDevice(std::string outPath, std::string name, std::string inPath, void(*progress)(void*, u32, u32) = NULL, void *arg = NULL);
     void DeleteFile(IXContentHeader *package, std::string pathOnDevice);
 
 private:

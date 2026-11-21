@@ -11,7 +11,7 @@
 
 class XContentDevice;
 
-void UpdateProgress(void *arg, DWORD cur, DWORD total);
+void UpdateProgress(void *arg, u32 cur, u32 total);
 
 namespace Ui
 {
@@ -45,7 +45,7 @@ private:
     QString internalPath, externalPath;
     bool copyToDevice_ = false;
 
-    friend void UpdateProgress(void *arg, DWORD cur, DWORD total);
+    friend void UpdateProgress(void *arg, u32 cur, u32 total);
 };
 
 #endif // SINGLEPROGRESSDIALOG_H

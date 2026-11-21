@@ -13,11 +13,11 @@ class XexZeroBasedCompressionIO : public XexBaseIO
 public:
     XexZeroBasedCompressionIO(BaseIO *io, Xex *xex);
 
-    void ReadBytes(BYTE *outBuffer, DWORD readLength);
+    void ReadBytes(u8 *outBuffer, u32 readLength);
 
-    void WriteBytes(BYTE *buffer, DWORD len);
+    void WriteBytes(u8 *buffer, u32 len);
 
-    UINT64 Length();
+    u64 Length();
 };
 
 #endif // XEXZEROBASEDCOMPRESSIONIO_H

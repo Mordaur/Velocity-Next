@@ -1,6 +1,7 @@
 #pragma once
 
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
+#include <XboxInternals/EnumTraits.h>
 #include "../AvatarAsset/AvatarAssetDefinitions.h"
 #include <ctime>
 #include <iostream>
@@ -10,6 +11,16 @@
 
 using std::vector;
 using std::wstring;
+
+// A 64-bit Windows FILETIME (100 ns ticks since 1601-01-01 UTC) as the two
+// 32-bit halves GPD, XContent, GDFX and YTGR store. The high half comes first
+// here; readers fill each half explicitly, so the order is not an on-disk layout.
+struct FileTime
+{
+    u32 highDateTime;
+    u32 lowDateTime;
+};
+static_assert(sizeof(FileTime) == 8, "FileTime must be 8 bytes");
 
 // Description: different types of entries in an Xdbf file
 enum EntryType
@@ -26,32 +37,32 @@ enum EntryType
 
 struct XdbfHeader
 {
-    DWORD magic;
-    DWORD version;
-    DWORD entryTableLength;
-    DWORD entryCount;
-    DWORD freeMemTableLength;
-    DWORD freeMemTableEntryCount;
+    u32 magic;
+    u32 version;
+    u32 entryTableLength;
+    u32 entryCount;
+    u32 freeMemTableLength;
+    u32 freeMemTableEntryCount;
 };
 
 struct XdbfEntry
 {
     EntryType type = static_cast<EntryType>(0);
-    UINT64 id = 0;
-    DWORD addressSpecifier = 0;
-    DWORD length = 0;
+    u64 id = 0;
+    u32 addressSpecifier = 0;
+    u32 length = 0;
 };
 
 struct XdbfFreeMemEntry
 {
-    DWORD addressSpecifier;
-    DWORD length;
+    u32 addressSpecifier;
+    u32 length;
 };
 
 struct SyncEntry
 {
-    UINT64 entryID;
-    UINT64 syncValue;
+    u64 entryID;
+    u64 syncValue;
 };
 
 struct SyncList
@@ -65,7 +76,7 @@ struct SyncList
 
 struct SyncData
 {
-    UINT64 nextSyncID = 0, lastSyncID = 0;
+    u64 nextSyncID = 0, lastSyncID = 0;
     time_t lastSyncedTime = 0;
 
     XdbfEntry entry{};
@@ -94,7 +105,7 @@ enum SettingEntryType
 template <>
 struct EnumTraits<EntryType>
 {
-    static EntryType FromRaw(UINT64 raw)
+    static EntryType FromRaw(u64 raw)
     {
         return raw <= AvatarAward ? static_cast<EntryType>(raw) : EntryTypeUnknown;
     }
@@ -103,7 +114,7 @@ struct EnumTraits<EntryType>
 template <>
 struct EnumTraits<SettingEntryType>
 {
-    static SettingEntryType FromRaw(UINT64 raw)
+    static SettingEntryType FromRaw(u64 raw)
     {
         return raw <= TimeStamp ? static_cast<SettingEntryType>(raw) : SettingEntryTypeUnknown;
     }
@@ -114,10 +125,10 @@ struct SettingEntry
     SettingEntryType type = Context;
     XdbfEntry entry{};
     unsigned int int32 = 0;
-    INT64 int64 = 0;
+    i64 int64 = 0;
     double doubleData = 0.0;
     float floatData = 0.0f;
-    vector<BYTE> binaryData;
+    vector<u8> binaryData;
     wstring str;
     time_t timeStamp = 0;
 };
@@ -127,16 +138,16 @@ struct StringEntry
     wstring ws;
 
     XdbfEntry entry;
-    DWORD initialLength;
+    u32 initialLength;
 };
 
 struct ImageEntry
 {
-    vector<BYTE> image;
-    DWORD length = 0;
+    vector<u8> image;
+    u32 length = 0;
 
     XdbfEntry entry{};
-    DWORD initialLength = 0;
+    u32 initialLength = 0;
 };
 
 enum AchievementFlags
@@ -156,13 +167,13 @@ enum AchievementFlags
 struct AchievementEntry
 {
     XdbfEntry entry;
-    DWORD initialLength;
+    u32 initialLength;
 
-    DWORD structSize;
-    DWORD achievementID;
-    DWORD imageID;
-    DWORD gamerscore;
-    DWORD flags;
+    u32 structSize;
+    u32 achievementID;
+    u32 imageID;
+    u32 gamerscore;
+    u32 flags;
     unsigned int unlockTime;
     unsigned int unlockTimeMilliseconds;
     wstring name;
@@ -181,21 +192,21 @@ enum TitleEntryFlags
 struct TitleEntry
 {
     XdbfEntry entry;
-    DWORD initialLength;
+    u32 initialLength;
 
-    DWORD titleID;
-    DWORD achievementCount;
-    DWORD achievementsUnlocked;
-    DWORD totalGamerscore;
-    DWORD gamerscoreUnlocked;
-    WORD achievementsUnlockedOnline;
-    BYTE avatarAwardsEarned;
-    BYTE avatarAwardCount;
-    BYTE maleAvatarAwardsEarned;
-    BYTE maleAvatarAwardCount;
-    BYTE femaleAvatarAwardsEarned;
-    BYTE femaleAvatarAwardCount;
-    DWORD flags;
+    u32 titleID;
+    u32 achievementCount;
+    u32 achievementsUnlocked;
+    u32 totalGamerscore;
+    u32 gamerscoreUnlocked;
+    u16 achievementsUnlockedOnline;
+    u8 avatarAwardsEarned;
+    u8 avatarAwardCount;
+    u8 maleAvatarAwardsEarned;
+    u8 maleAvatarAwardCount;
+    u8 femaleAvatarAwardsEarned;
+    u8 femaleAvatarAwardCount;
+    u32 flags;
     time_t lastPlayed;
     wstring gameName;
 };
@@ -421,18 +432,18 @@ enum Gamerzone
 struct AvatarAwardData
 {
     XdbfEntry entry;
-    DWORD initialSize;
+    u32 initialSize;
 
-    DWORD structSize;
-    DWORD clothingType;
-    UINT64 awardFlags;
-    DWORD titleID;
-    DWORD imageID;
-    DWORD flags;
+    u32 structSize;
+    u32 clothingType;
+    u64 awardFlags;
+    u32 titleID;
+    u32 imageID;
+    u32 flags;
     unsigned int unlockTime;
     unsigned int unlockTimeMilliseconds;
     AssetSubcategory subcategory;
-    DWORD colorizable;
+    u32 colorizable;
     wstring name;
     wstring unlockedDescription;
     wstring lockedDescription;

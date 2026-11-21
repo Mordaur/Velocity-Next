@@ -48,11 +48,11 @@ void Xdbf::Clean()
         tempFile.Write(header.entryTableLength);
         tempFile.Write(header.entryCount);
         tempFile.Write(header.freeMemTableLength);
-        tempFile.Write((DWORD)1);
+        tempFile.Write((u32)1);
 
         // seek to the first position in the file where data can be written
         tempFile.SetPosition(GetRealAddress(0) - 1);
-        tempFile.Write((BYTE)0);
+        tempFile.Write((u8)0);
 
         tempFile.Flush();
 
@@ -147,7 +147,7 @@ void Xdbf::Clean()
 void Xdbf::WriteNewEntryGroup(XdbfEntryGroup *group, FileIO *newIO)
 {
     // iterate through all of the entries
-    for (DWORD i = 0; i < group->entries.size(); i++)
+    for (u32 i = 0; i < group->entries.size(); i++)
         WriteNewEntry(&group->entries.at(i), newIO);
 
     // Write synchronization data
@@ -158,19 +158,19 @@ void Xdbf::WriteNewEntryGroup(XdbfEntryGroup *group, FileIO *newIO)
 void Xdbf::WriteNewEntryGroup(vector<XdbfEntry> *group, FileIO *newIO)
 {
     // iterate through all of the entries
-    for (DWORD i = 0; i < group->size(); i++)
+    for (u32 i = 0; i < group->size(); i++)
         WriteNewEntry(&group->at(i), newIO);
 }
 
 void Xdbf::WriteNewEntry(XdbfEntry *entry, FileIO *newIO)
 {
     // read in the entry data
-    std::vector<BYTE> buffer(entry->length);
+    std::vector<u8> buffer(entry->length);
     io->SetPosition(GetRealAddress(entry->addressSpecifier));
     io->ReadBytes(buffer.data(), entry->length);
 
     // update the entry address
-    entry->addressSpecifier = GetSpecifier((DWORD)newIO->GetPosition());
+    entry->addressSpecifier = GetSpecifier((u32)newIO->GetPosition());
 
     // Write the entry data
     newIO->Write(buffer.data(), entry->length);
@@ -250,7 +250,7 @@ SyncData Xdbf::readSyncData(XdbfEntry entry)
         throw string("Xdbf: Error reading sync list. Specified entry isn't a sync list.\n");
 
     // preserve io position
-    DWORD pos = (DWORD)io->GetPosition();
+    u32 pos = (u32)io->GetPosition();
 
     SyncData data;
     data.entry = entry;
@@ -262,7 +262,7 @@ SyncData Xdbf::readSyncData(XdbfEntry entry)
     data.nextSyncID = io->ReadUInt64();
     data.lastSyncID = io->ReadUInt64();
 
-    WINFILETIME time = { io->ReadDword(), io->ReadDword() };
+    FileTime time = { io->ReadDword(), io->ReadDword() };
     data.lastSyncedTime = XdbfHelpers::FILETIMEtoTimeT(time);
 
     io->SetPosition(pos);
@@ -279,9 +279,9 @@ void Xdbf::WriteSyncData(SyncData *data)
     io->Write(data->lastSyncID);
 
     // Write the last time synced
-    WINFILETIME lastSynced = XdbfHelpers::TimeTtoFILETIME(data->lastSyncedTime);
-    io->Write(lastSynced.dwHighDateTime);
-    io->Write(lastSynced.dwLowDateTime);
+    FileTime lastSynced = XdbfHelpers::TimeTtoFILETIME(data->lastSyncedTime);
+    io->Write(lastSynced.highDateTime);
+    io->Write(lastSynced.lowDateTime);
 }
 
 SyncList Xdbf::readSyncList(XdbfEntry entry)
@@ -291,7 +291,7 @@ SyncList Xdbf::readSyncList(XdbfEntry entry)
         throw string("Xdbf: Error reading sync list. Specified entry isn't a sync list.\n");
 
     // preserve io position
-    DWORD pos = (DWORD)io->GetPosition();
+    u32 pos = (u32)io->GetPosition();
 
     SyncList toReturn{};
     toReturn.entry = entry;
@@ -300,7 +300,7 @@ SyncList Xdbf::readSyncList(XdbfEntry entry)
     io->SetPosition(GetRealAddress(entry.addressSpecifier));
 
     // iterate through all the syncs
-    for (DWORD i = 0; i < (entry.length / 16); i++)
+    for (u32 i = 0; i < (entry.length / 16); i++)
     {
         // read in the sync
         SyncEntry sync = { io->ReadUInt64(), io->ReadUInt64() };
@@ -337,7 +337,7 @@ void Xdbf::WriteSyncList(SyncList *syncs)
     io->SetPosition(GetRealAddress(syncs->entry.addressSpecifier));
 
     // Write the synced ones
-    for (DWORD i = 0; i < syncs->synced.size(); i++)
+    for (u32 i = 0; i < syncs->synced.size(); i++)
     {
         io->Write(syncs->synced.at(i).entryID);
         io->Write(syncs->synced.at(i).syncValue);
@@ -354,31 +354,31 @@ void Xdbf::WriteSyncList(SyncList *syncs)
 void Xdbf::readFreeMemoryTable()
 {
     // seek to the beginning of the free memory table
-    DWORD tableStartAddr = 0x18 + (header.entryTableLength * 0x12);
+    u32 tableStartAddr = 0x18 + (header.entryTableLength * 0x12);
     io->SetPosition(tableStartAddr);
 
     // iterate through all of the free memory table entries
-    for (DWORD i = 0; i < header.freeMemTableEntryCount; i++)
+    for (u32 i = 0; i < header.freeMemTableEntryCount; i++)
     {
         XdbfFreeMemEntry entry = { io->ReadDword(), io->ReadDword() };
         freeMemory.push_back(entry);
     }
 }
 
-DWORD Xdbf::GetRealAddress(DWORD specifier)
+u32 Xdbf::GetRealAddress(u32 specifier)
 {
     return specifier + (header.entryTableLength * 0x12) + (header.freeMemTableLength * 8) + 0x18;
 }
 
-DWORD Xdbf::GetSpecifier(DWORD address)
+u32 Xdbf::GetSpecifier(u32 address)
 {
-    DWORD headerSize = (header.entryTableLength * 0x12) + (header.freeMemTableLength * 8) + 0x18;
+    u32 headerSize = (header.entryTableLength * 0x12) + (header.freeMemTableLength * 8) + 0x18;
     if (address < headerSize)
         throw string("Xdbf: Invalid address for converting.\n");
     return address - headerSize;
 }
 
-XdbfEntry Xdbf::CreateEntry(EntryType type, UINT64 id, DWORD size)
+XdbfEntry Xdbf::CreateEntry(EntryType type, u64 id, u32 size)
 {
     XdbfEntry entry = { type, id, 0, size };
 
@@ -421,7 +421,7 @@ XdbfEntry Xdbf::CreateEntry(EntryType type, UINT64 id, DWORD size)
         default:
             throw string("Xdbf: Error creating entry. Invalid entry type.\n");
     }
-    for (DWORD i = 0; i < entries->size(); i++)
+    for (u32 i = 0; i < entries->size(); i++)
         if (entries->at(i).id == entry.id)
             throw string("Xdbf: Error creating entry. Entry already exists.\n");
 
@@ -509,12 +509,12 @@ XdbfEntry Xdbf::CreateEntry(EntryType type, UINT64 id, DWORD size)
     return entry;
 }
 
-DWORD Xdbf::AllocateMemory(DWORD size)
+u32 Xdbf::AllocateMemory(u32 size)
 {
     if (size == 0)
         return GetRealAddress(0);
 
-    DWORD toReturn;
+    u32 toReturn;
 
     // first check and see if we can allocate some of the memory in the free memory table
     size_t index = 0;
@@ -528,11 +528,11 @@ DWORD Xdbf::AllocateMemory(DWORD size)
     {
         // get the position in the file of the memory allocated
         io->SetPosition(0, ios_base::end);
-        toReturn = (DWORD)io->GetPosition();
+        toReturn = (u32)io->GetPosition();
 
         io->Flush();
         io->SetPosition(size - 1, ios_base::end);
-        io->Write((BYTE)0);
+        io->Write((u8)0);
         io->Flush();
 
         updateFreeMemTable();
@@ -562,7 +562,7 @@ DWORD Xdbf::AllocateMemory(DWORD size)
     return toReturn;
 }
 
-void Xdbf::DeallocateMemory(DWORD addr, DWORD size)
+void Xdbf::DeallocateMemory(u32 addr, u32 size)
 {
     if (size == 0)
         return;
@@ -586,7 +586,7 @@ void Xdbf::DeallocateMemory(DWORD addr, DWORD size)
 void Xdbf::updateFreeMemTable()
 {
     io->SetPosition(0, ios_base::end);
-    DWORD len = GetSpecifier(io->GetPosition());
+    u32 len = GetSpecifier(io->GetPosition());
 
     freeMemory.back().addressSpecifier = len;
     freeMemory.back().length = 0xFFFFFFFF - len;
@@ -614,7 +614,7 @@ void Xdbf::readEntryGroup(XdbfEntryGroup *group, EntryType type)
     }
 
     // back the io up 1 entry
-    io->SetPosition((DWORD)io->GetPosition() - 0x12);
+    io->SetPosition((u32)io->GetPosition() - 0x12);
 }
 
 void Xdbf::readEntryGroup(vector<XdbfEntry> *group, EntryType type)
@@ -634,7 +634,7 @@ void Xdbf::readEntryGroup(vector<XdbfEntry> *group, EntryType type)
     }
 
     // back the io up 1 entry
-    io->SetPosition((DWORD)io->GetPosition() - 0x12);
+    io->SetPosition((u32)io->GetPosition() - 0x12);
 }
 
 void Xdbf::WriteEntryListing()
@@ -643,8 +643,8 @@ void Xdbf::WriteEntryListing()
     io->SetPosition(0x18);
 
     // clear the current table
-    BYTE buffer[0x12] = {0};
-    for (DWORD i = 0; i < header.entryTableLength; i++)
+    u8 buffer[0x12] = {0};
+    for (u32 i = 0; i < header.entryTableLength; i++)
         io->Write(buffer, 0x12);
     io->SetPosition(0x18);
     io->Flush();
@@ -681,7 +681,7 @@ void Xdbf::WriteFreeMemTable()
 {
     // update the last free memory table entry
     io->SetPosition(0, ios_base::end);
-    DWORD temp = GetSpecifier(io->GetPosition());
+    u32 temp = GetSpecifier(io->GetPosition());
     freeMemory.at(freeMemory.size() - 1).addressSpecifier = temp;
     freeMemory.at(freeMemory.size() - 1).length = (0xFFFFFFFF - temp);
 
@@ -693,15 +693,15 @@ void Xdbf::WriteFreeMemTable()
         Clean();
 
     // Write the table
-    for (DWORD i = 0; i < freeMemory.size(); i++)
+    for (u32 i = 0; i < freeMemory.size(); i++)
     {
         io->Write(freeMemory.at(i).addressSpecifier);
         io->Write(freeMemory.at(i).length);
     }
 
     // null out the rest of the table
-    for (DWORD i = 0; i < (header.freeMemTableLength - freeMemory.size()); i++)
-        io->Write((UINT64)0);
+    for (u32 i = 0; i < (header.freeMemTableLength - freeMemory.size()); i++)
+        io->Write((u64)0);
 }
 
 void Xdbf::WriteHeader()
@@ -728,13 +728,13 @@ void Xdbf::WriteEntryGroup(XdbfEntryGroup *group)
             WriteEntry(&group->syncData.entry);
 
         // Write all the entries
-        for (DWORD i = 0; i < group->entries.size(); i++)
+        for (u32 i = 0; i < group->entries.size(); i++)
             WriteEntry(&group->entries.at(i));
     }
     else
     {
         // Write all the entries
-        for (DWORD i = 0; i < group->entries.size(); i++)
+        for (u32 i = 0; i < group->entries.size(); i++)
             WriteEntry(&group->entries.at(i));
 
         // Write the sync stuffs
@@ -750,16 +750,16 @@ void Xdbf::WriteEntryGroup(vector<XdbfEntry> *group)
     std::sort(group->begin(), group->end(), compareEntries);
 
     // Write all the entries
-    for (DWORD i = 0; i < group->size(); i++)
+    for (u32 i = 0; i < group->size(); i++)
         WriteEntry(&group->at(i));
 }
 
 void Xdbf::WriteEntry(XdbfEntry *entry)
 {
-    io->Write((WORD)entry->type);
-    io->Write((UINT64)entry->id);
-    io->Write((DWORD)entry->addressSpecifier);
-    io->Write((DWORD)entry->length);
+    io->Write((u16)entry->type);
+    io->Write((u64)entry->id);
+    io->Write((u32)entry->addressSpecifier);
+    io->Write((u32)entry->length);
 }
 
 void Xdbf::UpdateEntry(XdbfEntry *entry)
@@ -788,7 +788,7 @@ void Xdbf::UpdateEntry(XdbfEntry *entry)
     }
 
     // find the entry in the table and update it
-    for (DWORD i = 0; i < group->entries.size(); i++)
+    for (u32 i = 0; i < group->entries.size(); i++)
     {
         if (group->entries.at(i).id == entry->id)
         {
@@ -866,7 +866,7 @@ void Xdbf::UpdateEntry(XdbfEntry *entry)
     WriteEntryListing();
 }
 
-void Xdbf::ReWriteEntry(XdbfEntry entry, BYTE *entryBuffer)
+void Xdbf::ReWriteEntry(XdbfEntry entry, u8 *entryBuffer)
 {
     // get the entry list
     vector<XdbfEntry> *entryList;
@@ -895,7 +895,7 @@ void Xdbf::ReWriteEntry(XdbfEntry entry, BYTE *entryBuffer)
     }
 
     // make sure the entry already exists
-    DWORD i;
+    u32 i;
     for (i = 0; i < entryList->size(); i++)
         if (entryList->at(i).id == entry.id)
             break;
@@ -951,7 +951,7 @@ void Xdbf::DeleteEntry(XdbfEntry entry)
         default:
             throw string("Xdbf: Error deleting entry. Invalid entry type.\n");
     }
-    DWORD index;
+    u32 index;
     for (index = 0; index < entries->size(); index++)
         if (entries->at(index).id == entry.id)
             break;
@@ -973,14 +973,14 @@ void Xdbf::DeleteEntry(XdbfEntry entry)
         case Title:
         case AvatarAward:
             // find the sync and delete it
-            for (DWORD i = 0; i < group->syncs.synced.size(); i++)
+            for (u32 i = 0; i < group->syncs.synced.size(); i++)
                 if (group->syncs.synced.at(i).entryID == entry.id)
                 {
                     group->syncs.synced.erase(group->syncs.synced.begin() + i);
                     group->syncs.lengthChanged = true;
                     goto WriteSyncs;
                 }
-            for (DWORD i = 0; i < group->syncs.toSync.size(); i++)
+            for (u32 i = 0; i < group->syncs.toSync.size(); i++)
                 if (group->syncs.toSync.at(i).entryID == entry.id)
                 {
                     group->syncs.toSync.erase(group->syncs.toSync.begin() + i);
@@ -1006,10 +1006,10 @@ WriteSyncs:
     WriteHeader();
 }
 
-void Xdbf::ExtractEntry(XdbfEntry entry, BYTE *outBuffer)
+void Xdbf::ExtractEntry(XdbfEntry entry, u8 *outBuffer)
 {
     // seek to the beginning of the entry
-    io->SetPosition((UINT64)GetRealAddress(entry.addressSpecifier));
+    io->SetPosition((u64)GetRealAddress(entry.addressSpecifier));
 
     // read the bytes of the entry
     io->ReadBytes(outBuffer, entry.length);

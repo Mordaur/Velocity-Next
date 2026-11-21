@@ -81,8 +81,8 @@ DeviceViewer::~DeviceViewer()
 
 void DeviceViewer::DrawMemoryGraph()
 {
-    UINT64 totalFreeSpace = 0;
-    UINT64 totalSpace = 0;
+    u64 totalFreeSpace = 0;
+    u64 totalSpace = 0;
 
     if (!drivesLoaded)
     {
@@ -93,10 +93,10 @@ void DeviceViewer::DrawMemoryGraph()
 
     // load the partion information
     std::vector<Partition*> parts = currentDrive->GetPartitions();
-    for (DWORD i = 0; i < parts.size(); i++)
+    for (u32 i = 0; i < parts.size(); i++)
     {
         totalFreeSpace += currentDrive->GetFreeMemory(parts.at(i), updateUI);
-        totalSpace += (UINT64)parts.at(i)->clusterCount * parts.at(i)->clusterSize;
+        totalSpace += (u64)parts.at(i)->clusterCount * parts.at(i)->clusterSize;
     }
 
     if (!drivesLoaded)
@@ -902,13 +902,13 @@ QString DeviceViewer::ResolveGpdTitle(FatxFileEntry *entry)
         try
         {
             FatxIO io = drive->GetFatxIO(entry);
-            const UINT64 size = io.Length();
+            const u64 size = io.Length();
 
             if (size > 0 && size <= 0x4000000)
             {
-                std::vector<BYTE> buffer(static_cast<size_t>(size));
+                std::vector<u8> buffer(static_cast<size_t>(size));
                 io.SetPosition(0);
-                io.ReadBytes(buffer.data(), static_cast<DWORD>(size));
+                io.ReadBytes(buffer.data(), static_cast<u32>(size));
 
                 tempPath = QDir::tempPath() + "/velocity-" +
                         QUuid::createUuid().toString(QUuid::WithoutBraces) + ".gpd";
@@ -1106,7 +1106,7 @@ void DeviceViewer::LoadFolderTree(QTreeWidgetItem *item)
 
         currentDrive->GetChildFileEntries(folder);
 
-        for (DWORD i = 0; i < folder->cachedFiles.size(); i++)
+        for (u32 i = 0; i < folder->cachedFiles.size(); i++)
         {
             // if it isn't a folder then don't bother loading it
             FatxFileEntry *entry = &folder->cachedFiles.at(i);
@@ -1185,7 +1185,7 @@ void DeviceViewer::GetSubFilesFATX(FatxFileEntry *parent, QList<void *> &entries
 
     currentDrive->GetChildFileEntries(parent);
 
-    for (DWORD i = 0; i < parent->cachedFiles.size(); i++)
+    for (u32 i = 0; i < parent->cachedFiles.size(); i++)
         if (parent->cachedFiles.at(i).nameLen != FATX_ENTRY_DELETED)
             GetSubFilesFATX(&parent->cachedFiles.at(i), entries);
 }

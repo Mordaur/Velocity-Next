@@ -108,8 +108,8 @@ void ProfileCleanerWizard::clean()
 
                 if (op == Purify && !exceptions.contains(files.at(i).fileName()))
                 {
-                    DWORD offset = 0, settingCount = gpd.settings.size();
-                    for (DWORD i = 0; i < settingCount; i++)
+                    u32 offset = 0, settingCount = gpd.settings.size();
+                    for (u32 i = 0; i < settingCount; i++)
                     {
                         if (gpd.settings.at(offset).entry.id == GamercardTitleAchievementsEarned ||
                                 gpd.settings.at(offset).entry.id == GamercardTitleCredEarned)
@@ -120,8 +120,8 @@ void ProfileCleanerWizard::clean()
                 }
                 if ((op == Purify || op == Sweep) && !exceptions.contains(files.at(i).fileName()))
                 {
-                    DWORD offset = 0, imageCount = gpd.images.size();
-                    for (DWORD i = 0; i < imageCount; i++)
+                    u32 offset = 0, imageCount = gpd.images.size();
+                    for (u32 i = 0; i < imageCount; i++)
                     {
                         if (gpd.images.at(offset).entry.id == TitleInformation)
                             offset++;
@@ -186,9 +186,9 @@ void ProfileCleanerWizard::clean()
 
     // Handle thumbnail images
     newProfile.metaData->thumbnailImage = profile->metaData->thumbnailImage;
-    newProfile.metaData->thumbnailImageSize = static_cast<DWORD>(newProfile.metaData->thumbnailImage.size());
+    newProfile.metaData->thumbnailImageSize = static_cast<u32>(newProfile.metaData->thumbnailImage.size());
     newProfile.metaData->titleThumbnailImage = profile->metaData->titleThumbnailImage;
-    newProfile.metaData->titleThumbnailImageSize = static_cast<DWORD>(newProfile.metaData->titleThumbnailImage.size());
+    newProfile.metaData->titleThumbnailImageSize = static_cast<u32>(newProfile.metaData->titleThumbnailImage.size());
 
     // Use assignment for std::wstring
     newProfile.metaData->titleName = profile->metaData->titleName;
@@ -236,14 +236,14 @@ void ProfileCleanerWizard::clean()
 void ProfileCleanerWizard::extractAll(StfsFileListing *f, QString parentDirectory)
 {
     // extract all files
-    for (DWORD i = 0; i < f->fileEntries.size(); i++)
+    for (u32 i = 0; i < f->fileEntries.size(); i++)
     {
         profile->ExtractFile(&f->fileEntries.at(i),
                 parentDirectory.toStdString() + f->fileEntries.at(i).name);
         QApplication::processEvents();
     }
     // create all folders
-    for (DWORD i = 0; i < f->folderEntries.size(); i++)
+    for (u32 i = 0; i < f->folderEntries.size(); i++)
     {
         QDir d;
         d.mkpath(parentDirectory + QString::fromStdString(f->folderEntries.at(i).folder.name) + "/");

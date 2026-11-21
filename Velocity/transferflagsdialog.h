@@ -8,7 +8,7 @@
 #include "qthelpers.h"
 
 // other
-#include <XboxInternals/TypeDefinitions.h>
+#include <XboxInternals/Types.h>
 #include <iostream>
 #include <vector>
 
@@ -22,7 +22,7 @@ class TransferFlagsDialog;
 struct Flag
 {
     QString name;
-    BYTE value;
+    u8 value;
 };
 
 class TransferFlagsDialog : public QDialog
@@ -30,7 +30,7 @@ class TransferFlagsDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit TransferFlagsDialog(QStatusBar *statusBar, BYTE *flags, QWidget *parent = 0);
+    explicit TransferFlagsDialog(QStatusBar *statusBar, u8 *flags, QWidget *parent = 0);
     ~TransferFlagsDialog();
 
 private slots:
@@ -44,7 +44,7 @@ private slots:
 
 private:
     Ui::TransferFlagsDialog *ui;
-    BYTE *flags;
+    u8 *flags;
     QStatusBar *statusBar;
 
     vector<Flag> availableFlags;

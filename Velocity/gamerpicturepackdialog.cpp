@@ -14,7 +14,7 @@ GamerPicturePackDialog::GamerPicturePackDialog(QStatusBar *statusBar, QWidget *p
 
     searchedIDs = new QList<QString>;
     addedIDs = new QList<QString>;
-    searchedTitleIDs = new QList<DWORD>;
+    searchedTitleIDs = new QList<u32>;
 
     ui->listSearch->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(ui->listSearch, SIGNAL(customContextMenuRequested(QPoint)), this,
@@ -57,7 +57,7 @@ void GamerPicturePackDialog::on_pushButton_clicked()
     {
         // Search by Title ID
         bool ok;
-        DWORD titleID = searchText.toULong(&ok, 16);
+        u32 titleID = searchText.toULong(&ok, 16);
         
         if (searchedTitleIDs->contains(titleID))
             return;
@@ -100,7 +100,7 @@ void GamerPicturePackDialog::onTitleIDSearchReturn(QList<TitleData> titlesFound)
 
 void GamerPicturePackDialog::on_listGameNames_itemClicked(QListWidgetItem *item)
 {
-    DWORD titleID = currentTitles->at(ui->listGameNames->currentIndex().row()).titleID;
+    u32 titleID = currentTitles->at(ui->listGameNames->currentIndex().row()).titleID;
     
     // make sure that we haven't already searched for the title
     if (searchedTitleIDs->contains(titleID))
@@ -177,7 +177,7 @@ void GamerPicturePackDialog::findGamerPictures(QString titleID)
             SLOT(gamerPictureDownloaded(QNetworkReply*)));
 
     // make a bunch of requests
-    for (DWORD i = 0; i < 0x400; i++)
+    for (u32 i = 0; i < 0x400; i++)
     {
         // iterate through all the offsets
         for (int x = 0; x < 4; x++)
@@ -367,8 +367,8 @@ void GamerPicturePackDialog::showContextMenu(QPoint p, QListWidget *current, QLi
     }
     else if (selectedItem->text() == ((forward) ? "Add All to Pack" : "Remove All from Pack"))
     {
-        DWORD itemCount = current->count();
-        for (DWORD i = 0; i < itemCount; i++)
+        u32 itemCount = current->count();
+        for (u32 i = 0; i < itemCount; i++)
             switchImage(current->item(0), current, toAddTo, currentStrs, toAddToStrs);
 
         ui->btnCreatePack->setEnabled(ui->listPack->count() != 0 && ui->txtPackName->text() != "");
@@ -418,18 +418,18 @@ void GamerPicturePackDialog::on_btnCreatePack_clicked()
         QBuffer buffer1(&ba1);
         buffer1.open(QIODevice::WriteOnly);
         QPixmap(":/Images/20001.png").save(&buffer1, "PNG");
-    const auto *thumbStart = reinterpret_cast<const BYTE*>(ba1.constData());
+    const auto *thumbStart = reinterpret_cast<const u8*>(ba1.constData());
     picturePack.metaData->thumbnailImage.assign(thumbStart, thumbStart + ba1.size());
-    picturePack.metaData->thumbnailImageSize = static_cast<DWORD>(picturePack.metaData->thumbnailImage.size());
+    picturePack.metaData->thumbnailImageSize = static_cast<u32>(picturePack.metaData->thumbnailImage.size());
 
         // set title thumbnail image
         QByteArray ba2;
         QBuffer buffer2(&ba2);
         buffer2.open(QIODevice::WriteOnly);
         QPixmap(":/Images/defaultTitleImage.png").save(&buffer2, "PNG");
-    const auto *titleThumbStart = reinterpret_cast<const BYTE*>(ba2.constData());
+    const auto *titleThumbStart = reinterpret_cast<const u8*>(ba2.constData());
     picturePack.metaData->titleThumbnailImage.assign(titleThumbStart, titleThumbStart + ba2.size());
-    picturePack.metaData->titleThumbnailImageSize = static_cast<DWORD>(picturePack.metaData->titleThumbnailImage.size());
+    picturePack.metaData->titleThumbnailImageSize = static_cast<u32>(picturePack.metaData->titleThumbnailImage.size());
 
         statusBar->showMessage("Creating picture pack, %0 complete");
         ui->tabWidget->setEnabled(false);
@@ -448,14 +448,14 @@ void GamerPicturePackDialog::on_btnCreatePack_clicked()
             QBuffer buffLrg(&largeImage);
             buffLrg.open(QIODevice::WriteOnly);
             ui->listPack->item(i)->icon().pixmap(64, 64).save(&buffLrg, "PNG");
-            picturePack.InjectData((BYTE*)largeImage.data(), largeImage.length(), getImageName(addedIDs->at(i),
+            picturePack.InjectData((u8*)largeImage.data(), largeImage.length(), getImageName(addedIDs->at(i),
                     true).toStdString() + ".png");
 
             QByteArray smallImage;
             QBuffer buffSm(&smallImage);
             buffSm.open(QIODevice::WriteOnly);
             ui->listPack->item(i)->icon().pixmap(32, 32).save(&buffSm, "PNG");
-            picturePack.InjectData((BYTE*)smallImage.data(), smallImage.length(), getImageName(addedIDs->at(i),
+            picturePack.InjectData((u8*)smallImage.data(), smallImage.length(), getImageName(addedIDs->at(i),
                     false).toStdString() + ".png");
 
             statusBar->showMessage("Creating picture pack, " + QString::number(((float)i /

@@ -13,7 +13,7 @@ XdbfDialog::XdbfDialog(QStatusBar *statusBar, std::unique_ptr<GpdBase> gpdIn, bo
     loadEntries();
 
     // display the gpd name
-    for (DWORD i = 0; i < gpd->strings.size(); i++)
+    for (u32 i = 0; i < gpd->strings.size(); i++)
         if (gpd->strings.at(i).entry.id == TitleInformation)
         {
             if (gpd->strings.at(i).ws != L"")
@@ -28,7 +28,7 @@ XdbfDialog::XdbfDialog(QStatusBar *statusBar, std::unique_ptr<GpdBase> gpdIn, bo
 
 void XdbfDialog::addEntriesToTable(vector<XdbfEntry> entries, QString type)
 {
-    for (DWORD i = 0; i < entries.size(); i++)
+    for (u32 i = 0; i < entries.size(); i++)
     {
         // create an item
         QTreeWidgetItem *item = new QTreeWidgetItem(ui->treeWidget);
@@ -124,7 +124,7 @@ void XdbfDialog::showContextMenu(QPoint p)
                     xentry = gpd->xdbf->avatarAwards.entries.at(e.index);
 
                 // extract the entry into memory
-                std::vector<BYTE> entryBuff(xentry.length);
+                std::vector<u8> entryBuff(xentry.length);
                 gpd->xdbf->ExtractEntry(xentry, entryBuff.empty() ? nullptr : entryBuff.data());
 
                 QString outPath = path;
@@ -133,7 +133,7 @@ void XdbfDialog::showContextMenu(QPoint p)
 
                 // Write the data to a file
                 FileIO io(outPath.toStdString(), true);
-                io.Write(entryBuff.empty() ? nullptr : entryBuff.data(), static_cast<DWORD>(entryBuff.size()));
+                io.Write(entryBuff.empty() ? nullptr : entryBuff.data(), static_cast<u32>(entryBuff.size()));
                 io.Close();
             }
 
@@ -184,10 +184,10 @@ void XdbfDialog::showContextMenu(QPoint p)
             // open the file and get the length
             FileIO io(entryPath.toStdString());
             io.SetPosition(0, ios_base::end);
-            DWORD fileLen = io.GetPosition();
+            u32 fileLen = io.GetPosition();
 
             // allocate enough memory for the buffer
-            std::vector<BYTE> entryBuff(fileLen);
+            std::vector<u8> entryBuff(fileLen);
 
             // read in the file
             io.SetPosition(0);
@@ -276,11 +276,11 @@ XdbfDialog::~XdbfDialog()
     delete ui;
 }
 
-std::optional<Entry> XdbfDialog::indexToEntry(DWORD index)
+std::optional<Entry> XdbfDialog::indexToEntry(u32 index)
 {
     Entry toReturn;
 
-    DWORD count = 0;
+    u32 count = 0;
     if (index < (count += gpd->xdbf->achievements.entries.size()))
     {
         toReturn.index = index;

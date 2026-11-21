@@ -5,7 +5,7 @@
 
 using namespace std;
 
-XContentHeader::XContentHeader(BaseIO *io, DWORD flags) : installerType((InstallerType)0),
+XContentHeader::XContentHeader(BaseIO *io, u32 flags) : installerType((InstallerType)0),
     flags(flags)
 {
     // set the io
@@ -20,7 +20,7 @@ namespace {
 // RSA-2048 public moduli for the LIVE/PIRS package signature, big-endian.
 // Public keys; extracted from the retail/devkit key descriptors (the PIRS-retail
 // entry is proven by the corpus PIRS packages).
-static const BYTE kPirsRetailModulus[0x100] =
+static const u8 kPirsRetailModulus[0x100] =
 {
     0x8B, 0xE8, 0xD9, 0x20, 0xF2, 0x05, 0xE0, 0x70, 0x57, 0xA8, 0x68, 0xB4,
     0x61, 0xF4, 0x1B, 0xC6, 0x40, 0xD2, 0x4E, 0xA6, 0xC6, 0x11, 0x04, 0x1B,
@@ -46,7 +46,7 @@ static const BYTE kPirsRetailModulus[0x100] =
     0x8D, 0x9E, 0x9E, 0xE7,
 };
 
-static const BYTE kPirsDevkitModulus[0x100] =
+static const u8 kPirsDevkitModulus[0x100] =
 {
     0x6B, 0xA0, 0xBF, 0xC8, 0x77, 0x35, 0x1C, 0xC9, 0xE5, 0xAC, 0x99, 0x73,
     0x6C, 0x4E, 0x2F, 0x64, 0x1E, 0xAE, 0xDB, 0xE4, 0x2E, 0xAB, 0xE7, 0x84,
@@ -72,7 +72,7 @@ static const BYTE kPirsDevkitModulus[0x100] =
     0x13, 0x2F, 0x49, 0xD7,
 };
 
-static const BYTE kLiveRetailModulus[0x100] =
+static const u8 kLiveRetailModulus[0x100] =
 {
     0xC9, 0x7B, 0x51, 0x8E, 0xC7, 0x35, 0xDC, 0xEF, 0xBD, 0x3D, 0x41, 0xC8,
     0xD0, 0x00, 0xF5, 0x7D, 0x82, 0x55, 0xBE, 0x12, 0x12, 0xD9, 0x87, 0xB3,
@@ -98,7 +98,7 @@ static const BYTE kLiveRetailModulus[0x100] =
     0x03, 0x75, 0xC2, 0xB3,
 };
 
-static const BYTE kLiveDevkitModulus[0x100] =
+static const u8 kLiveDevkitModulus[0x100] =
 {
     0xB5, 0xFF, 0x62, 0xEB, 0xEC, 0x7B, 0xC3, 0x3D, 0xDD, 0xA0, 0xF6, 0xE6,
     0x06, 0x8E, 0x1C, 0x84, 0x1F, 0x3F, 0x35, 0xD5, 0x30, 0xA1, 0x4A, 0xC0,
@@ -131,19 +131,19 @@ bool XContentHeader::VerifyPackageSignature()
     if (magic != PIRS && magic != LIVE)
         return false;
 
-    BYTE message[0x118];
+    u8 message[0x118];
     io->SetPosition(0x22C);
     io->ReadBytes(message, sizeof(message));
 
     // The on-disk signature is fully byte-reversed.
-    BYTE signature[0x100];
+    u8 signature[0x100];
     for (size_t i = 0; i < sizeof(signature); ++i)
         signature[i] = packageSignature[sizeof(signature) - 1 - i];
 
     struct Candidate
     {
-        UINT64 exponent;
-        const BYTE *modulus;
+        u64 exponent;
+        const u8 *modulus;
     };
 
     const Candidate pirs[] = {
@@ -164,7 +164,7 @@ bool XContentHeader::VerifyPackageSignature()
         try
         {
             if (XeCrypt::Pkcs1Verify(message, sizeof(message), signature, sizeof(signature),
-                    candidates[i].exponent, const_cast<BYTE *>(candidates[i].modulus)))
+                    candidates[i].exponent, const_cast<u8 *>(candidates[i].modulus)))
                 return true;
         }
         catch (...)
@@ -185,9 +185,9 @@ void XContentHeader::readMetadata()
 
     if ((flags & MetadataIsPEC) == 0)
     {
-        // Read as an integer first: casting an arbitrary DWORD to Magic creates
+        // Read as an integer first: casting an arbitrary u32 to Magic creates
         // an out-of-range enum value, which is UB before it is even compared.
-        const DWORD magicValue = io->ReadDword();
+        const u32 magicValue = io->ReadDword();
         if (magicValue != CON && magicValue != LIVE && magicValue != PIRS)
         {
             except << "XContentHeader: Content signature type 0x" << hex << magicValue << " is invalid.\n";
@@ -205,7 +205,7 @@ void XContentHeader::readMetadata()
         // read licensing data
         for(int i = 0; i < 0x10; i++)
         {
-            UINT64 tempYo = io->ReadUInt64();
+            u64 tempYo = io->ReadUInt64();
             licenseData[i].type = EnumTraits<LicenseType>::FromRaw(tempYo >> 48);
             licenseData[i].data = (tempYo & 0xFFFFFFFFFFFF);
             licenseData[i].bits = io->ReadDword();
@@ -342,13 +342,13 @@ void XContentHeader::readMetadata()
             case SystemUpdate:
             case TitleUpdate:
             {
-                DWORD tempbv = io->ReadDword();
+                u32 tempbv = io->ReadDword();
                 installerBaseVersion.major = tempbv >> 28;
                 installerBaseVersion.minor = (tempbv >> 24) & 0xF;
                 installerBaseVersion.build = (tempbv >> 8) & 0xFFFF;
                 installerBaseVersion.revision = tempbv & 0xFF;
 
-                DWORD tempv = io->ReadDword();
+                u32 tempv = io->ReadDword();
                 installerVersion.major = tempv >> 28;
                 installerVersion.minor = (tempv >> 24) & 0xF;
                 installerVersion.build = (tempv >> 8) & 0xFFFF;
@@ -365,9 +365,9 @@ void XContentHeader::readMetadata()
                 currentFileOffset = io->ReadUInt64();
                 bytesProcessed = io->ReadUInt64();
 
-                WINFILETIME time;
-                time.dwHighDateTime = io->ReadDword();
-                time.dwLowDateTime = io->ReadDword();
+                FileTime time;
+                time.highDateTime = io->ReadDword();
+                time.lowDateTime = io->ReadDword();
                 lastModified = XdbfHelpers::FILETIMEtoTimeT(time);
 
                 io->ReadBytes(cabResumeData, 0x15D0);
@@ -412,15 +412,15 @@ void XContentHeader::WriteCertificate()
 
 void XContentHeader::FixHeaderHash()
 {
-    DWORD headerStart = ((flags & MetadataIsPEC) ? 0x23C : 0x344);
+    u32 headerStart = ((flags & MetadataIsPEC) ? 0x23C : 0x344);
 
     // calculate header size / first hash table address
-    DWORD calculated = ((headerSize + 0xFFF) & 0xFFFFF000);
+    u32 calculated = ((headerSize + 0xFFF) & 0xFFFFF000);
     io->SetPosition(0, ios_base::end);
-    calculated = (io->GetPosition() < calculated) ? (DWORD)io->GetPosition() : calculated;
-    DWORD realHeaderSize = calculated - headerStart;
+    calculated = (io->GetPosition() < calculated) ? (u32)io->GetPosition() : calculated;
+    u32 realHeaderSize = calculated - headerStart;
 
-    std::vector<BYTE> data(realHeaderSize);
+    std::vector<u8> data(realHeaderSize);
 
     // seek to the position
     io->SetPosition(headerStart);
@@ -445,7 +445,7 @@ void XContentHeader::WriteMetaData()
     if ((flags & MetadataIsPEC) == 0)
     {
 
-        io->Write((DWORD)magic);
+        io->Write((u32)magic);
 
         if (magic == CON)
             WriteCertificate();
@@ -454,33 +454,33 @@ void XContentHeader::WriteMetaData()
         else
         {
             stringstream except;
-            except << "XContentHeader: Content signature type 0x" << hex << (DWORD)magic << " is invalid.\n";
+            except << "XContentHeader: Content signature type 0x" << hex << (u32)magic << " is invalid.\n";
             throw except.str();
         }
 
         // Write the licensing data
         io->SetPosition(0x22C);
-        for (DWORD i = 0; i < 0x10; i++)
+        for (u32 i = 0; i < 0x10; i++)
         {
-            io->Write(((UINT64)licenseData[i].type << 48) | (UINT64)licenseData[i].data);
+            io->Write(((u64)licenseData[i].type << 48) | (u64)licenseData[i].data);
             io->Write(licenseData[i].bits);
             io->Write(licenseData[i].flags);
         }
 
         io->Write(headerHash, 0x14);
         io->Write(headerSize);
-        io->Write((DWORD)contentType);
-        io->Write((DWORD)metaDataVersion);
-        io->Write((UINT64)contentSize);
+        io->Write((u32)contentType);
+        io->Write((u32)metaDataVersion);
+        io->Write((u64)contentSize);
         io->Write(mediaID);
         io->Write(version);
         io->Write(baseVersion);
         io->Write(titleID);
-        io->Write((BYTE)platform);
-        io->Write((BYTE)executableType);
-        io->Write((BYTE)discNumber);
-        io->Write((BYTE)discInSet);
-        io->Write((DWORD)savegameID);
+        io->Write((u8)platform);
+        io->Write((u8)executableType);
+        io->Write((u8)discNumber);
+        io->Write((u8)discInSet);
+        io->Write((u32)savegameID);
         io->Write(consoleID, 5);
         io->Write(profileID, 8);
 
@@ -497,13 +497,13 @@ void XContentHeader::WriteMetaData()
             io->SetPosition(0x3D9);
             io->SwapEndian();
 
-            io->Write((DWORD)subCategory);
-            io->Write((DWORD)colorizable);
+            io->Write((u32)subCategory);
+            io->Write((u32)colorizable);
 
             io->SwapEndian();
 
             io->Write(guid, 0x10);
-            io->Write((BYTE)skeletonVersion);
+            io->Write((u8)skeletonVersion);
         }
         else if (contentType == Video)
         {
@@ -532,7 +532,7 @@ void XContentHeader::WriteMetaData()
         io->Write(titleName);
 
         io->SetPosition(0x1711);
-        io->Write((BYTE)transferFlags);
+        io->Write((u8)transferFlags);
 
         io->Write(thumbnailImageSize);
         io->Write(titleThumbnailImageSize);
@@ -546,21 +546,21 @@ void XContentHeader::WriteMetaData()
         if (((headerSize + 0xFFF) & 0xFFFFF000) - 0x971A < 0x15F4)
             return;
 
-        io->Write((DWORD)installerType);
+        io->Write((u32)installerType);
         switch (installerType)
         {
             default: break;
             case SystemUpdate:
             case TitleUpdate:
             {
-                DWORD tempbv = 0;
+                u32 tempbv = 0;
                 tempbv |= (installerBaseVersion.major & 0xF) << 28;
                 tempbv |= (installerBaseVersion.minor & 0xF) << 24;
                 tempbv |= (installerBaseVersion.build & 0xFFFF) << 8;
                 tempbv |= installerBaseVersion.revision & 0xFF;
                 io->Write(tempbv);
 
-                DWORD tempv = 0;
+                u32 tempv = 0;
                 tempv |= (installerVersion.major & 0xF) << 28;
                 tempv |= (installerVersion.minor & 0xF) << 24;
                 tempv |= (installerVersion.build & 0xFFFF) << 8;
@@ -574,14 +574,14 @@ void XContentHeader::WriteMetaData()
             case TitleUpdateProgressCache:
             case TitleContentProgressCache:
             {
-                io->Write((DWORD)resumeState);
+                io->Write((u32)resumeState);
                 io->Write(currentFileIndex);
                 io->Write(currentFileOffset);
                 io->Write(bytesProcessed);
 
-                WINFILETIME time = XdbfHelpers::TimeTtoFILETIME(lastModified);
-                io->Write(time.dwHighDateTime);
-                io->Write(time.dwLowDateTime);
+                FileTime time = XdbfHelpers::TimeTtoFILETIME(lastModified);
+                io->Write(time.highDateTime);
+                io->Write(time.lowDateTime);
 
                 io->Write(cabResumeData, 0x15D0);
                 break;
@@ -603,7 +603,7 @@ void XContentHeader::WriteMetaData()
         // *skip missing int*
         io->SetPosition(0x26C);
         io->Write(profileID, 8);
-        io->Write((BYTE)enabled);
+        io->Write((u8)enabled);
         io->Write(consoleID, 5);
     }
     io->Flush();
@@ -626,7 +626,7 @@ void XContentHeader::ResignHeader(string kvPath)
     ResignHeader(kvIo);
 }
 
-void XContentHeader::ResignHeader(BYTE* kvData, size_t length)
+void XContentHeader::ResignHeader(u8* kvData, size_t length)
 {
     MemoryIO kvIo(kvData, length);
     ResignHeader(kvIo);
@@ -639,15 +639,15 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
     // A console keyvault is 0x4000 bytes (0x4010 with the extra header word).
     // Reject anything else before reading fields at fixed offsets; otherwise a
     // short/foreign file fails halfway through with an opaque I/O error.
-    const UINT64 kvSize = kvIo.GetPosition();
+    const u64 kvSize = kvIo.GetPosition();
     if (kvSize != 0x4000 && kvSize != 0x4010)
         throw string("XContentHeader: Invalid keyvault size (expected 0x4000 or 0x4010 bytes).\n");
 
-    DWORD adder = 0;
+    u32 adder = 0;
     if (kvSize == 0x4000)
         adder = 0x10;
 
-    DWORD headerStart, size, hashLoc, toSignLoc, consoleIDLoc;
+    u32 headerStart, size, hashLoc, toSignLoc, consoleIDLoc;
 
     // set the headerStart
     if (flags & MetadataIsPEC)
@@ -668,10 +668,10 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
     }
 
     // calculate header size / first hash table address
-    DWORD calculated = ((headerSize + 0xFFF) & 0xFFFFF000);
+    u32 calculated = ((headerSize + 0xFFF) & 0xFFFFF000);
     io->SetPosition(0, ios_base::end);
-    calculated = (io->GetPosition() < calculated) ? (DWORD)io->GetPosition() : calculated;
-    DWORD realHeaderSize = calculated - headerStart;
+    calculated = (io->GetPosition() < calculated) ? (u32)io->GetPosition() : calculated;
+    u32 realHeaderSize = calculated - headerStart;
 
     // Parse the keyvault into locals. Nothing here may touch the package or
     // this object: a wrong or damaged keyvault has to leave the package
@@ -684,12 +684,12 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
     kvIo.ReadBytes(kvCertificate.ownerConsoleID, 5);
 
     char tempPartNum[0x15] = {0};
-    kvIo.ReadBytes((BYTE*)tempPartNum, 0x11);
+    kvIo.ReadBytes((u8*)tempPartNum, 0x11);
     kvCertificate.ownerConsolePartNumber.assign(tempPartNum, 0x11);
 
     // console type is a big-endian dword at certificate offset 0x18
     kvIo.SetPosition(0x9B8 + adder + 0x18);
-    DWORD consoleType = kvIo.ReadDword();
+    u32 consoleType = kvIo.ReadDword();
     kvCertificate.ownerConsoleType = static_cast<ConsoleType>(consoleType & 3);
     kvCertificate.consoleTypeFlags = static_cast<ConsoleTypeFlags>(consoleType & 0xFFFFFFFC);
 
@@ -698,7 +698,7 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
 
     kvIo.SetPosition(0x9B8 + adder + 0x1C);
     char tempGenDate[9] = {0};
-    kvIo.ReadBytes((BYTE*)tempGenDate, 8);
+    kvIo.ReadBytes((u8*)tempGenDate, 8);
     kvCertificate.dateGeneration = string(tempGenDate);
 
     kvCertificate.publicExponent = kvIo.ReadDword();
@@ -706,9 +706,9 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
     kvIo.ReadBytes(kvCertificate.certificateSignature, 0x100);
 
     // read the keys for signing
-    BYTE nData[0x80];
-    BYTE pData[0x40];
-    BYTE qData[0x40];
+    u8 nData[0x80];
+    u8 pData[0x40];
+    u8 qData[0x40];
 
     kvIo.SetPosition(0x298 + adder);
     kvIo.ReadBytes(nData, 0x80);
@@ -733,7 +733,7 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
         // Build the new header in memory: patch the console id, hash it, patch
         // the hash into the signed region and sign that. Writing only after the
         // signature exists keeps a failed resign from corrupting the package.
-        std::vector<BYTE> headerImage(realHeaderSize);
+        std::vector<u8> headerImage(realHeaderSize);
         io->SetPosition(headerStart);
         io->ReadBytes(headerImage.data(), realHeaderSize);
 
@@ -742,12 +742,12 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
 
         memcpy(headerImage.data() + (consoleIDLoc - headerStart), kvCertificate.ownerConsoleID, 5);
 
-        BYTE newHeaderHash[0x14];
+        u8 newHeaderHash[0x14];
         const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
         sha1->update(headerImage.data(), realHeaderSize);
         sha1->final(newHeaderHash);
 
-        std::vector<BYTE> dataToSign(size);
+        std::vector<u8> dataToSign(size);
         io->SetPosition(toSignLoc);
         io->ReadBytes(dataToSign.data(), size);
 

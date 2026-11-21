@@ -2,6 +2,16 @@
 
 #include <utility>
 
+#ifdef _WIN32
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+#endif
+
 #ifndef _WIN32
 #include <fstream>
 #include <memory>
@@ -34,7 +44,7 @@ BigFileIO::BigFileIO(std::string filePath, bool create)
     }
 
     fstr->seekg(0, std::ios::end);
-    length = static_cast<UINT64>(fstr->tellg());
+    length = static_cast<u64>(fstr->tellg());
     fstr->seekg(0, std::ios::beg);
     fstr->seekp(0, std::ios::beg);
 #endif
@@ -45,7 +55,7 @@ BigFileIO::~BigFileIO()
     Close();
 }
 
-void BigFileIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void BigFileIO::ReadBytes(u8 *outBuffer, u32 len)
 {
 #ifdef _WIN32
     DWORD bytesRead = 0;
@@ -64,7 +74,7 @@ void BigFileIO::ReadBytes(BYTE *outBuffer, DWORD len)
 #endif
 }
 
-void BigFileIO::WriteBytes(BYTE *buffer, DWORD len)
+void BigFileIO::WriteBytes(u8 *buffer, u32 len)
 {
 #ifdef _WIN32
     DWORD bytesWritten = 0;
@@ -81,27 +91,27 @@ void BigFileIO::WriteBytes(BYTE *buffer, DWORD len)
         throw std::string("BigFileIO: Error writing to the file.");
     }
 
-    const UINT64 newPos = static_cast<UINT64>(fstr->tellp());
+    const u64 newPos = static_cast<u64>(fstr->tellp());
     if (newPos > length) {
         length = newPos;
     }
 #endif
 }
 
-UINT64 BigFileIO::Length()
+u64 BigFileIO::Length()
 {
 #ifdef _WIN32
     LARGE_INTEGER size {};
     if (!GetFileSizeEx(hFile, &size)) {
         throw std::string("BigFileIO: Error getting file size.");
     }
-    return static_cast<UINT64>(size.QuadPart);
+    return static_cast<u64>(size.QuadPart);
 #else
     return length;
 #endif
 }
 
-UINT64 BigFileIO::GetPosition()
+u64 BigFileIO::GetPosition()
 {
 #ifdef _WIN32
     LARGE_INTEGER distance {};
@@ -109,7 +119,7 @@ UINT64 BigFileIO::GetPosition()
     if (!SetFilePointerEx(hFile, distance, &current, FILE_CURRENT)) {
         throw std::string("BigFileIO: Error getting file position.");
     }
-    return static_cast<UINT64>(current.QuadPart);
+    return static_cast<u64>(current.QuadPart);
 #else
     if (!fstr) {
         throw std::string("BigFileIO: File stream is not available.");
@@ -117,19 +127,19 @@ UINT64 BigFileIO::GetPosition()
 
     auto gpos = fstr->tellg();
     if (gpos >= 0) {
-        return static_cast<UINT64>(gpos);
+        return static_cast<u64>(gpos);
     }
 
     auto ppos = fstr->tellp();
     if (ppos >= 0) {
-        return static_cast<UINT64>(ppos);
+        return static_cast<u64>(ppos);
     }
 
     throw std::string("BigFileIO: Error getting file position.");
 #endif
 }
 
-void BigFileIO::SetPosition(UINT64 position, std::ios_base::seekdir dir)
+void BigFileIO::SetPosition(u64 position, std::ios_base::seekdir dir)
 {
 #ifdef _WIN32
     LARGE_INTEGER distance {};

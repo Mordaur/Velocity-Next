@@ -50,7 +50,7 @@ private:
     StfsPackage *profile;
     QString directory;
     QString profilePath;
-    DWORD initialSize;
+    u32 initialSize;
 
     CleanOperation op;
 

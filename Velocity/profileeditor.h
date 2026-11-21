@@ -42,7 +42,7 @@ class ProfileEditor;
 struct RegionStr
 {
     QString name;
-    DWORD value;
+    u32 value;
 };
 
 const RegionStr regions[] =
@@ -296,11 +296,11 @@ private:
     AvatarAwardGameEntry *avatarAwardEntry(int index);
     const AvatarAwardGameEntry *avatarAwardEntry(int index) const;
 
-    void addToDashGpd(SettingEntry *entry, SettingEntryType type, UINT64 id);
+    void addToDashGpd(SettingEntry *entry, SettingEntryType type, u64 id);
     void updateAvatarAward(TitleEntry *entry, AvatarAwardGpd *gpd, AvatarAwardData *award,
             State toSet);
     void updateAchievement(TitleEntry *entry, AchievementEntry *chiev, State toSet, GameGpd *gpd);
-    State getStateFromFlags(DWORD flags);
+    State getStateFromFlags(u32 flags);
     void saveAll();
     void loadGameInfo(int index);
     void loadAchievementInfo(int gameIndex, unsigned int chievIndex);

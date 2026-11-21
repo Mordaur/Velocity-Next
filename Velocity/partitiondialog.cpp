@@ -35,7 +35,7 @@ void PartitionDialog::on_comboBox_currentIndexChanged(int index)
             16).toUpper());
 
     // calculate the percentage
-    const UINT64 totalBytes = static_cast<UINT64>(part.clusterCount) * part.clusterSize;
+    const u64 totalBytes = static_cast<u64>(part.clusterCount) * part.clusterSize;
     float freeMemPercentage = totalBytes ? static_cast<float>((part.freeMemory * 100.0) /
             totalBytes) : 0.0f;
 

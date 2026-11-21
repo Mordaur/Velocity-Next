@@ -57,7 +57,7 @@ private:
     ConsoleType consoleType;
 
     void openImage(QLabel *img);
-    DWORD getContentType();
+    u32 getContentType();
 };
 
 #endif // CREATIONWIZARD_H

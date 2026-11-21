@@ -25,10 +25,10 @@ public:
     SvodIO GetSvodIO(GdfxFileEntry entry);
     SvodIO GetSvodIO(std::string path);
 
-    void SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex);
-    void Rehash(void (*progress)(DWORD, DWORD, void*) = nullptr, void *arg = nullptr);
+    void SectorToAddress(u32 sector, u32 *addressInDataFile, u32 *dataFileIndex);
+    void Rehash(void (*progress)(u32, u32, void*) = nullptr, void *arg = nullptr);
     void WriteFileEntry(GdfxFileEntry *entry);
-    DWORD GetSectorCount();
+    u32 GetSectorCount();
 
     // Verify part 0's master block against the descriptor root hash.
     bool VerifyRoot();
@@ -42,12 +42,12 @@ public:
     std::vector<GdfxFileEntry> root;
 
 private:
-    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, UINT64 size,
+    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, u32 sector, u64 size,
                          std::string path, int depth,
-                         std::set<std::pair<DWORD, UINT64>> &visited);
+                         std::set<std::pair<u32, u64>> &visited);
     GdfxFileEntry GetFileEntry(std::string path, std::vector<GdfxFileEntry> *listing);
     void ValidateDataFiles();
-    void HashBlock(BYTE *block, BYTE *outHash);
+    void HashBlock(u8 *block, u8 *outHash);
     std::string GetContentName();
 
     std::string contentDirectory;
@@ -55,8 +55,8 @@ private:
     std::unique_ptr<BaseIO> rootFile;
     std::unique_ptr<XContentHeader> metaDataOwner;
     GdfxHeader header;
-    DWORD baseAddress;
-    DWORD offset;
+    u32 baseAddress;
+    u32 offset;
     FatxDrive *drive;
     bool didReadFileListing;
 };

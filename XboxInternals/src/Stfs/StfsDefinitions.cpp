@@ -2,7 +2,7 @@
 
 #include <XboxInternals/Export.h>
 
-void ReadStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, DWORD address)
+void ReadStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, u32 address)
 {
     // seek to the volume descriptor
     io->SetPosition(address);
@@ -72,12 +72,12 @@ XBOXINTERNALS_EXPORT string LicenseTypeToString(LicenseType type)
     }
 }
 
-XBOXINTERNALS_EXPORT string ByteSizeToString(UINT64 bytes)
+XBOXINTERNALS_EXPORT string ByteSizeToString(u64 bytes)
 {
-    DWORD B = 1; //byte
-    DWORD KB = 1024 * B; //kilobyte
-    DWORD MB = 1024 * KB; //megabyte
-    DWORD GB = 1024 * MB; //gigabyte
+    u32 B = 1; //byte
+    u32 KB = 1024 * B; //kilobyte
+    u32 MB = 1024 * KB; //megabyte
+    u32 GB = 1024 * MB; //gigabyte
 
     // divide stuff
     std::stringstream result;
@@ -87,16 +87,16 @@ XBOXINTERNALS_EXPORT string ByteSizeToString(UINT64 bytes)
     else if (bytes > MB)
         result << std::fixed << ((float)bytes / MB) << " MB";
     else if (bytes > KB)
-        result << std::fixed << ((DWORD)(((bytes / (float)KB) + 0.005f) * 100) / 100.0f) << " KB";
+        result << std::fixed << ((u32)(((bytes / (float)KB) + 0.005f) * 100) / 100.0f) << " KB";
     else
         result << bytes << " bytes";
 
     return result.str();
 }
 
-XBOXINTERNALS_EXPORT DWORD MSTimeToDWORD(MSTime time)
+XBOXINTERNALS_EXPORT u32 MSTimeToDWORD(MSTime time)
 {
-    DWORD toReturn = 0;
+    u32 toReturn = 0;
     toReturn |= ((time.year - 1980) & 0x7F) << 25;
     toReturn |= (time.month & 0xF) << 21;
     toReturn |= (time.monthDay & 0x1F) << 16;
@@ -108,7 +108,7 @@ XBOXINTERNALS_EXPORT DWORD MSTimeToDWORD(MSTime time)
     return toReturn;
 }
 
-XBOXINTERNALS_EXPORT MSTime DWORDToMSTime(DWORD winTime)
+XBOXINTERNALS_EXPORT MSTime DWORDToMSTime(u32 winTime)
 {
     MSTime time;
 
@@ -137,22 +137,22 @@ XBOXINTERNALS_EXPORT MSTime TimetToMSTime(time_t time)
     return toReturn;
 }
 
-void WriteStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, DWORD address)
+void WriteStfsVolumeDescriptorEx(StfsVolumeDescriptor *descriptor, BaseIO *io, u32 address)
 {
     // volume descriptor position
     io->SetPosition(address);
 
     // Write size, padding and block separation
-    INT24 start = 0x240000;
+    u32 start = 0x240000;
     start |= descriptor->blockSeparation;
-    io->Write(start);
+    io->WriteInt24(start);
 
     // Write the rest of the descriptor
     io->SwapEndian();
     io->Write(descriptor->fileTableBlockCount);
     io->SwapEndian();
 
-    io->Write(descriptor->fileTableBlockNum, LittleEndian);
+    io->WriteInt24(descriptor->fileTableBlockNum, LittleEndian);
     io->Write(descriptor->topHashTableHash, 0x14);
     io->Write(descriptor->allocatedBlockCount);
     io->Write(descriptor->unallocatedBlockCount);
@@ -172,15 +172,15 @@ void WriteSvodVolumeDescriptorEx(SvodVolumeDescriptor *descriptor, BaseIO *io)
     io->Write(descriptor->rootHash, 0x14);
 
     io->Write(descriptor->flags);
-    io->Write((INT24)descriptor->dataBlockCount, BigEndian);
-    io->Write((INT24)descriptor->dataBlockOffset, LittleEndian);
+    io->WriteInt24(descriptor->dataBlockCount, BigEndian);
+    io->WriteInt24(descriptor->dataBlockOffset, LittleEndian);
 
     io->Write(descriptor->reserved, 5);
 
     io->SetEndian(BigEndian);
 }
 
-void ReadCertificateEx(Certificate *cert, BaseIO *io, DWORD address)
+void ReadCertificateEx(Certificate *cert, BaseIO *io, u32 address)
 {
     // seek to the address of the certificate
     io->SetPosition(address);
@@ -189,18 +189,18 @@ void ReadCertificateEx(Certificate *cert, BaseIO *io, DWORD address)
     io->ReadBytes(cert->ownerConsoleID, 5);
 
     char tempPartNum[0x15] = {0};
-    io->ReadBytes((BYTE*)tempPartNum, 0x11);
+    io->ReadBytes((u8*)tempPartNum, 0x11);
     // Keep all 17 bytes: part number (0xB) + reserved (4) + privileges (2).
     cert->ownerConsolePartNumber.assign(tempPartNum, 0x11);
 
-    DWORD temp = io->ReadDword();
+    u32 temp = io->ReadDword();
     cert->ownerConsoleType = (ConsoleType)(temp & 3);
     cert->consoleTypeFlags = (ConsoleTypeFlags)(temp & 0xFFFFFFFC);
     if (cert->ownerConsoleType != DevKit && cert->ownerConsoleType != Retail)
         throw string("STFS: Invalid console type.\n");
 
     char tempGenDate[9] = {0};
-    io->ReadBytes((BYTE*)tempGenDate, 8);
+    io->ReadBytes((u8*)tempGenDate, 8);
     cert->dateGeneration = string(tempGenDate);
 
     cert->publicExponent = io->ReadDword();
@@ -209,16 +209,16 @@ void ReadCertificateEx(Certificate *cert, BaseIO *io, DWORD address)
     io->ReadBytes(cert->signature, 0x80);
 }
 
-void WriteCertificateEx(Certificate *cert, BaseIO *io, DWORD address)
+void WriteCertificateEx(Certificate *cert, BaseIO *io, u32 address)
 {
     // seek to the position of the certificate
     io->SetPosition(address);
 
     // Write the certificate
-    io->Write((WORD)cert->publicKeyCertificateSize);
+    io->Write((u16)cert->publicKeyCertificateSize);
     io->Write(cert->ownerConsoleID, 5);
     io->Write(cert->ownerConsolePartNumber, 0x11, false);
-    DWORD temp = static_cast<DWORD>(cert->consoleTypeFlags) | static_cast<DWORD>(cert->ownerConsoleType);
+    u32 temp = static_cast<u32>(cert->consoleTypeFlags) | static_cast<u32>(cert->ownerConsoleType);
     io->Write(temp);
     io->Write(cert->dateGeneration, 0x8, false);
     io->Write(cert->publicExponent);

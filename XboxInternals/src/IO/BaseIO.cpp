@@ -24,10 +24,10 @@ EndianType BaseIO::GetEndian()
     return this->byteOrder;
 }
 
-void BaseIO::reverseByteArray(BYTE *array, DWORD len)
+void BaseIO::reverseByteArray(u8 *array, u32 len)
 {
-    BYTE temp;
-    for (DWORD i = 0; i < len / 2; i++)
+    u8 temp;
+    for (u32 i = 0; i < len / 2; i++)
     {
         temp = array[i];
         array[i] = array[len - i - 1];
@@ -35,37 +35,37 @@ void BaseIO::reverseByteArray(BYTE *array, DWORD len)
     }
 }
 
-BYTE BaseIO::ReadByte()
+u8 BaseIO::ReadByte()
 {
-    BYTE toReturn;
+    u8 toReturn;
     ReadBytes(&toReturn, 1);
     return toReturn;
 }
 
-INT16 BaseIO::ReadInt16()
+i16 BaseIO::ReadInt16()
 {
-    return (INT16)ReadWord();
+    return (i16)ReadWord();
 }
 
-WORD BaseIO::ReadWord()
+u16 BaseIO::ReadWord()
 {
-    WORD toReturn;
-    ReadBytes(reinterpret_cast<BYTE*>(&toReturn), 2);
+    u16 toReturn;
+    ReadBytes(reinterpret_cast<u8*>(&toReturn), 2);
 
     if (byteOrder == BigEndian)
-        reverseByteArray(reinterpret_cast<BYTE*>(&toReturn), 2);
+        reverseByteArray(reinterpret_cast<u8*>(&toReturn), 2);
 
     return toReturn;
 }
 
-INT24 BaseIO::ReadInt24(EndianType et)
+u32 BaseIO::ReadInt24(EndianType et)
 {
     EndianType orig = byteOrder;
 
     if(et != Default)
         byteOrder = et;
 
-    INT24 returnVal = ReadDword();
+    u32 returnVal = ReadDword();
 
     if(byteOrder == BigEndian)
         returnVal = (returnVal & 0xFFFFFF00) >> 8;
@@ -78,39 +78,39 @@ INT24 BaseIO::ReadInt24(EndianType et)
     return returnVal;
 }
 
-INT32 BaseIO::ReadInt32()
+i32 BaseIO::ReadInt32()
 {
-    return (INT32)ReadDword();
+    return (i32)ReadDword();
 }
 
-DWORD BaseIO::ReadDword()
+u32 BaseIO::ReadDword()
 {
-    DWORD toReturn;
-    ReadBytes(reinterpret_cast<BYTE*>(&toReturn), 4);
+    u32 toReturn;
+    ReadBytes(reinterpret_cast<u8*>(&toReturn), 4);
 
     if (byteOrder == BigEndian)
-        reverseByteArray(reinterpret_cast<BYTE*>(&toReturn), 4);
+        reverseByteArray(reinterpret_cast<u8*>(&toReturn), 4);
 
     return toReturn;
 }
 
-INT64 BaseIO::ReadInt64()
+i64 BaseIO::ReadInt64()
 {
-    return (INT64)ReadUInt64();
+    return (i64)ReadUInt64();
 }
 
-UINT64 BaseIO::ReadUInt64()
+u64 BaseIO::ReadUInt64()
 {
-    UINT64 toReturn;
-    ReadBytes(reinterpret_cast<BYTE*>(&toReturn), 8);
+    u64 toReturn;
+    ReadBytes(reinterpret_cast<u8*>(&toReturn), 8);
 
     if (byteOrder == BigEndian)
-        reverseByteArray(reinterpret_cast<BYTE*>(&toReturn), 8);
+        reverseByteArray(reinterpret_cast<u8*>(&toReturn), 8);
 
     return toReturn;
 }
 
-UINT64 BaseIO::ReadMultiByte(size_t size)
+u64 BaseIO::ReadMultiByte(size_t size)
 {
     switch (size)
     {
@@ -154,7 +154,7 @@ string BaseIO::ReadString(int len, char nullTerminator, bool forceInclude0, int 
     else
     {
         toReturn.resize(static_cast<size_t>(len));
-        ReadBytes(reinterpret_cast<BYTE*>(toReturn.data()), static_cast<DWORD>(len));
+        ReadBytes(reinterpret_cast<u8*>(toReturn.data()), static_cast<u32>(len));
 
         const size_t terminator = toReturn.find('\0');
         if (terminator != std::string::npos)
@@ -191,19 +191,19 @@ wstring BaseIO::ReadWString(int len)
     return toReturn;
 }
 
-void BaseIO::Write(BYTE b)
+void BaseIO::Write(u8 b)
 {
     WriteBytes(&b, 1);
 }
 
-void BaseIO::Write(WORD w)
+void BaseIO::Write(u16 w)
 {
     if (byteOrder == BigEndian)
-        reverseByteArray(reinterpret_cast<BYTE*>(&w), 2);
-    WriteBytes(reinterpret_cast<BYTE*>(&w), 2);
+        reverseByteArray(reinterpret_cast<u8*>(&w), 2);
+    WriteBytes(reinterpret_cast<u8*>(&w), 2);
 }
 
-void BaseIO::Write(INT24 i24, EndianType et)
+void BaseIO::WriteInt24(u32 value, EndianType et)
 {
     EndianType orig = byteOrder;
     if(et != Default)
@@ -211,31 +211,31 @@ void BaseIO::Write(INT24 i24, EndianType et)
 
     if(byteOrder == BigEndian)
     {
-        i24 <<= 8;
-        reverseByteArray(reinterpret_cast<BYTE*>(&i24), 4);
+        value <<= 8;
+        reverseByteArray(reinterpret_cast<u8*>(&value), 4);
     }
-    WriteBytes(reinterpret_cast<BYTE*>(&i24), 3);
+    WriteBytes(reinterpret_cast<u8*>(&value), 3);
 
     byteOrder = orig;
 }
 
-void BaseIO::Write(DWORD dw)
+void BaseIO::Write(u32 dw)
 {
     if (byteOrder == BigEndian)
-        reverseByteArray(reinterpret_cast<BYTE*>(&dw), 4);
-    WriteBytes(reinterpret_cast<BYTE*>(&dw), 4);
+        reverseByteArray(reinterpret_cast<u8*>(&dw), 4);
+    WriteBytes(reinterpret_cast<u8*>(&dw), 4);
 }
 
-void BaseIO::Write(UINT64 u64)
+void BaseIO::Write(u64 qw)
 {
     if (byteOrder == BigEndian)
-        reverseByteArray(reinterpret_cast<BYTE*>(&u64), 8);
-    WriteBytes(reinterpret_cast<BYTE*>(&u64), 8);
+        reverseByteArray(reinterpret_cast<u8*>(&qw), 8);
+    WriteBytes(reinterpret_cast<u8*>(&qw), 8);
 }
 
-void BaseIO::Write(string s, int forceLen, bool nullTerminating, BYTE nullTerminator)
+void BaseIO::Write(string s, int forceLen, bool nullTerminating, u8 nullTerminator)
 {
-    WriteBytes((BYTE*)s.c_str(), s.length() + nullTerminating);
+    WriteBytes((u8*)s.c_str(), s.length() + nullTerminating);
 
     if (forceLen > 0)
     {
@@ -250,26 +250,26 @@ void BaseIO::Write(wstring ws, bool nullTerminating)
 {
     for (wchar_t c : ws)
     {
-        UINT32 codepoint = static_cast<UINT32>(c);
+        u32 codepoint = static_cast<u32>(c);
 
         if (sizeof(wchar_t) == 2 || codepoint <= 0xFFFF)
         {
-            Write(static_cast<WORD>(codepoint));
+            Write(static_cast<u16>(codepoint));
         }
         else
         {
             // Encode supplementary characters as a UTF-16 surrogate pair.
             codepoint -= 0x10000;
-            Write(static_cast<WORD>(0xD800 + (codepoint >> 10)));
-            Write(static_cast<WORD>(0xDC00 + (codepoint & 0x3FF)));
+            Write(static_cast<u16>(0xD800 + (codepoint >> 10)));
+            Write(static_cast<u16>(0xDC00 + (codepoint & 0x3FF)));
         }
     }
 
     if (nullTerminating)
-        Write(static_cast<WORD>(0));
+        Write(static_cast<u16>(0));
 }
 
-void BaseIO::Write(BYTE *buffer, DWORD len)
+void BaseIO::Write(u8 *buffer, u32 len)
 {
     WriteBytes(buffer, len);
 }

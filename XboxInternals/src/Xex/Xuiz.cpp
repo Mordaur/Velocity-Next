@@ -27,17 +27,17 @@ std::vector<XuizFileEntry> Xuiz::GetFiles() const
 
 void Xuiz::ExtractFile(std::string outFile, XuizFileEntry *fileEntry) const
 {
-    std::vector<BYTE> copyBuffer(XUIZ_COPY_BUFFER_SIZE);
+    std::vector<u8> copyBuffer(XUIZ_COPY_BUFFER_SIZE);
 
-    DWORD copyIterations = fileEntry->size / XUIZ_COPY_BUFFER_SIZE;
+    u32 copyIterations = fileEntry->size / XUIZ_COPY_BUFFER_SIZE;
     if (fileEntry->size % XUIZ_COPY_BUFFER_SIZE != 0)
         copyIterations++;
 
     FileIO outIO(outFile, true);
-    for (DWORD i = 0; i < copyIterations; i++)
+    for (u32 i = 0; i < copyIterations; i++)
     {
         // if it's the last iteration then be careful not read beyond the end of the file
-        DWORD numBytesToCopy = XUIZ_COPY_BUFFER_SIZE;
+        u32 numBytesToCopy = XUIZ_COPY_BUFFER_SIZE;
         if (i + 1 == copyIterations && fileEntry->size % XUIZ_COPY_BUFFER_SIZE != 0)
             numBytesToCopy = fileEntry->size % XUIZ_COPY_BUFFER_SIZE;
 
@@ -81,18 +81,18 @@ void Xuiz::Parse()
     io->ReadDword();
     io->ReadDword();
 
-    DWORD fileTableSize = io->ReadDword();
-    WORD fileTableEntryCount = io->ReadWord();
+    u32 fileTableSize = io->ReadDword();
+    u16 fileTableEntryCount = io->ReadWord();
 
     // read all the file entries
-    for (WORD i = 0; i < fileTableEntryCount; i++)
+    for (u16 i = 0; i < fileTableEntryCount; i++)
     {
         XuizFileEntry entry;
         entry.size = io->ReadDword();
         entry.offset = io->ReadDword();
         entry.realAddress = XUIZ_HEADER_SIZE + fileTableSize + entry.offset;
 
-        BYTE pathLength = io->ReadByte();
+        u8 pathLength = io->ReadByte();
         entry.path = io->ReadString(pathLength);
 
         files.push_back(entry);

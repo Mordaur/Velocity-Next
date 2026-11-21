@@ -12,6 +12,7 @@
 #include <XboxInternals/Disc/SvodLayout.h>
 #include <XboxInternals/Gpd/Xdbf.h>
 #include <XboxInternals/IO/MemoryIO.h>
+#include <XboxInternals/IO/StfsIO.h>
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 #include <XboxInternals/Stfs/StfsPackage.h>
 #include <XboxInternals/Stfs/XContentHeader.h>
@@ -69,13 +70,13 @@ namespace
 
     void testMemoryIO()
     {
-        BYTE raw[256] = {};
+        u8 raw[256] = {};
 
         MemoryIO io(raw, sizeof(raw));
         io.SetEndian(LittleEndian);
-        io.Write(static_cast<DWORD>(0x11223344));
-        io.Write(static_cast<WORD>(0xBEEF));
-        io.Write(static_cast<UINT64>(0x0102030405060708ull));
+        io.Write(static_cast<u32>(0x11223344));
+        io.Write(static_cast<u16>(0xBEEF));
+        io.Write(static_cast<u64>(0x0102030405060708ull));
         io.Write(std::string("hello"));
 
         io.SetPosition(0);
@@ -84,10 +85,10 @@ namespace
         check(io.ReadUInt64() == 0x0102030405060708ull, "little-endian UINT64 round-trip");
         check(io.ReadString() == "hello", "NUL-terminated string round-trip");
 
-        BYTE be[16] = {};
+        u8 be[16] = {};
         MemoryIO big(be, sizeof(be));
         big.SetEndian(BigEndian);
-        big.Write(static_cast<DWORD>(0x11223344));
+        big.Write(static_cast<u32>(0x11223344));
         check(be[0] == 0x11 && be[1] == 0x22 && be[2] == 0x33 && be[3] == 0x44,
               "big-endian DWORD is written MSB first");
         big.SetPosition(0);
@@ -101,7 +102,7 @@ namespace
 
         check(throws([&] {
             MemoryIO tiny(raw, 2);
-            BYTE two[4] = {1, 2, 3, 4};
+            u8 two[4] = {1, 2, 3, 4};
             tiny.WriteBytes(two, sizeof(two));
         }), "write past the end throws");
 
@@ -121,7 +122,7 @@ namespace
         {
             for (std::size_t length : lengths)
             {
-                std::vector<BYTE> input(length);
+                std::vector<u8> input(length);
                 std::uint32_t state = 0x12345678u + static_cast<std::uint32_t>(pattern);
 
                 for (std::size_t i = 0; i < length; ++i)
@@ -136,16 +137,16 @@ namespace
                         break;
                     case 2:
                         state = state * 1664525u + 1013904223u;
-                        input[i] = static_cast<BYTE>(state >> 24);
+                        input[i] = static_cast<u8>(state >> 24);
                         break;
                     default:
-                        input[i] = static_cast<BYTE>(i & 0xFF);
+                        input[i] = static_cast<u8>(i & 0xFF);
                         break;
                     }
                 }
 
                 XexLzxDecoder decoder;
-                BYTE output[0x100] = {};
+                u8 output[0x100] = {};
 
                 try
                 {
@@ -165,12 +166,12 @@ namespace
         }
     }
 
-    void putBE32(std::vector<BYTE> &buffer, std::size_t offset, std::uint32_t value)
+    void putBE32(std::vector<u8> &buffer, std::size_t offset, std::uint32_t value)
     {
-        buffer[offset] = static_cast<BYTE>(value >> 24);
-        buffer[offset + 1] = static_cast<BYTE>(value >> 16);
-        buffer[offset + 2] = static_cast<BYTE>(value >> 8);
-        buffer[offset + 3] = static_cast<BYTE>(value);
+        buffer[offset] = static_cast<u8>(value >> 24);
+        buffer[offset + 1] = static_cast<u8>(value >> 16);
+        buffer[offset + 2] = static_cast<u8>(value >> 8);
+        buffer[offset + 3] = static_cast<u8>(value);
     }
 
     void testStfsNameMatchingAndGeometry()
@@ -196,7 +197,7 @@ namespace
               "STFS exact match is still case-insensitive");
 
         // Kernel StfsComputeNumberOfDataBlocks (male geometry, 0x800DFA40).
-        struct Case { UINT64 blocks; DWORD expected; };
+        struct Case { u64 blocks; u32 expected; };
         const Case cases[] = {
             {0x0, 0x0}, {0xAA, 0xA8}, {0xAC, 0xAA}, {0x723A, 0x70E4},
             {0xE000, 0xDD5E}, {0x4AF767, 0x4A16EF}, {0x4AF768, 0x4A16F0},
@@ -233,7 +234,7 @@ namespace
         // GDF volume descriptor (volume block 16) after the skip and the
         // enhanced one-block shift; the kernel aliases it to data block 0 once
         // the skipped prefix covers it.
-        DWORD header = 0;
+        u32 header = 0;
         check(GdfHeaderBlock(0, false, &header) && header == 16, "legacy GDF header block");
         check(GdfHeaderBlock(4, false, &header) && header == 12, "legacy GDF header after skip");
         check(!GdfHeaderBlock(17, false, &header), "legacy GDF header inside the prefix");
@@ -244,15 +245,15 @@ namespace
 
         struct MapCase
         {
-            DWORD sector;
-            DWORD dataBlockOffset;
+            u32 sector;
+            u32 dataBlockOffset;
             bool enhanced;
             bool valid;
-            DWORD address;
-            DWORD part;
+            u32 address;
+            u32 part;
         };
 
-        const DWORD partSectors = static_cast<DWORD>(kSectorsPerPart); // 0x14388
+        const u32 partSectors = static_cast<u32>(kSectorsPerPart); // 0x14388
         const MapCase cases[] = {
             // Legacy: sector 0 is data block 0, no shift.
             {0, 0, false, true, 0x2000, 0},
@@ -278,7 +279,7 @@ namespace
 
         for (const auto &c : cases)
         {
-            DWORD address = 0, part = 0;
+            u32 address = 0, part = 0;
             const bool ok = XboxInternals::SvodLayout::Map(
                     c.sector, c.dataBlockOffset, c.enhanced, &address, &part);
 
@@ -291,7 +292,7 @@ namespace
         }
 
         // The volume bound: 40 data blocks = 80 sectors.
-        DWORD boundAddress = 0, boundPart = 0;
+        u32 boundAddress = 0, boundPart = 0;
         check(XboxInternals::SvodLayout::Map(0, 0, false, &boundAddress, &boundPart, 40),
               "SVOD volume accepts sector 0");
         check(XboxInternals::SvodLayout::Map(0x4F, 0, false, &boundAddress, &boundPart, 40),
@@ -334,7 +335,7 @@ namespace
     {
         // SvodCreateDevice: dataBlockCount is big-endian, dataBlockOffset is
         // little-endian (and only its low byte is used for legacy packages).
-        std::vector<BYTE> buffer(0x379 + sizeof(SvodVolumeDescriptor), 0);
+        std::vector<u8> buffer(0x379 + sizeof(SvodVolumeDescriptor), 0);
         buffer[0x379] = 0x24;
         buffer[0x37A] = 0x01;
         buffer[0x391] = 0x40;                     // enhanced
@@ -349,12 +350,12 @@ namespace
         SvodVolumeDescriptor descriptor{};
         ReadSvodVolumeDescriptorEx(&descriptor, &io);
 
-        check(static_cast<DWORD>(descriptor.dataBlockCount) == 0x102,
+        check(static_cast<u32>(descriptor.dataBlockCount) == 0x102,
               "SVOD dataBlockCount is big-endian");
-        check(static_cast<DWORD>(descriptor.dataBlockOffset) == 0x11,
+        check(static_cast<u32>(descriptor.dataBlockOffset) == 0x11,
               "SVOD dataBlockOffset is little-endian");
 
-        std::vector<BYTE> written(0x379 + sizeof(SvodVolumeDescriptor), 0);
+        std::vector<u8> written(0x379 + sizeof(SvodVolumeDescriptor), 0);
         MemoryIO out(written.data(), written.size());
         WriteSvodVolumeDescriptorEx(&descriptor, &out);
         check(written[0x395] == 0x11 && written[0x396] == 0x00 && written[0x397] == 0x00,
@@ -406,7 +407,7 @@ namespace
 
         // 1. Invalid file-system value: must be rejected before any enum cast.
         {
-            std::vector<BYTE> header(size, 0);
+            std::vector<u8> header(size, 0);
             header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
             putBE32(header, 0x340, static_cast<std::uint32_t>(size));  // headerSize
             putBE32(header, 0x3A9, 0x12345678);                       // fileSystem
@@ -417,7 +418,7 @@ namespace
 
         // 2. Avatar metadata with an invalid installer type.
         {
-            std::vector<BYTE> header(size, 0);
+            std::vector<u8> header(size, 0);
             header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
             putBE32(header, 0x340, static_cast<std::uint32_t>(size));
             putBE32(header, 0x344, 0x9000);                 // AvatarItem
@@ -432,7 +433,7 @@ namespace
 
         // 3. Valid installer type with a garbage resume state and thumbnail sizes.
         {
-            std::vector<BYTE> header(size, 0);
+            std::vector<u8> header(size, 0);
             header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
             putBE32(header, 0x340, static_cast<std::uint32_t>(size));
             putBE32(header, 0x344, 0x9000);                 // AvatarItem
@@ -466,7 +467,7 @@ namespace
 
         // 4. Invalid skeleton version is rejected.
         {
-            std::vector<BYTE> header(size, 0);
+            std::vector<u8> header(size, 0);
             header[0] = 'L'; header[1] = 'I'; header[2] = 'V'; header[3] = 'E';
             putBE32(header, 0x340, static_cast<std::uint32_t>(size));
             putBE32(header, 0x344, 0x9000);                 // AvatarItem
@@ -488,7 +489,7 @@ namespace
         // unreadable ("Invalid console type").
         const std::size_t size = 0xC000;
 
-        std::vector<BYTE> package(size, 0);
+        std::vector<u8> package(size, 0);
         package[0] = 'C'; package[1] = 'O'; package[2] = 'N'; package[3] = ' ';
         putBE32(package, 0x4 + 0x18, 1);                          // console type: DevKit
         putBE32(package, 0x340, static_cast<std::uint32_t>(size)); // headerSize
@@ -515,9 +516,9 @@ namespace
         if (!metadata)
             return;
 
-        const std::vector<BYTE> before = package;
+        const std::vector<u8> before = package;
 
-        std::vector<BYTE> kv(0x4000, 0);
+        std::vector<u8> kv(0x4000, 0);
         check(throws([&] { metadata->ResignHeader(kv.data(), kv.size()); }),
               "resign with a zero keyvault throws");
 
@@ -543,7 +544,7 @@ namespace
     {
         namespace fs = std::filesystem;
 
-        std::vector<BYTE> buffer(0x40, 0);
+        std::vector<u8> buffer(0x40, 0);
         putBE32(buffer, 0x00, 0x58444246);  // "XDBF"
         putBE32(buffer, 0x04, 1);           // version
         putBE32(buffer, 0x08, 0x12);        // entry table length
@@ -585,7 +586,7 @@ namespace
         // libFuzzer crash from CI: an invalid pretree delta (17..19) produced a
         // 254-byte code length, which indexed past Huffman::count[17]. The input
         // must be rejected, never write out of bounds.
-        static const BYTE input[] = {
+        static const u8 input[] = {
             0x3F, 0x2F, 0x23, 0x00, 0x00, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7B,
             0x00, 0x00, 0x00, 0x00, 0x10, 0x10, 0x10, 0x00, 0x49, 0x49, 0x49, 0x49, 0x49,
             0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49, 0x49,
@@ -593,7 +594,7 @@ namespace
         };
 
         XexLzxDecoder decoder;
-        BYTE output[0x400] = {};
+        u8 output[0x400] = {};
 
         try
         {
@@ -617,7 +618,7 @@ namespace
         // LZX stored block (type 3) with no corpus coverage: 1-bit intel flag,
         // 3-bit type, 24-bit length, word-aligned 12-byte repeat offsets, then
         // the raw bytes (the kernel's XexpLoadCompressedImage path).
-        BYTE input[24] = {};
+        u8 input[24] = {};
         // words are read little-endian but bits are taken MSB-first
         input[0] = 0x00; input[1] = 0x30; // 0 011 0000... (type 3, length high 0)
         input[2] = 0x80; input[3] = 0x00; // length low 8 at bits 20..27
@@ -625,11 +626,11 @@ namespace
         input[4 + 7] = 1;                 // R1 = 1
         input[4 + 11] = 1;                // R2 = 1
 
-        const BYTE payload[8] = {'S', 'T', 'O', 'R', 'E', 'D', '!', '!'};
+        const u8 payload[8] = {'S', 'T', 'O', 'R', 'E', 'D', '!', '!'};
         std::memcpy(input + 16, payload, sizeof(payload));
 
         XexLzxDecoder decoder;
-        BYTE output[sizeof(payload)] = {};
+        u8 output[sizeof(payload)] = {};
 
         bool decoded = false;
         try
@@ -643,6 +644,65 @@ namespace
 
         check(decoded && std::memcmp(output, payload, sizeof(payload)) == 0,
               "LZX stored block copies raw bytes");
+    }
+
+    // STFS chains end at 0xFFFFFF. When a 0x7FFFFF terminator was compared
+    // instead, every chain gained a bogus trailing block and StfsIO threw on
+    // any read that reached EOF.
+    void testStfsBlockChainTerminator()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_chain.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        std::vector<u8> data(0x2345);
+        for (std::size_t i = 0; i < data.size(); ++i)
+            data[i] = static_cast<u8>(i * 7 + 3);
+
+        bool completed = false;
+        try
+        {
+            StfsPackage package(path.string(), StfsPackageCreate);
+            package.InjectData(data.data(), static_cast<u32>(data.size()), "data.bin");
+            package.InjectData(data.data(), 0, "empty.bin");
+
+            StfsFileEntry entry = package.GetFileEntry("data.bin");
+            package.GenerateBlockChain(&entry, true);
+            check(entry.blocksForFile == 3, "STFS 0x2345-byte file uses 3 blocks");
+            check(entry.blockChain.size() == entry.blocksForFile,
+                  "STFS block chain stops at the terminator");
+            check(std::find(entry.blockChain.begin(), entry.blockChain.end(),
+                            kBlockChainTerminator) == entry.blockChain.end(),
+                  "STFS block chain excludes the terminator");
+
+            std::unique_ptr<StfsIO> io(package.GetStfsIO("data.bin"));
+            std::vector<u8> readBack(static_cast<std::size_t>(io->Length()));
+            io->ReadBytes(readBack.data(), static_cast<u32>(readBack.size()));
+            check(readBack == data, "StfsIO reads a file to EOF");
+            io.reset();
+
+            StfsFileEntry empty = package.GetFileEntry("empty.bin");
+            check(empty.startingBlockNum == kBlockChainTerminator,
+                  "empty STFS file starts at the terminator");
+            package.GenerateBlockChain(&empty, true);
+            check(empty.blockChain.empty(), "empty STFS file has no blocks");
+            check(!throws([&] { std::unique_ptr<StfsIO> emptyIO(package.GetStfsIO("empty.bin")); }),
+                  "StfsIO opens an empty file");
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS chain test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS chain test threw: %s)\n", e.what());
+        }
+        check(completed, "STFS chain test completes");
+
+        fs::remove(path, ignored);
     }
 
     void testGarbageImages()
@@ -678,34 +738,34 @@ namespace
 
 namespace
 {
-void putBE16(std::vector<BYTE> &data, std::size_t offset, WORD value)
+void putBE16(std::vector<u8> &data, std::size_t offset, u16 value)
 {
-    data[offset] = static_cast<BYTE>(value >> 8);
-    data[offset + 1] = static_cast<BYTE>(value);
+    data[offset] = static_cast<u8>(value >> 8);
+    data[offset + 1] = static_cast<u8>(value);
 }
 
-void putLE32(std::vector<BYTE> &data, std::size_t offset, DWORD value)
+void putLE32(std::vector<u8> &data, std::size_t offset, u32 value)
 {
-    data[offset] = static_cast<BYTE>(value);
-    data[offset + 1] = static_cast<BYTE>(value >> 8);
-    data[offset + 2] = static_cast<BYTE>(value >> 16);
-    data[offset + 3] = static_cast<BYTE>(value >> 24);
+    data[offset] = static_cast<u8>(value);
+    data[offset + 1] = static_cast<u8>(value >> 8);
+    data[offset + 2] = static_cast<u8>(value >> 16);
+    data[offset + 3] = static_cast<u8>(value >> 24);
 }
 
-void putBE64(std::vector<BYTE> &data, std::size_t offset, UINT64 value)
+void putBE64(std::vector<u8> &data, std::size_t offset, u64 value)
 {
     for (int i = 0; i < 8; ++i)
-        data[offset + i] = static_cast<BYTE>(value >> (56 - i * 8));
+        data[offset + i] = static_cast<u8>(value >> (56 - i * 8));
 }
 
-void sha1Bytes(const BYTE *data, std::size_t length, BYTE out[0x14])
+void sha1Bytes(const u8 *data, std::size_t length, u8 out[0x14])
 {
     const auto hash = Botan::HashFunction::create_or_throw("SHA-1");
     hash->update(data, length);
     hash->final(out);
 }
 
-bool writeTestFile(const std::filesystem::path &path, const std::vector<BYTE> &data)
+bool writeTestFile(const std::filesystem::path &path, const std::vector<u8> &data)
 {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file)
@@ -717,10 +777,10 @@ bool writeTestFile(const std::filesystem::path &path, const std::vector<BYTE> &d
 
 // Minimal XEX2 header with one type-1 base-file descriptor. The descriptor is
 // the only thing these tests need; the image data is zero-filled.
-std::vector<BYTE> makeSyntheticXex(DWORD descriptorSize, WORD encryption,
-                                   WORD compression, DWORD blockSize, DWORD nullSize)
+std::vector<u8> makeSyntheticXex(u32 descriptorSize, u16 encryption,
+                                   u16 compression, u32 blockSize, u32 nullSize)
 {
-    std::vector<BYTE> file(0x1000, 0);
+    std::vector<u8> file(0x1000, 0);
 
     putBE32(file, 0x00, 0x58455832); // XEX2
     putBE32(file, 0x08, 0x800);      // dataAddress
@@ -901,8 +961,8 @@ void testSvodMultipartRehash()
         return;
     }
 
-    std::vector<BYTE> part0(42 * 0x1000, 0);
-    std::vector<BYTE> part1(12 * 0x1000, 0);
+    std::vector<u8> part0(42 * 0x1000, 0);
+    std::vector<u8> part1(12 * 0x1000, 0);
 
     const std::size_t gdf = static_cast<std::size_t>(DataBlockAddress(16));
     std::fill(part0.begin() + gdf, part0.begin() + gdf + 0x800, 0xFF);
@@ -922,23 +982,23 @@ void testSvodMultipartRehash()
     std::memcpy(part0.data() + DataBlockAddress(17), "TEST", 4);
 
     // Build part 0's hash tree, then link part 1's master block.
-    BYTE level0[0x1000] = {};
-    for (DWORD block = 0; block < 40; ++block)
+    u8 level0[0x1000] = {};
+    for (u32 block = 0; block < 40; ++block)
         sha1Bytes(part0.data() + DataBlockAddress(block), 0x1000,
                   level0 + block * 0x14);
 
     std::memcpy(part0.data() + 0x1000, level0, 0x1000);
 
-    BYTE master[0x14];
+    u8 master[0x14];
     sha1Bytes(level0, 0x1000, master);
     std::memcpy(part0.data(), master, 0x14);
 
-    std::vector<BYTE> zeroMaster(0x1000, 0);
-    BYTE part1MasterHash[0x14];
+    std::vector<u8> zeroMaster(0x1000, 0);
+    u8 part1MasterHash[0x14];
     sha1Bytes(zeroMaster.data(), zeroMaster.size(), part1MasterHash);
     std::memcpy(part0.data() + 4060, part1MasterHash, 0x14);
 
-    BYTE rootHash[0x14];
+    u8 rootHash[0x14];
     sha1Bytes(part0.data(), 0x1000, rootHash);
 
     // Corrupt one data block without touching the master/level-0 hashes. The
@@ -946,7 +1006,7 @@ void testSvodMultipartRehash()
     // repair it. This makes a no-op Rehash fail the test as well.
     part0[static_cast<std::size_t>(DataBlockAddress(1))] ^= 0xFF;
 
-    std::vector<BYTE> header(0xB000, 0);
+    std::vector<u8> header(0xB000, 0);
     putBE32(header, 0x000, 0x434F4E20); // CON
     putBE32(header, 0x01C, 1);          // certificate console type: Retail
     putBE32(header, 0x340, 0xB000);     // header size
@@ -1013,6 +1073,7 @@ int main()
     testLzxStoredBlock();
     testResignFailureLeavesPackageIntact();
     testCorruptXdbf();
+    testStfsBlockChainTerminator();
     testGarbageImages();
 
     if (g_failures != 0)

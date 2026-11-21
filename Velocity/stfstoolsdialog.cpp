@@ -23,8 +23,8 @@ StfsToolsDialog::~StfsToolsDialog()
 
 void StfsToolsDialog::on_spnBlock_valueChanged(int arg1)
 {
-    DWORD blockNum = package->BlockToAddress(arg1);
-    DWORD hashAddr = package->GetHashAddressOfBlock(arg1);
+    u32 blockNum = package->BlockToAddress(arg1);
+    u32 hashAddr = package->GetHashAddressOfBlock(arg1);
 
     ui->lblAddr->setText(QString::number(blockNum) + " (0x" + QString::number(blockNum,
             16).toUpper() + ")");

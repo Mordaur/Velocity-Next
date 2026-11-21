@@ -58,13 +58,13 @@ PackageViewer::PackageViewer(QStatusBar *statusBar, StfsPackage *package,
 
         QString builder = "";
         for (int i = 0; i < 8; i++)
-            builder += QString("%1").arg((BYTE)package->metaData->profileID[i], 2, 16, QChar('0')).toUpper();
+            builder += QString("%1").arg((u8)package->metaData->profileID[i], 2, 16, QChar('0')).toUpper();
 
         ui->txtProfileID->setText(builder.toUpper());
 
         builder = "";
         for (int i = 0; i < 20; i++)
-            builder += QString("%1").arg((BYTE)package->metaData->deviceID[i], 2, 16, QChar('0')).toUpper();
+            builder += QString("%1").arg((u8)package->metaData->deviceID[i], 2, 16, QChar('0')).toUpper();
 
         ui->txtDeviceID->setText(builder.toUpper());
 
@@ -108,7 +108,7 @@ PackageViewer::PackageViewer(QStatusBar *statusBar, StfsPackage *package,
     {
         for (int x = 0; x < gameActions.size(); x++)
         {
-            DWORD titleId = gameActions.at(x)->property("titleid").toUInt();
+            u32 titleId = gameActions.at(x)->property("titleid").toUInt();
             if (titleId == package->metaData->titleID)
             {
                 gameActions.at(x)->setProperty("package", QVariant::fromValue(package));
@@ -177,7 +177,7 @@ void PackageViewer::PopulateTreeWidget(StfsFileListing *entry, QTreeWidgetItem *
     }
 
     // add all files
-    for (DWORD i = 0; i < entry->fileEntries.size(); i++)
+    for (u32 i = 0; i < entry->fileEntries.size(); i++)
     {
         QTreeWidgetItem *fileEntry;
         if (!isRootEntry)

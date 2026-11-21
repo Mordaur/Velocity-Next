@@ -85,20 +85,20 @@ public:
 #else
     Impl() : device(-1), offset(0) {}
     int device;
-    INT64 offset;
+    i64 offset;
 #endif
 
-    DWORD sectorSize = FAT_SECTOR_SIZE;
-    BYTE *bounce = nullptr;
+    u32 sectorSize = FAT_SECTOR_SIZE;
+    u8 *bounce = nullptr;
     size_t bounceCapacity = 0;
 
     // Small-read cache. Raw devices (/dev/rdisk* on macOS, FILE_FLAG_NO_BUFFERING
     // on Windows) bypass the OS cache, so without this every ReadDword while
     // parsing FAT chains, dirents and STFS headers is a separate physical transfer.
-    BYTE *cache = nullptr;
-    UINT64 cacheStart = 0;
+    u8 *cache = nullptr;
+    u64 cacheStart = 0;
     size_t cacheValid = 0;
-    UINT64 deviceLength = 0;
+    u64 deviceLength = 0;
 };
 
 DeviceIO::DeviceIO(std::string devicePath, DeviceErrorCode *error) :
@@ -135,19 +135,19 @@ namespace
     constexpr size_t kBounceTarget = 0x40000; // 256 KiB per physical transfer
     constexpr size_t kCacheWindow = 0x10000;  // 64 KiB aligned read-cache window
 
-    BYTE *AllocateAligned(size_t size, size_t alignment)
+    u8 *AllocateAligned(size_t size, size_t alignment)
     {
 #ifdef _WIN32
-        return static_cast<BYTE *>(_aligned_malloc(size, alignment));
+        return static_cast<u8 *>(_aligned_malloc(size, alignment));
 #else
         void *aligned = nullptr;
         if (posix_memalign(&aligned, alignment, size) != 0)
             return nullptr;
-        return static_cast<BYTE *>(aligned);
+        return static_cast<u8 *>(aligned);
 #endif
     }
 
-    void FreeAligned(BYTE *buffer)
+    void FreeAligned(u8 *buffer)
     {
 #ifdef _WIN32
         _aligned_free(buffer);
@@ -157,7 +157,7 @@ namespace
     }
 }
 
-UINT64 DeviceIO::DownToSector(UINT64 address) const
+u64 DeviceIO::DownToSector(u64 address) const
 {
     return address - (address % impl->sectorSize);
 }
@@ -168,7 +168,7 @@ size_t DeviceIO::RoundUpToSector(size_t length) const
     return ((length + sector - 1) / sector) * sector;
 }
 
-void DeviceIO::ReadRaw(BYTE *buffer, DWORD length)
+void DeviceIO::ReadRaw(u8 *buffer, u32 length)
 {
 #ifdef _WIN32
     size_t done = 0;
@@ -192,7 +192,7 @@ void DeviceIO::ReadRaw(BYTE *buffer, DWORD length)
 #endif
 }
 
-void DeviceIO::WriteRaw(const BYTE *buffer, DWORD length)
+void DeviceIO::WriteRaw(const u8 *buffer, u32 length)
 {
 #ifdef _WIN32
     size_t done = 0;
@@ -216,13 +216,13 @@ void DeviceIO::WriteRaw(const BYTE *buffer, DWORD length)
 #endif
 }
 
-void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
+void DeviceIO::ReadBytes(u8 *outBuffer, u32 len)
 {
     if (len == 0)
         return;
 
-    const UINT64 requestStart = pos;
-    const UINT64 requestEnd = pos + len;
+    const u64 requestStart = pos;
+    const u64 requestEnd = pos + len;
 
     // A read cannot return a short buffer, so a request that extends past the
     // device is an error - the same rule WriteBytes already applies. Without
@@ -234,7 +234,7 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
     // Serve small reads that fit inside one aligned window from the cache.
     if (impl->cache != nullptr && len <= kCacheWindow)
     {
-        const UINT64 windowStart = requestStart - (requestStart % kCacheWindow);
+        const u64 windowStart = requestStart - (requestStart % kCacheWindow);
 
         // A read at or past the device end must reach the uncached path and fail
         // there. Clamping such a window would subtract past zero and pass a huge
@@ -254,7 +254,7 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
 
                 impl->cacheValid = 0;
                 SetPosition(windowStart);
-                ReadRaw(impl->cache, static_cast<DWORD>(windowLength));
+                ReadRaw(impl->cache, static_cast<u32>(windowLength));
                 impl->cacheStart = windowStart;
                 impl->cacheValid = windowLength;
             }
@@ -268,20 +268,20 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
         }
     }
 
-    UINT64 cursor = DownToSector(requestStart);
-    UINT64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
+    u64 cursor = DownToSector(requestStart);
+    u64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
     if (impl->deviceLength != 0 && cursor < impl->deviceLength)
-        remaining = std::min<UINT64>(remaining, impl->deviceLength - cursor);
+        remaining = std::min<u64>(remaining, impl->deviceLength - cursor);
 
     while (remaining > 0)
     {
-        const size_t chunk = static_cast<size_t>(std::min<UINT64>(remaining, impl->bounceCapacity));
+        const size_t chunk = static_cast<size_t>(std::min<u64>(remaining, impl->bounceCapacity));
         SetPosition(cursor);
-        ReadRaw(impl->bounce, static_cast<DWORD>(chunk));
+        ReadRaw(impl->bounce, static_cast<u32>(chunk));
 
-        const UINT64 chunkEnd = cursor + chunk;
-        const UINT64 copyStart = std::max<UINT64>(cursor, requestStart);
-        const UINT64 copyEnd = std::min<UINT64>(chunkEnd, requestEnd);
+        const u64 chunkEnd = cursor + chunk;
+        const u64 copyStart = std::max<u64>(cursor, requestStart);
+        const u64 copyEnd = std::min<u64>(chunkEnd, requestEnd);
         if (copyEnd > copyStart)
         {
             std::memcpy(outBuffer + (copyStart - requestStart),
@@ -296,7 +296,7 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
     SetPosition(requestEnd);
 }
 
-void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
+void DeviceIO::WriteBytes(u8 *buffer, u32 len)
 {
     if (readOnly)
         throw std::string("DeviceIO: Device was opened read-only; elevated access is required for writes.\n");
@@ -307,23 +307,23 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
     // Writes go straight to the device; drop the read cache so it never serves stale data.
     impl->cacheValid = 0;
 
-    const UINT64 requestStart = pos;
-    const UINT64 requestEnd = pos + len;
+    const u64 requestStart = pos;
+    const u64 requestEnd = pos + len;
 
     if (requestEnd > Length())
         throw std::string("DeviceIO: Cannot Write beyond the end of the stream.\n");
 
-    UINT64 cursor = DownToSector(requestStart);
-    UINT64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
+    u64 cursor = DownToSector(requestStart);
+    u64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
     if (impl->deviceLength != 0 && cursor < impl->deviceLength)
-        remaining = std::min<UINT64>(remaining, impl->deviceLength - cursor);
+        remaining = std::min<u64>(remaining, impl->deviceLength - cursor);
 
     while (remaining > 0)
     {
-        const size_t chunk = static_cast<size_t>(std::min<UINT64>(remaining, impl->bounceCapacity));
-        const UINT64 chunkEnd = cursor + chunk;
-        const UINT64 copyStart = std::max<UINT64>(cursor, requestStart);
-        const UINT64 copyEnd = std::min<UINT64>(chunkEnd, requestEnd);
+        const size_t chunk = static_cast<size_t>(std::min<u64>(remaining, impl->bounceCapacity));
+        const u64 chunkEnd = cursor + chunk;
+        const u64 copyStart = std::max<u64>(cursor, requestStart);
+        const u64 copyEnd = std::min<u64>(chunkEnd, requestEnd);
 
         // Only skip the read when the caller's data covers the whole transfer
         // and it happens to be sector aligned.
@@ -331,7 +331,7 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
 
         SetPosition(cursor);
         if (!coversChunk)
-            ReadRaw(impl->bounce, static_cast<DWORD>(chunk));
+            ReadRaw(impl->bounce, static_cast<u32>(chunk));
 
         if (copyEnd > copyStart)
         {
@@ -341,7 +341,7 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
         }
 
         SetPosition(cursor);
-        WriteRaw(impl->bounce, static_cast<DWORD>(chunk));
+        WriteRaw(impl->bounce, static_cast<u32>(chunk));
 
         cursor = chunkEnd;
         remaining -= chunk;
@@ -351,9 +351,9 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
 }
 
 
-UINT64 DeviceIO::Length()
+u64 DeviceIO::Length()
 {
-    UINT64 length = 0;
+    u64 length = 0;
 #ifdef _WIN32
     GET_LENGTH_INFORMATION lengthInfo {};
     DWORD bytesReturned = 0;
@@ -361,7 +361,7 @@ UINT64 DeviceIO::Length()
                         &lengthInfo, sizeof(lengthInfo), &bytesReturned, nullptr) &&
         lengthInfo.Length.QuadPart > 0)
     {
-        length = static_cast<UINT64>(lengthInfo.Length.QuadPart);
+        length = static_cast<u64>(lengthInfo.Length.QuadPart);
     }
 
     if (length == 0)
@@ -380,10 +380,10 @@ UINT64 DeviceIO::Length()
 
         if (geometryOk)
         {
-            const UINT64 cylinders = (UINT64)((UINT64)geometry.Cylinders.HighPart << 32) |
+            const u64 cylinders = (u64)((u64)geometry.Cylinders.HighPart << 32) |
                     geometry.Cylinders.LowPart;
-            length = cylinders * (UINT64)geometry.TracksPerCylinder *
-                     (UINT64)geometry.SectorsPerTrack * (UINT64)geometry.BytesPerSector;
+            length = cylinders * (u64)geometry.TracksPerCylinder *
+                     (u64)geometry.SectorsPerTrack * (u64)geometry.BytesPerSector;
         }
     }
 
@@ -393,12 +393,12 @@ UINT64 DeviceIO::Length()
     {
         LARGE_INTEGER fileSize;
         if (GetFileSizeEx(impl->deviceHandle, &fileSize))
-            length = (UINT64)fileSize.QuadPart;
+            length = (u64)fileSize.QuadPart;
     }
 #elif defined(__linux__)
     // BLKGETSIZE64 returns bytes directly; BLKGETSIZE is in 512-byte units and
     // multiplying it by the logical sector size overstates 4Kn disks 8x.
-    UINT64 byteLength = 0;
+    u64 byteLength = 0;
     if (ioctl(impl->device, BLKGETSIZE64, &byteLength) == 0 && byteLength != 0)
     {
         length = byteLength;
@@ -407,19 +407,19 @@ UINT64 DeviceIO::Length()
     {
         struct stat st;
         if (fstat(impl->device, &st) == 0 && S_ISREG(st.st_mode))
-            length = (UINT64)st.st_size;
+            length = (u64)st.st_size;
     }
 #else
-    UINT64 numberOfSectors = 0;
+    u64 numberOfSectors = 0;
     int device = impl->device;
 
     const int countResult = ioctl(device, SECTOR_COUNT, &numberOfSectors);
 
-    UINT64 sectorSize = 0;
+    u64 sectorSize = 0;
     const int sizeResult = ioctl(device, SECTOR_SIZE, &sectorSize);
 
     // calculate the length in bytes
-    length = (UINT64)numberOfSectors * (UINT64)sectorSize;
+    length = (u64)numberOfSectors * (u64)sectorSize;
 
     // Block ioctls fail on a regular file; fall back to its size so an image
     // file can be used as a device.
@@ -427,14 +427,14 @@ UINT64 DeviceIO::Length()
     {
         struct stat st;
         if (fstat(device, &st) == 0 && S_ISREG(st.st_mode))
-            length = (UINT64)st.st_size;
+            length = (u64)st.st_size;
     }
 #endif
 
     return length;
 }
 
-void DeviceIO::SetPosition(UINT64 address, std::ios_base::seekdir dir)
+void DeviceIO::SetPosition(u64 address, std::ios_base::seekdir dir)
 {
     if (dir != std::ios_base::beg)
         throw std::string("DeviceIO: Unsupported seek direction\n");
@@ -461,16 +461,16 @@ void DeviceIO::SetPosition(UINT64 address, std::ios_base::seekdir dir)
 #endif
 }
 
-UINT64 DeviceIO::realPosition()
+u64 DeviceIO::realPosition()
 {
 #ifdef _WIN32
-    return (UINT64)(((UINT64)impl->offset.OffsetHigh << 32) | impl->offset.Offset);
+    return (u64)(((u64)impl->offset.OffsetHigh << 32) | impl->offset.Offset);
 #else
     return impl->offset;
 #endif
 }
 
-UINT64 DeviceIO::GetPosition()
+u64 DeviceIO::GetPosition()
 {
     return pos;
 }
@@ -584,7 +584,7 @@ void DeviceIO::loadDevice(std::wstring devicePath, DeviceErrorCode *error)
 #else
     int logicalSectorSize = 0;
     if (ioctl(impl->device, SECTOR_SIZE, &logicalSectorSize) == 0 && logicalSectorSize > 0)
-        impl->sectorSize = static_cast<DWORD>(logicalSectorSize);
+        impl->sectorSize = static_cast<u32>(logicalSectorSize);
 #endif
 
     const size_t capacity = RoundUpToSector(kBounceTarget);

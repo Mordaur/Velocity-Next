@@ -31,11 +31,11 @@ public:
     IsoIO* GetIO(std::string filePath);
     IsoIO* GetIO(GdfxFileEntry *entry);
 
-    UINT64 SectorToAddress(DWORD sector);
+    u64 SectorToAddress(u32 sector);
 
     std::string GetXGDVersion();
 
-    UINT64 GetTotalSectors();
+    u64 GetTotalSectors();
 
     std::wstring GetTitleName();
 
@@ -62,25 +62,25 @@ private:
     IsoInfo info_;
     bool didReadFileListing;
     GdfxHeader gdfxHeader;
-    UINT64 gdfxHeaderAddress;
-    UINT64 volumeBaseSector = 0;
+    u64 gdfxHeaderAddress;
+    u64 volumeBaseSector = 0;
     std::wstring titleName;
     std::string xgdVersion;
 
     void ParseISO();
-    bool ValidGDFXHeader(UINT64 address);
-    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, DWORD sector, UINT64 size,
+    bool ValidGDFXHeader(u64 address);
+    void ReadFileListing(std::vector<GdfxFileEntry> *entryList, u32 sector, u64 size,
                          std::string path, int depth, std::unordered_set<uint64_t> &visited);
     // A directory/file extent must lie inside the image (start sector + size).
-    bool ValidateExtent(DWORD sector, UINT64 size) const;
-    DWORD GetFileMagic(GdfxFileEntry *entry);
-    DWORD GetTotalCopyIterations(const std::vector<GdfxFileEntry> *entryList);
+    bool ValidateExtent(u32 sector, u64 size) const;
+    u32 GetFileMagic(GdfxFileEntry *entry);
+    u32 GetTotalCopyIterations(const std::vector<GdfxFileEntry> *entryList);
     void ExtractAllHelper(std::string outDirectory, std::vector<GdfxFileEntry> *entryList,
                          void(*progress)(void*, uint32_t, uint32_t), void *arg,
-                         DWORD *curProgress, DWORD totalProgress);
+                         u32 *curProgress, u32 totalProgress);
     void ExtractFileHelper(std::string outDirectory, const GdfxFileEntry *toExtract,
                           void(*progress)(void*, uint32_t, uint32_t), void *arg,
-                          DWORD *curProgress, DWORD totalProgress);
+                          u32 *curProgress, u32 totalProgress);
 };
 
 } // namespace XboxInternals::Iso

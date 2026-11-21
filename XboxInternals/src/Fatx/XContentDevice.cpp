@@ -179,7 +179,7 @@ bool XContentDevice::LoadDevice(void(*progress)(void*, bool), void *arg)
 
             // XContentDeviceSharedItem needs the size of just the root file descriptor for SVOD systems so we need to subtract
             // off the size of all the data files, this doesn't affect STFS packages at all
-            DWORD rootFileSize = items.at(x).GetFileSize() - items.at(x).content->metaData->dataFileCombinedSize;
+            u32 rootFileSize = items.at(x).GetFileSize() - items.at(x).content->metaData->dataFileCombinedSize;
             XContentDeviceSharedItem item(items.at(x).GetPathOnDevice(), items.at(x).GetRawName(),
                                           items.at(x).content, rootFileSize, items.at(x).GetContentFilePaths());
             if (!item.content)
@@ -244,15 +244,15 @@ FatxDriveType XContentDevice::GetDeviceType()
     return drive->GetFatxDriveType();
 }
 
-UINT64 XContentDevice::GetFreeMemory(void(*progress)(void*, bool), void *arg, bool finish)
+u64 XContentDevice::GetFreeMemory(void(*progress)(void*, bool), void *arg, bool finish)
 {
     drive->GetFreeMemory(content, progress, arg, finish);
     return content->freeMemory;
 }
 
-UINT64 XContentDevice::GetTotalMemory()
+u64 XContentDevice::GetTotalMemory()
 {
-    return (UINT64)content->clusterCount * (UINT64)content->clusterSize;
+    return (u64)content->clusterCount * (u64)content->clusterSize;
 }
 
 std::wstring XContentDevice::GetName()
@@ -282,13 +282,13 @@ FatxDrive *XContentDevice::GetFatxDrive()
     return drive;
 }
 
-void XContentDevice::CopyFileToLocalDisk(std::string outPath, std::string inPath, void (*progress)(void *, DWORD, DWORD), void *arg)
+void XContentDevice::CopyFileToLocalDisk(std::string outPath, std::string inPath, void (*progress)(void *, u32, u32), void *arg)
 {
     FatxIO io = drive->GetFatxIO(drive->GetFileEntry(inPath));
     io.SaveFile(outPath, progress, arg);
 }
 
-void XContentDevice::CopyFileToDevice(std::string outPath, void (*progress)(void *, DWORD, DWORD), void *arg)
+void XContentDevice::CopyFileToDevice(std::string outPath, void (*progress)(void *, u32, u32), void *arg)
 {
     // get the file system type
     FileSystem fileSystem = IXContentHeader::GetFileSystem(outPath);
@@ -306,7 +306,7 @@ void XContentDevice::CopyFileToDevice(std::string outPath, void (*progress)(void
         devicePath = contentFile->GetFatxFilePath();
 
         profileID = Utils::ConvertToHexString(contentFile->metaData->profileID, 8);
-        titleID = Utils::ConvertToHexString(static_cast<UINT64>(contentFile->metaData->titleID));
+        titleID = Utils::ConvertToHexString(static_cast<u64>(contentFile->metaData->titleID));
     }
 
     // if the parent entry doesn't exist, then we need to create it
@@ -328,7 +328,7 @@ void XContentDevice::CopyFileToDevice(std::string outPath, void (*progress)(void
     else
         contentOnDevice = std::make_shared<SVOD>(devicePath + fileName, drive, false);
 
-    BYTE sharedProfileID[8] = { 0 };
+    u8 sharedProfileID[8] = { 0 };
 
     if (contentOnDevice->metaData->contentType == Profile)
     {
@@ -356,7 +356,7 @@ void XContentDevice::CopyFileToDevice(std::string outPath, void (*progress)(void
             // I'm not sure why I have to do it this way, but if I don't,
             // I get a segmentation fault on the call to GetProfileID()
             XContentDeviceProfile prof = profiles->at(i);
-            BYTE *tempID = prof.GetProfileID();
+            u8 *tempID = prof.GetProfileID();
 
             if (memcmp(tempID, contentOnDevice->metaData->profileID, 8) == 0)
             {
@@ -441,7 +441,7 @@ void XContentDevice::CopyFileToDevice(std::string outPath, void (*progress)(void
     }
 }
 
-void XContentDevice::CopyFileToRawDevice(std::string outPath, std::string name, std::string inPath, void (*progress)(void *, DWORD, DWORD), void *arg)
+void XContentDevice::CopyFileToRawDevice(std::string outPath, std::string name, std::string inPath, void (*progress)(void *, u32, u32), void *arg)
 {
     // make the directory if it doesn't exist
     if (!drive->FileExists(inPath))
@@ -454,7 +454,7 @@ void XContentDevice::CopyFileToRawDevice(std::string outPath, std::string name, 
 void XContentDevice::DeleteFile(IXContentHeader *package, std::string pathOnDevice)
 {
     // remove the file from the hierarchy
-    BYTE nullID[8] = { 0 };
+    u8 nullID[8] = { 0 };
 
     // find the content in memory to
     // file is from a profile, so it's not shared
@@ -603,7 +603,7 @@ void XContentDevice::GetAllContentItems(FatxFileEntry &titleFolder, vector<XCont
 
             FatxFileEntry *entry = drive->GetFileEntry(contentPackage->path + contentPackage->name);
             drive->GetFileEntryMagic(entry);
-            DWORD fileMagic = entry->magic;
+            u32 fileMagic = entry->magic;
 
             // verify the magic
             if (fileMagic != CON && fileMagic != LIVE && fileMagic != PIRS)
