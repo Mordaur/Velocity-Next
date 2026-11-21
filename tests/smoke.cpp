@@ -8,6 +8,7 @@
  */
 
 #include <XboxInternals/Disc/ISO.h>
+#include <XboxInternals/Disc/Svod.h>
 #include <XboxInternals/Disc/SvodLayout.h>
 #include <XboxInternals/Gpd/Xdbf.h>
 #include <XboxInternals/IO/MemoryIO.h>
@@ -15,7 +16,10 @@
 #include <XboxInternals/Stfs/StfsPackage.h>
 #include <XboxInternals/Stfs/XContentHeader.h>
 #include <XboxInternals/Utils.h>
+#include <XboxInternals/Xex/Xex.h>
 #include <XboxInternals/Xex/XexLzxDecoder.h>
+
+#include <botan_all.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -672,8 +676,265 @@ namespace
     }
 }
 
+namespace
+{
+void putBE16(std::vector<BYTE> &data, std::size_t offset, WORD value)
+{
+    data[offset] = static_cast<BYTE>(value >> 8);
+    data[offset + 1] = static_cast<BYTE>(value);
+}
+
+void putLE32(std::vector<BYTE> &data, std::size_t offset, DWORD value)
+{
+    data[offset] = static_cast<BYTE>(value);
+    data[offset + 1] = static_cast<BYTE>(value >> 8);
+    data[offset + 2] = static_cast<BYTE>(value >> 16);
+    data[offset + 3] = static_cast<BYTE>(value >> 24);
+}
+
+void putBE64(std::vector<BYTE> &data, std::size_t offset, UINT64 value)
+{
+    for (int i = 0; i < 8; ++i)
+        data[offset + i] = static_cast<BYTE>(value >> (56 - i * 8));
+}
+
+void sha1Bytes(const BYTE *data, std::size_t length, BYTE out[0x14])
+{
+    const auto hash = Botan::HashFunction::create_or_throw("SHA-1");
+    hash->update(data, length);
+    hash->final(out);
+}
+
+bool writeTestFile(const std::filesystem::path &path, const std::vector<BYTE> &data)
+{
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file)
+        return false;
+    file.write(reinterpret_cast<const char *>(data.data()),
+               static_cast<std::streamsize>(data.size()));
+    return file.good();
+}
+
+// Minimal XEX2 header with one type-1 base-file descriptor. The descriptor is
+// the only thing these tests need; the image data is zero-filled.
+std::vector<BYTE> makeSyntheticXex(DWORD descriptorSize, WORD encryption,
+                                   WORD compression, DWORD blockSize, DWORD nullSize)
+{
+    std::vector<BYTE> file(0x1000, 0);
+
+    putBE32(file, 0x00, 0x58455832); // XEX2
+    putBE32(file, 0x08, 0x800);      // dataAddress
+    putBE32(file, 0x10, 0x200);      // headerAddress
+    putBE32(file, 0x14, 1);          // one optional header
+
+    putBE32(file, 0x18, 0x3FF);      // BaseFileDescriptor
+    putBE32(file, 0x1C, 0x400);
+
+    putBE32(file, 0x200, 0x184);     // security size
+    putBE32(file, 0x204, 0x1000);    // image size
+
+    putBE32(file, 0x400, descriptorSize);
+    putBE16(file, 0x404, encryption);
+    putBE16(file, 0x406, compression);
+
+    if (descriptorSize >= 0x10)
+    {
+        putBE32(file, 0x408, blockSize);
+        putBE32(file, 0x40C, nullSize);
+    }
+    if (descriptorSize >= 0x18)
+    {
+        putBE32(file, 0x410, 0);
+        putBE32(file, 0x414, 0);
+    }
+
+    return file;
+}
+
+void testXexType1Tables()
+{
+    {
+        auto file = makeSyntheticXex(0x18, 0, 1, 16, 0);
+        try
+        {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+            check(xex.GetCompressionState() == XexCompressed,
+                  "XEX type-1 table parses");
+        }
+        catch (...)
+        {
+            check(false, "XEX type-1 table parses");
+        }
+    }
+
+    {
+        auto file = makeSyntheticXex(0x10, 0, 1, 16, 16);
+        check(throws([&] {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+        }), "XEX type-1 table without a zero terminator throws");
+    }
+
+    {
+        auto file = makeSyntheticXex(0x8, 0, 1, 0, 0);
+        check(throws([&] {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+        }), "XEX type-1 descriptor smaller than 0x10 throws");
+    }
+
+    {
+        namespace fs = std::filesystem;
+        const fs::path out = fs::temp_directory_path() / "xbi_smoke_xex_unaligned.bin";
+        auto file = makeSyntheticXex(0x18, 1, 1, 17, 0);
+        check(throws([&] {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+            xex.ExtractData(out.string());
+        }), "XEX encrypted type-1 run must be AES-block aligned");
+
+        std::error_code ignored;
+        fs::remove(out, ignored);
+    }
+
+    {
+        namespace fs = std::filesystem;
+        const fs::path out = fs::temp_directory_path() / "xbi_smoke_xex_valid.bin";
+        auto file = makeSyntheticXex(0x18, 0, 1, 16, 0);
+        bool ok = false;
+        try
+        {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+            xex.ExtractData(out.string());
+            ok = fs::exists(out) && fs::file_size(out) == 0x1000;
+        }
+        catch (...)
+        {
+        }
+        check(ok, "XEX type-1 extraction writes the full image size");
+
+        std::error_code ignored;
+        fs::remove(out, ignored);
+    }
+}
+
+void testSvodMultipartRehash()
+{
+    namespace fs = std::filesystem;
+    using namespace XboxInternals::SvodLayout;
+
+    const fs::path dir = fs::temp_directory_path() / "xbi_smoke_svod_multipart";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir / "package.data", ec);
+    if (ec)
+    {
+        check(false, "SVOD test directory can be created");
+        return;
+    }
+
+    std::vector<BYTE> part0(42 * 0x1000, 0);
+    std::vector<BYTE> part1(12 * 0x1000, 0);
+
+    const std::size_t gdf = static_cast<std::size_t>(DataBlockAddress(16));
+    std::fill(part0.begin() + gdf, part0.begin() + gdf + 0x800, 0xFF);
+    std::memcpy(part0.data() + gdf, "MICROSOFT*XBOX*MEDIA", 0x14);
+    putLE32(part0, gdf + 0x14, 33);   // root sector
+    putLE32(part0, gdf + 0x18, 0x800);
+
+    const std::size_t root = gdf + 0x800;
+    std::fill(part0.begin() + root, part0.begin() + gdf + 0x1000, 0xFF);
+    putLE32(part0, root + 0x00, 0);
+    putLE32(part0, root + 0x04, 34);
+    putLE32(part0, root + 0x08, 4);
+    part0[root + 0x0C] = 0x20;
+    part0[root + 0x0D] = 8;
+    std::memcpy(part0.data() + root + 0x0E, "TEST.BIN", 8);
+    putLE32(part0, root + 0x18, 0xFFFFFFFF);
+    std::memcpy(part0.data() + DataBlockAddress(17), "TEST", 4);
+
+    // Build part 0's hash tree, then link part 1's master block.
+    BYTE level0[0x1000] = {};
+    for (DWORD block = 0; block < 40; ++block)
+        sha1Bytes(part0.data() + DataBlockAddress(block), 0x1000,
+                  level0 + block * 0x14);
+
+    std::memcpy(part0.data() + 0x1000, level0, 0x1000);
+
+    BYTE master[0x14];
+    sha1Bytes(level0, 0x1000, master);
+    std::memcpy(part0.data(), master, 0x14);
+
+    std::vector<BYTE> zeroMaster(0x1000, 0);
+    BYTE part1MasterHash[0x14];
+    sha1Bytes(zeroMaster.data(), zeroMaster.size(), part1MasterHash);
+    std::memcpy(part0.data() + 4060, part1MasterHash, 0x14);
+
+    BYTE rootHash[0x14];
+    sha1Bytes(part0.data(), 0x1000, rootHash);
+
+    // Corrupt one data block without touching the master/level-0 hashes. The
+    // constructor's root check still passes, Verify() fails, and Rehash must
+    // repair it. This makes a no-op Rehash fail the test as well.
+    part0[static_cast<std::size_t>(DataBlockAddress(1))] ^= 0xFF;
+
+    std::vector<BYTE> header(0xB000, 0);
+    putBE32(header, 0x000, 0x434F4E20); // CON
+    putBE32(header, 0x01C, 1);          // certificate console type: Retail
+    putBE32(header, 0x340, 0xB000);     // header size
+    putBE32(header, 0x344, 0x7000);     // GameOnDemand
+    putBE32(header, 0x348, 2);          // metadata version
+    putBE32(header, 0x3A9, 1);          // FileSystemSVOD
+
+    header[0x379] = 0x24;               // volume descriptor size
+    std::memcpy(header.data() + 0x37D, rootHash, 0x14);
+    header[0x391] = 0;                  // flags
+    header[0x392] = 0;                  // dataBlockCount = 40, big-endian 24-bit
+    header[0x393] = 0;
+    header[0x394] = 40;
+    header[0x395] = 0;                  // dataBlockOffset = 0, little-endian 24-bit
+    header[0x396] = 0;
+    header[0x397] = 0;
+    putBE32(header, 0x39D, 2);          // two parts
+    putBE64(header, 0x3A1, part0.size() + part1.size());
+
+    bool written = writeTestFile(dir / "package", header) &&
+                   writeTestFile(dir / "package.data" / "Data0000", part0) &&
+                   writeTestFile(dir / "package.data" / "Data0001", part1);
+    check(written, "SVOD multipart fixture can be written");
+
+    if (written)
+    {
+        bool ok = false;
+        try
+        {
+            SVOD svod((dir / "package").string(), nullptr, false);
+            check(svod.GetSectorCount() == 80, "SVOD multipart sector count");
+            const bool before = svod.Verify();
+            svod.Rehash();
+            ok = !before && svod.Verify();
+        }
+        catch (const std::string &error)
+        {
+            std::fprintf(stderr, "  (SVOD multipart threw: %s)\n", error.c_str());
+        }
+        catch (const std::exception &error)
+        {
+            std::fprintf(stderr, "  (SVOD multipart threw: %s)\n", error.what());
+        }
+        check(ok, "SVOD multipart Rehash then Verify");
+    }
+
+    fs::remove_all(dir, ec);
+}
+} // namespace
+
 int main()
 {
+    testXexType1Tables();
+    testSvodMultipartRehash();
     testMemoryIO();
     testLzxGarbage();
     testLzxRegression();
