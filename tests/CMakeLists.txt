@@ -10,6 +10,11 @@ target_link_libraries(xbi_smoke PRIVATE XboxInternals velocity_compiler_flags)
 add_test(NAME xbi_smoke COMMAND xbi_smoke)
 set_tests_properties(xbi_smoke PROPERTIES TIMEOUT 120)
 
+add_executable(device_policy_test device_policy_test.cpp)
+target_link_libraries(device_policy_test PRIVATE device_validation velocity_compiler_flags)
+add_test(NAME device_policy_test COMMAND device_policy_test)
+set_tests_properties(device_policy_test PROPERTIES TIMEOUT 30)
+
 if(BUILD_FUZZERS)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message(FATAL_ERROR "BUILD_FUZZERS requires Clang (libFuzzer runtime)")

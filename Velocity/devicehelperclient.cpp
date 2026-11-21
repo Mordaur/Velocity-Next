@@ -24,10 +24,14 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
 #include <windows.h>
 #include <shellapi.h>
 #else
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -114,7 +118,8 @@ bool HelperClient::start(QString *error)
 
     const std::wstring helperWide =
             QDir::toNativeSeparators(helperPath).toStdWString();
-    std::wstring parametersWide = QString("--endpoint " + endpoint).toStdWString();
+    std::wstring parametersWide = QString("--endpoint " + endpoint +
+            " --client-pid " + QString::number(QCoreApplication::applicationPid())).toStdWString();
 
     SHELLEXECUTEINFOW info {};
     info.cbSize = sizeof(info);
@@ -139,14 +144,42 @@ bool HelperClient::start(QString *error)
 
     helperProcess = info.hProcess;
 #else
-    endpoint = QString("/tmp/velocity-device-helper-%1-%2.sock")
+    // The socket path must fit in sockaddr_un::sun_path (104 bytes on macOS,
+    // 108 on Linux). Qt's RuntimeLocation is ~/Library/Application Support on
+    // macOS, which is already near the limit, so use the short Darwin user
+    // temp dir and a short name there.
+    QString runtimeDir;
+#if defined(__APPLE__)
+    char darwinTemp[PATH_MAX] = {};
+    if (confstr(_CS_DARWIN_USER_TEMP_DIR, darwinTemp, sizeof(darwinTemp)) > 0)
+        runtimeDir = QString::fromLocal8Bit(darwinTemp);
+#endif
+    if (runtimeDir.isEmpty())
+        runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (runtimeDir.isEmpty())
+        runtimeDir = QDir::tempPath();
+
+    const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces).left(8);
+    endpoint = QString("%1/vdh-%2-%3.sock")
+            .arg(runtimeDir)
             .arg(static_cast<qulonglong>(getuid()))
-            .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+            .arg(token);
+
+    // Fall back to the (sticky) system temp dir if the runtime path is still
+    // too long; the helper validates and owns the socket itself.
+    if (endpoint.toUtf8().size() >= 100)
+    {
+        endpoint = QString("%1/vdh-%2-%3.sock")
+                .arg(QDir::tempPath())
+                .arg(static_cast<qulonglong>(getuid()))
+                .arg(token);
+    }
 
     if (geteuid() == 0)
     {
         process.setProgram(helperPath);
-        process.setArguments({"--endpoint", endpoint, "--uid", QString::number(getuid())});
+        process.setArguments({"--endpoint", endpoint, "--uid", QString::number(getuid()),
+                                  "--client-pid", QString::number(QCoreApplication::applicationPid())});
     }
     else
     {
@@ -169,7 +202,8 @@ bool HelperClient::start(QString *error)
         {
             process.setProgram(sudo);
             process.setArguments({"-n", helperPath, "--endpoint", endpoint,
-                                  "--uid", QString::number(getuid())});
+                                  "--uid", QString::number(getuid()),
+                                  "--client-pid", QString::number(QCoreApplication::applicationPid())});
         }
 #if defined(__APPLE__)
         else
@@ -185,10 +219,11 @@ bool HelperClient::start(QString *error)
                 return false;
             }
 
-            const QString command = QString("%1 --endpoint %2 --uid %3")
+            const QString command = QString("%1 --endpoint %2 --uid %3 --client-pid %4")
                                             .arg(shellQuote(helperPath),
                                                  shellQuote(endpoint),
-                                                 QString::number(getuid()));
+                                                 QString::number(getuid()),
+                                                 QString::number(QCoreApplication::applicationPid()));
             const QString script =
                     QString("do shell script \"%1 >/dev/null 2>&1 &\" "
                             "with administrator privileges")
@@ -210,7 +245,8 @@ bool HelperClient::start(QString *error)
 
             process.setProgram(pkexec);
             process.setArguments({helperPath, "--endpoint", endpoint,
-                                  "--uid", QString::number(getuid())});
+                                  "--uid", QString::number(getuid()),
+                                  "--client-pid", QString::number(QCoreApplication::applicationPid())});
         }
 #endif
     }
@@ -325,6 +361,16 @@ bool HelperClient::connectToEndpoint(QString *error)
         return false;
     }
 
+    // Authenticate the server: a same-user process can squat the pipe name.
+    ULONG serverPid = 0;
+    if (!helperProcess ||
+        !GetNamedPipeServerProcessId(pipe, &serverPid) ||
+        serverPid != GetProcessId(static_cast<HANDLE>(helperProcess)))
+    {
+        CloseHandle(pipe);
+        return false;
+    }
+
     DWORD mode = PIPE_READMODE_BYTE;
     SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr);
     stream = pipe;
@@ -350,6 +396,28 @@ bool HelperClient::connectToEndpoint(QString *error)
         ::close(socketFd);
         return false;
     }
+
+    // Authenticate the server: the socket lives in a user-writable directory,
+    // so a same-UID process can replace it. The helper is expected to be root
+    // (the client elevates before starting it).
+#if defined(__linux__)
+    struct ucred credentials {};
+    socklen_t credentialsLength = sizeof(credentials);
+    if (getsockopt(socketFd, SOL_SOCKET, SO_PEERCRED, &credentials, &credentialsLength) != 0 ||
+        credentials.uid != 0)
+    {
+        ::close(socketFd);
+        return false;
+    }
+#elif defined(__APPLE__)
+    uid_t peerUid = 0;
+    gid_t peerGid = 0;
+    if (getpeereid(socketFd, &peerUid, &peerGid) != 0 || peerUid != 0)
+    {
+        ::close(socketFd);
+        return false;
+    }
+#endif
 
     stream = socketFd;
 #endif

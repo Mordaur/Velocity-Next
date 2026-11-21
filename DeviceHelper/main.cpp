@@ -1,12 +1,16 @@
 #include "protocol.h"
+#include "device_validation.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <cctype>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <limits>
 #include <map>
 #include <string>
 #include <thread>
@@ -19,11 +23,15 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
 #include <windows.h>
 #include <sddl.h>
 #include <winioctl.h>
 #else
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -43,7 +51,7 @@ namespace
 {
     constexpr uint32_t kSectorFallback = 512;
     constexpr size_t kMaxIoChunk = 1024 * 1024;
-    constexpr int kConnectTimeoutSeconds = 120;
+    constexpr int kConnectTimeoutSeconds = 30;
 
     struct Device
     {
@@ -135,31 +143,6 @@ namespace
         }
     }
 
-    // Only raw disks (\\.\PHYSICALDRIVE<n>) and volumes (\\.\X:) are accepted.
-    bool validate_device_path(const std::string &path)
-    {
-        std::string lower(path);
-        for (char &character : lower)
-            character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
-
-        const std::string prefix = "\\\\.\\";
-        if (lower.rfind(prefix, 0) != 0)
-            return false;
-
-        const std::string rest = lower.substr(prefix.size());
-        const std::string physical = "physicaldrive";
-        if (rest.rfind(physical, 0) == 0)
-        {
-            const std::string digits = rest.substr(physical.size());
-            if (digits.empty() || digits.size() > 4)
-                return false;
-            return std::all_of(digits.begin(), digits.end(),
-                               [](char character) { return character >= '0' && character <= '9'; });
-        }
-
-        return rest.size() == 2 && rest[0] >= 'a' && rest[0] <= 'z' && rest[1] == ':';
-    }
-
     bool read_aligned(HANDLE handle, uint64_t start, size_t length, std::vector<uint8_t> &buffer)
     {
         buffer.assign(length, 0);
@@ -178,6 +161,185 @@ namespace
                 return false;
             done += count;
         }
+        return true;
+    }
+
+    constexpr uint64_t kFatxDataOffset = 0x130EB0000ULL;
+
+    bool is_removable_bus(HANDLE handle)
+    {
+        std::vector<unsigned char> buffer(1024);
+        STORAGE_PROPERTY_QUERY query {};
+        query.PropertyId = StorageDeviceProperty;
+        query.QueryType = PropertyStandardQuery;
+
+        DWORD returned = 0;
+        if (!DeviceIoControl(handle, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query),
+                             buffer.data(), static_cast<DWORD>(buffer.size()), &returned, nullptr) ||
+            returned < sizeof(STORAGE_DEVICE_DESCRIPTOR))
+            return false;
+
+        const auto *descriptor = reinterpret_cast<const STORAGE_DEVICE_DESCRIPTOR *>(buffer.data());
+        return descriptor->RemovableMedia || descriptor->BusType == BusTypeUsb;
+    }
+
+    bool validate_device_content(HANDLE handle, DWORD sectorSize, bool removable,
+                                 std::string &reason)
+    {
+        if (sectorSize < 512)
+            sectorSize = 512;
+
+        std::vector<uint8_t> buffer;
+        if (read_aligned(handle, kFatxDataOffset, sectorSize, buffer) &&
+            buffer.size() >= 4 && buffer[0] == 'F' && buffer[1] == 'A' &&
+            buffer[2] == 'T' && buffer[3] == 'X')
+            return true;
+
+        if (removable && read_aligned(handle, 0, sectorSize, buffer))
+        {
+            if (vh::IsGptProtectiveMbr(buffer.data(), buffer.size()))
+                return false; // The Xbox 360 only mounts MBR volumes.
+            if (vh::IsFatBootSector(buffer.data(), buffer.size()))
+                return true;
+
+            // MBR: check the first FAT partition's boot sector.
+            if (buffer.size() >= 512 && buffer[510] == 0x55 && buffer[511] == 0xAA)
+            {
+                for (int i = 0; i < 4; ++i)
+                {
+                    const size_t entry = 0x1BE + (i * 16);
+                    if (buffer[entry + 4] == 0)
+                        continue;
+                    if (buffer[entry + 4] == 0xEE)
+                        return false; // GPT protective MBR.
+
+                    const uint64_t start = static_cast<uint64_t>(buffer[entry + 8]) |
+                                           (static_cast<uint64_t>(buffer[entry + 9]) << 8) |
+                                           (static_cast<uint64_t>(buffer[entry + 10]) << 16) |
+                                           (static_cast<uint64_t>(buffer[entry + 11]) << 24);
+                    std::vector<uint8_t> boot;
+                    if (read_aligned(handle, start * 512, sectorSize, boot) &&
+                        vh::IsFatBootSector(boot.data(), boot.size()))
+                        return true;
+                }
+            }
+        }
+
+        reason = removable ? "not an Xbox FATX/FAT32 drive" : "not an Xbox FATX drive";
+        return false;
+    }
+
+    enum class DiskCompare
+    {
+        Same,
+        Different,
+        Error
+    };
+
+    DiskCompare compare_system_disk(const wchar_t *root,
+                                    const STORAGE_DEVICE_NUMBER &candidate, std::string &reason)
+    {
+        std::wstring volume = L"\\\\.\\";
+        volume.append(root, 2);
+
+        HANDLE system = CreateFileW(volume.c_str(), 0,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                    OPEN_EXISTING, 0, nullptr);
+        if (system == INVALID_HANDLE_VALUE)
+            system = CreateFileW(volume.c_str(), FILE_READ_ATTRIBUTES,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                                 OPEN_EXISTING, 0, nullptr);
+        if (system == INVALID_HANDLE_VALUE)
+        {
+            reason = "could not open the system volume";
+            return DiskCompare::Error;
+        }
+
+        STORAGE_DEVICE_NUMBER systemNumber {};
+        DWORD returned = 0;
+        const BOOL queried = DeviceIoControl(system, IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0,
+                                             &systemNumber, sizeof(systemNumber), &returned, nullptr);
+        if (!queried || returned < sizeof(systemNumber))
+        {
+            // Dynamic disks and Storage Spaces can refuse the legacy device
+            // number; fall back to the volume extent list so a valid system
+            // disk does not reject every candidate.
+            std::vector<unsigned char> buffer(sizeof(VOLUME_DISK_EXTENTS) +
+                                              sizeof(DISK_EXTENT) * 32);
+            returned = 0;
+            if (DeviceIoControl(system, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0,
+                                buffer.data(), static_cast<DWORD>(buffer.size()), &returned,
+                                nullptr))
+            {
+                auto *extents = reinterpret_cast<VOLUME_DISK_EXTENTS *>(buffer.data());
+                const DWORD count = std::min<DWORD>(
+                        extents->NumberOfDiskExtents,
+                        static_cast<DWORD>((buffer.size() - sizeof(VOLUME_DISK_EXTENTS)) /
+                                           sizeof(DISK_EXTENT)));
+                CloseHandle(system);
+                for (DWORD i = 0; i < count; ++i)
+                    if (extents->Extents[i].DiskNumber == candidate.DeviceNumber)
+                        return DiskCompare::Same;
+                return DiskCompare::Different;
+            }
+
+            CloseHandle(system);
+            reason = "could not query the system disk";
+            return DiskCompare::Error;
+        }
+
+        CloseHandle(system);
+        return systemNumber.DeviceNumber == candidate.DeviceNumber
+                ? DiskCompare::Same : DiskCompare::Different;
+    }
+
+    bool validate_opened_device(HANDLE handle, std::string &reason)
+    {
+        STORAGE_DEVICE_NUMBER candidate {};
+        DWORD returned = 0;
+        if (!DeviceIoControl(handle, IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &candidate,
+                             sizeof(candidate), &returned, nullptr) ||
+            returned < sizeof(candidate))
+        {
+            reason = "could not query the device number";
+            return false;
+        }
+
+        // Any physical disk is usable (internal SATA/eSATA and VM disks are
+        // primary use cases); only the disk holding Windows is refused.
+        wchar_t windowsDirectory[MAX_PATH] = {};
+        if (GetWindowsDirectoryW(windowsDirectory, MAX_PATH) < 2)
+        {
+            reason = "could not identify the Windows directory";
+            return false;
+        }
+
+        const DiskCompare windowsCompare =
+            compare_system_disk(windowsDirectory, candidate, reason);
+        if (windowsCompare == DiskCompare::Error)
+            return false;
+        if (windowsCompare == DiskCompare::Same)
+        {
+            reason = "refusing the system disk";
+            return false;
+        }
+
+        wchar_t systemDirectory[MAX_PATH] = {};
+        if (GetSystemDirectoryW(systemDirectory, MAX_PATH) >= 2 &&
+            (systemDirectory[0] != windowsDirectory[0] ||
+             systemDirectory[1] != windowsDirectory[1]))
+        {
+            const DiskCompare systemCompare =
+                compare_system_disk(systemDirectory, candidate, reason);
+            if (systemCompare == DiskCompare::Error)
+                return false;
+            if (systemCompare == DiskCompare::Same)
+            {
+                reason = "refusing the boot disk";
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -213,6 +375,15 @@ namespace
             return false;
         }
 
+        std::string policyReason;
+        if (!validate_opened_device(handle, policyReason))
+        {
+            CloseHandle(handle);
+            code = vh::ErrorCode::InvalidRequest;
+            message = policyReason;
+            return false;
+        }
+
         GET_LENGTH_INFORMATION lengthInfo {};
         DWORD returned = 0;
         if (!DeviceIoControl(handle, IOCTL_DISK_GET_LENGTH_INFO, nullptr, 0, &lengthInfo,
@@ -235,6 +406,16 @@ namespace
         else
         {
             device.sectorSize = kSectorFallback;
+        }
+
+        const bool removable = is_removable_bus(handle);
+        std::string contentReason;
+        if (!validate_device_content(handle, device.sectorSize, removable, contentReason))
+        {
+            CloseHandle(handle);
+            code = vh::ErrorCode::InvalidRequest;
+            message = contentReason;
+            return false;
         }
 
         device.handle = handle;
@@ -379,50 +560,60 @@ namespace
         return true;
     }
 
-    bool validate_device_path(const std::string &path)
-    {
-        if (path.rfind("/dev/", 0) != 0)
-            return false;
-        if (path.find("..") != std::string::npos)
-            return false;
-        return path.size() > 5 && path.size() < 4096;
-    }
-
     bool open_device(const std::string &path, bool wantWritable, Device &device,
                      vh::ErrorCode &code, std::string &message)
     {
         bool writable = wantWritable;
-        int fd = open(path.c_str(), (writable ? O_RDWR : O_RDONLY) | O_CLOEXEC);
+        // O_EXCL makes the kernel reject a disk (or any partition) that is
+        // mounted, swap or held by dm/md. O_NONBLOCK/O_NOCTTY stop a swapped
+        // FIFO or tty from blocking before the descriptor is revalidated.
+        const int baseFlags = O_CLOEXEC | O_EXCL | O_NONBLOCK | O_NOCTTY;
+        int fd = open(path.c_str(), (writable ? O_RDWR : O_RDONLY) | baseFlags);
         if (fd < 0 && writable && (errno == EACCES || errno == EROFS))
         {
-            fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+            fd = open(path.c_str(), O_RDONLY | baseFlags);
             writable = false;
         }
         if (fd < 0)
         {
-            code = errno == EACCES ? vh::ErrorCode::AccessDenied : vh::ErrorCode::IoError;
-            message = std::string("open failed: ") + std::strerror(errno);
+            const int error = errno;
+            if (error == EBUSY)
+                message = "device is mounted or in use";
+            else
+                message = std::string("open failed: ") + std::strerror(error);
+
+            code = (error == EACCES || error == EROFS || error == EBUSY)
+                    ? vh::ErrorCode::AccessDenied
+                    : vh::ErrorCode::IoError;
             return false;
         }
 
-        struct stat status {};
-        // macOS exposes whole disks as character devices (/dev/rdisk*), so both
-        // node types are valid; Linux uses block devices.
-        const bool isDeviceNode = fstat(fd, &status) == 0 &&
-                                  (S_ISBLK(status.st_mode) ||
-#if defined(__APPLE__)
-                                   S_ISCHR(status.st_mode)
-#else
-                                   false
-#endif
-                                   );
-        if (!isDeviceNode)
+        // Re-validate the opened descriptor, not just the path: a symlink or
+        // mount can change between ValidateDevicePath and open(). This also
+        // rejects the root/boot/swap disk if the path resolved to it.
+        std::string policyReason;
+        if (!vh::ValidateOpenedDevice(fd, policyReason))
         {
             close(fd);
             code = vh::ErrorCode::InvalidRequest;
-            message = "not a block device";
+            message = policyReason.empty() ? "device failed the allowlist" : policyReason;
             return false;
         }
+
+        std::string contentReason;
+        if (!vh::ValidateDeviceContent(fd, contentReason))
+        {
+            close(fd);
+            code = vh::ErrorCode::InvalidRequest;
+            message = contentReason.empty() ? "not an Xbox drive" : contentReason;
+            return false;
+        }
+
+        // The descriptor is now known to be a plain block device; blocking I/O
+        // is fine and expected for the actual reads/writes.
+        const int statusFlags = fcntl(fd, F_GETFL);
+        if (statusFlags >= 0)
+            fcntl(fd, F_SETFL, statusFlags & ~O_NONBLOCK);
 
         uint64_t size = 0;
         if (!read_device_length(fd, size))
@@ -489,6 +680,12 @@ namespace
                 message = std::string("write failed: ") + std::strerror(errno);
                 return false;
             }
+            if (count == 0)
+            {
+                code = vh::ErrorCode::IoError;
+                message = "write failed: short write";
+                return false;
+            }
             offset += static_cast<size_t>(count);
         }
 
@@ -520,9 +717,11 @@ namespace
         }
 
         const std::string path(reinterpret_cast<const char *>(payload.data() + offset), pathLength);
-        if (!validate_device_path(path))
+        std::string pathReason;
+        if (!vh::ValidateDevicePath(path, pathReason))
         {
-            send_error(stream, requestId, vh::ErrorCode::InvalidRequest, "path is not a device node");
+            send_error(stream, requestId, vh::ErrorCode::InvalidRequest,
+                       pathReason.empty() ? "path is not an allowed device" : pathReason);
             return;
         }
 
@@ -832,7 +1031,7 @@ namespace
         });
     }
 
-    int run_server(const std::string &endpoint)
+    int run_server(const std::string &endpoint, DWORD clientPid)
     {
         if (!valid_endpoint_name(endpoint))
         {
@@ -868,9 +1067,10 @@ namespace
             return 1;
         }
 
-        // Exit instead of lingering elevated when the GUI never connects.
-        std::atomic<bool> connected {false};
-        std::thread([&connected]() {
+        // Exit instead of lingering elevated when the GUI never connects. The
+        // flag is static because the detached watchdog can outlive run_server.
+        static std::atomic<bool> connected {false};
+        std::thread([]() {
             for (int second = 0; second < kConnectTimeoutSeconds; ++second)
             {
                 if (connected.load())
@@ -881,17 +1081,33 @@ namespace
                 ExitProcess(0);
         }).detach();
 
-        if (!ConnectNamedPipe(pipe, nullptr) && GetLastError() != ERROR_PIPE_CONNECTED)
+        // Rejecting an impostor must not consume the single connection: loop
+        // until the expected client connects or the watchdog exits.
+        for (;;)
         {
-            const DWORD error = GetLastError();
-            std::fprintf(stderr, "ConnectNamedPipe failed: %s\n",
-                         windows_error_text(error).c_str());
-            CloseHandle(pipe);
-            LocalFree(descriptor);
-            return 1;
+            if (!ConnectNamedPipe(pipe, nullptr) && GetLastError() != ERROR_PIPE_CONNECTED)
+            {
+                const DWORD error = GetLastError();
+                std::fprintf(stderr, "ConnectNamedPipe failed: %s\n",
+                             windows_error_text(error).c_str());
+                CloseHandle(pipe);
+                LocalFree(descriptor);
+                return 1;
+            }
+
+            ULONG peerPid = 0;
+            if (GetNamedPipeClientProcessId(pipe, &peerPid) && peerPid == clientPid)
+                break;
+
+            std::fprintf(stderr, "rejected client pid %lu (expected %lu)\n",
+                         static_cast<unsigned long>(peerPid),
+                         static_cast<unsigned long>(clientPid));
+            FlushFileBuffers(pipe);
+            DisconnectNamedPipe(pipe);
         }
 
         connected.store(true);
+
         handle_connection(static_cast<vh::StreamHandle>(pipe));
         close_all_devices();
 
@@ -902,7 +1118,136 @@ namespace
         return 0;
     }
 #else
-    int run_server(const std::string &endpoint, uid_t allowedUid)
+    bool peer_is_velocity(pid_t pid)
+    {
+#if defined(__linux__)
+        char link[64] = {};
+        std::snprintf(link, sizeof(link), "/proc/%d/exe", static_cast<int>(pid));
+        char target[PATH_MAX] = {};
+        const ssize_t length = readlink(link, target, sizeof(target) - 1);
+        if (length <= 0)
+            return false;
+        target[length] = 0;
+
+        struct stat peerStatus {};
+        if (stat(target, &peerStatus) != 0)
+            return false;
+
+        // Compare inodes with the real VelocityNext next to this helper. A
+        // basename check accepts any file called VelocityNext and rejects
+        // wrapper/renamed launches.
+        char self[PATH_MAX] = {};
+        const ssize_t selfLength = readlink("/proc/self/exe", self, sizeof(self) - 1);
+        if (selfLength <= 0)
+            return false;
+        self[selfLength] = 0;
+
+        const std::filesystem::path directory = std::filesystem::path(self).parent_path();
+        for (const char *name : {"VelocityNext", "VelocityNext.exe"})
+        {
+            struct stat candidate {};
+            if (stat((directory / name).c_str(), &candidate) == 0 &&
+                candidate.st_dev == peerStatus.st_dev && candidate.st_ino == peerStatus.st_ino)
+                return true;
+        }
+        return false;
+#else
+        // macOS has no /proc; the uid and LOCAL_PEERPID checks still apply.
+        (void)pid;
+        return true;
+#endif
+    }
+
+    bool parse_unsigned(const char *text, unsigned long &out)
+    {
+        if (text == nullptr || *text == '\0')
+            return false;
+
+        char *end = nullptr;
+        errno = 0;
+        const unsigned long value = std::strtoul(text, &end, 10);
+        if (errno != 0 || end == nullptr || *end != '\0')
+            return false;
+
+        out = value;
+        return true;
+    }
+
+    bool parse_pid(const char *text, pid_t &out)
+    {
+        unsigned long value = 0;
+        if (!parse_unsigned(text, value) || value == 0 ||
+            value > static_cast<unsigned long>(std::numeric_limits<pid_t>::max()))
+            return false;
+
+        out = static_cast<pid_t>(value);
+        return true;
+    }
+
+    uid_t invoking_uid()
+    {
+        unsigned long value = 0;
+        if (parse_unsigned(std::getenv("PKEXEC_UID"), value))
+            return static_cast<uid_t>(value);
+        if (parse_unsigned(std::getenv("SUDO_UID"), value))
+            return static_cast<uid_t>(value);
+        return getuid();
+    }
+
+    bool valid_endpoint_path(const std::string &endpoint, uid_t allowedUid, std::string &reason)
+    {
+        if (endpoint.empty() || endpoint.size() >= 100 ||
+            endpoint.find('\0') != std::string::npos || endpoint.front() != '/')
+        {
+            reason = "invalid endpoint path";
+            return false;
+        }
+
+        const std::filesystem::path path(endpoint);
+        const std::string base = path.filename().string();
+        const std::string uid = std::to_string(static_cast<unsigned long>(allowedUid));
+        const std::string prefix = "vdh-" + uid + "-";
+        if (base.rfind(prefix, 0) != 0 || base.size() < prefix.size() + 8 + 5 ||
+            base.compare(base.size() - 5, 5, ".sock") != 0)
+        {
+            reason = "unexpected endpoint name";
+            return false;
+        }
+
+        const std::string token = base.substr(prefix.size(), base.size() - prefix.size() - 5);
+        if (token.size() < 8 || token.size() > 40 ||
+            !std::all_of(token.begin(), token.end(), [](unsigned char character) {
+                return std::isalnum(character) != 0 || character == '-';
+            }))
+        {
+            reason = "unexpected endpoint name";
+            return false;
+        }
+
+        struct stat dirStatus {};
+        const std::string directory = path.parent_path().string();
+        if (directory.empty() || lstat(directory.c_str(), &dirStatus) != 0 ||
+            !S_ISDIR(dirStatus.st_mode))
+        {
+            reason = "endpoint directory is not usable";
+            return false;
+        }
+
+        // A private per-user runtime directory, or the sticky system temp dir.
+        const bool privateDir = dirStatus.st_uid == allowedUid &&
+                                (dirStatus.st_mode & (S_IWGRP | S_IWOTH)) == 0;
+        const bool stickyTemp = (dirStatus.st_mode & S_ISVTX) != 0 &&
+                                (dirStatus.st_mode & S_IWOTH) != 0;
+        if (!privateDir && !stickyTemp)
+        {
+            reason = "endpoint directory is not private";
+            return false;
+        }
+
+        return true;
+    }
+
+    int run_server(const std::string &endpoint, uid_t allowedUid, pid_t clientPid)
     {
         signal(SIGPIPE, SIG_IGN);
 
@@ -911,6 +1256,14 @@ namespace
         {
             std::fprintf(stderr, "socket: %s\n", std::strerror(errno));
             return 1;
+        }
+
+        std::string endpointReason;
+        if (!valid_endpoint_path(endpoint, allowedUid, endpointReason))
+        {
+            std::fprintf(stderr, "invalid endpoint: %s\n", endpointReason.c_str());
+            close(server);
+            return 2;
         }
 
         sockaddr_un addr {};
@@ -924,10 +1277,31 @@ namespace
         std::strncpy(addr.sun_path, endpoint.c_str(), sizeof(addr.sun_path) - 1);
         unlink(endpoint.c_str());
 
-        if (bind(server, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0 ||
-            chown(endpoint.c_str(), allowedUid, static_cast<gid_t>(-1)) != 0 ||
-            chmod(endpoint.c_str(), 0600) != 0 ||
-            listen(server, 1) != 0)
+        // Create the socket as the invoking user. Doing chown/chmod by path
+        // after a root bind() would follow a symlink planted in the user-owned
+        // runtime directory and hand over e.g. /etc/shadow.
+        const bool elevated = geteuid() == 0;
+        if (elevated && seteuid(allowedUid) != 0)
+        {
+            std::fprintf(stderr, "seteuid: %s\n", std::strerror(errno));
+            close(server);
+            return 1;
+        }
+
+        const mode_t previousUmask = umask(0177);
+        const int bindResult = bind(server, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+        umask(previousUmask);
+
+        if (elevated && seteuid(0) != 0)
+        {
+            std::fprintf(stderr, "could not restore root privileges\n");
+            if (bindResult == 0)
+                unlink(endpoint.c_str());
+            close(server);
+            return 1;
+        }
+
+        if (bindResult != 0 || listen(server, 1) != 0)
         {
             std::fprintf(stderr, "bind/listen: %s\n", std::strerror(errno));
             close(server);
@@ -935,40 +1309,59 @@ namespace
             return 1;
         }
 
-        // Do not linger privileged if the GUI never connects.
+        // Do not linger privileged if the GUI never connects. Rejecting a
+        // rogue connection must not kill the helper: loop until the real peer
+        // connects or the alarm fires.
         alarm(static_cast<unsigned int>(kConnectTimeoutSeconds));
 
-        const int client = accept(server, nullptr, nullptr);
+        int client = -1;
+        for (;;)
+        {
+            client = accept(server, nullptr, nullptr);
+            if (client < 0)
+                break;
+
+            bool peerAllowed = false;
+#if defined(__linux__)
+            ucred credentials {};
+            socklen_t credentialsLength = sizeof(credentials);
+            peerAllowed = getsockopt(client, SOL_SOCKET, SO_PEERCRED, &credentials,
+                                     &credentialsLength) == 0 &&
+                          credentials.uid == allowedUid &&
+                          credentials.pid == clientPid &&
+                          peer_is_velocity(credentials.pid);
+#elif defined(__APPLE__)
+            uid_t peerUid = 0;
+            gid_t peerGid = 0;
+            peerAllowed = getpeereid(client, &peerUid, &peerGid) == 0 && peerUid == allowedUid;
+#if defined(LOCAL_PEERPID)
+            if (peerAllowed)
+            {
+                pid_t peerPid = 0;
+                socklen_t peerPidLength = sizeof(peerPid);
+                if (getsockopt(client, SOL_LOCAL, LOCAL_PEERPID, &peerPid, &peerPidLength) != 0 ||
+                    peerPid != clientPid)
+                    peerAllowed = false;
+            }
+#else
+            peerAllowed = false;
+#endif
+#else
+            peerAllowed = false;
+#endif
+
+            if (peerAllowed)
+                break;
+
+            std::fprintf(stderr, "rejected client uid/pid\n");
+            close(client);
+            client = -1;
+        }
         alarm(0);
 
         if (client < 0)
         {
             std::fprintf(stderr, "accept: %s\n", std::strerror(errno));
-            close(server);
-            unlink(endpoint.c_str());
-            return 1;
-        }
-
-        bool peerAllowed = false;
-#if defined(__linux__)
-        ucred credentials {};
-        socklen_t credentialsLength = sizeof(credentials);
-        peerAllowed = getsockopt(client, SOL_SOCKET, SO_PEERCRED, &credentials,
-                                 &credentialsLength) == 0 &&
-                      credentials.uid == allowedUid;
-#elif defined(__APPLE__)
-        uid_t peerUid = 0;
-        gid_t peerGid = 0;
-        peerAllowed = getpeereid(client, &peerUid, &peerGid) == 0 && peerUid == allowedUid;
-#else
-        (void)allowedUid;
-        peerAllowed = true;
-#endif
-
-        if (!peerAllowed)
-        {
-            std::fprintf(stderr, "rejected client uid\n");
-            close(client);
             close(server);
             unlink(endpoint.c_str());
             return 1;
@@ -990,22 +1383,37 @@ int main(int argc, char **argv)
     std::string endpoint;
 
 #if defined(_WIN32)
+    DWORD clientPid = 0;
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
         if (arg == "--endpoint" && i + 1 < argc)
             endpoint = argv[++i];
+        else if (arg == "--client-pid" && i + 1 < argc)
+        {
+            char *end = nullptr;
+            errno = 0;
+            const unsigned long value = std::strtoul(argv[++i], &end, 10);
+            if (errno != 0 || end == nullptr || *end != '\0' || value == 0 ||
+                value > std::numeric_limits<DWORD>::max())
+            {
+                std::fprintf(stderr, "invalid --client-pid\n");
+                return 2;
+            }
+            clientPid = static_cast<DWORD>(value);
+        }
     }
 
-    if (endpoint.empty())
+    if (endpoint.empty() || clientPid == 0)
     {
-        std::fprintf(stderr, "usage: %s --endpoint <pipe-name>\n", argv[0]);
+        std::fprintf(stderr, "usage: %s --endpoint <pipe-name> --client-pid <pid>\n", argv[0]);
         return 2;
     }
 
-    return run_server(endpoint);
+    return run_server(endpoint, clientPid);
 #else
     uid_t allowedUid = getuid();
+    pid_t clientPid = 0;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -1013,15 +1421,48 @@ int main(int argc, char **argv)
         if (arg == "--endpoint" && i + 1 < argc)
             endpoint = argv[++i];
         else if (arg == "--uid" && i + 1 < argc)
-            allowedUid = static_cast<uid_t>(std::strtoul(argv[++i], nullptr, 10));
+        {
+            unsigned long value = 0;
+            if (!parse_unsigned(argv[++i], value) ||
+                value > std::numeric_limits<uid_t>::max())
+            {
+                std::fprintf(stderr, "invalid --uid\n");
+                return 2;
+            }
+            allowedUid = static_cast<uid_t>(value);
+        }
+        else if (arg == "--client-pid" && i + 1 < argc)
+        {
+            if (!parse_pid(argv[++i], clientPid))
+            {
+                std::fprintf(stderr, "invalid --client-pid\n");
+                return 2;
+            }
+        }
     }
 
-    if (endpoint.empty())
+    if (endpoint.empty() || clientPid <= 0)
     {
-        std::fprintf(stderr, "usage: %s --endpoint <socket> [--uid <uid>]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s --endpoint <socket> [--uid <uid>] --client-pid <pid>\n",
+                     argv[0]);
         return 2;
     }
 
-    return run_server(endpoint, allowedUid);
+    const uid_t expectedUid = invoking_uid();
+    if (allowedUid != expectedUid)
+    {
+#if defined(__APPLE__)
+        // osascript does not export the invoking uid. The endpoint directory
+        // must still be owned by allowedUid (valid_endpoint_path), and the peer
+        // uid check still requires that user.
+        if (getuid() != 0 || geteuid() != 0)
+#endif
+        {
+            std::fprintf(stderr, "--uid does not match the invoking user\n");
+            return 2;
+        }
+    }
+
+    return run_server(endpoint, allowedUid, clientPid);
 #endif
 }
