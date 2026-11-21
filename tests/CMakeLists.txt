@@ -15,6 +15,24 @@ target_link_libraries(device_policy_test PRIVATE device_validation velocity_comp
 add_test(NAME device_policy_test COMMAND device_policy_test)
 set_tests_properties(device_policy_test PROPERTIES TIMEOUT 30)
 
+# Argument hard-fail tests for the privileged helper. These only assert that
+# malformed invocations exit before binding/waiting; they do not need root.
+add_test(NAME device_helper_rejects_missing_pid
+         COMMAND $<TARGET_FILE:velocity-device-helper> --endpoint test)
+set_tests_properties(device_helper_rejects_missing_pid PROPERTIES
+        PASS_REGULAR_EXPRESSION "usage:" TIMEOUT 10)
+add_test(NAME device_helper_rejects_zero_pid
+         COMMAND $<TARGET_FILE:velocity-device-helper> --endpoint test --client-pid 0)
+set_tests_properties(device_helper_rejects_zero_pid PROPERTIES
+        PASS_REGULAR_EXPRESSION "invalid --client-pid" TIMEOUT 10)
+if(UNIX)
+    add_test(NAME device_helper_rejects_bad_endpoint
+             COMMAND $<TARGET_FILE:velocity-device-helper>
+                     --endpoint /tmp/velocity-bad.sock --client-pid 123)
+    set_tests_properties(device_helper_rejects_bad_endpoint PROPERTIES
+            PASS_REGULAR_EXPRESSION "invalid endpoint:" TIMEOUT 10)
+endif()
+
 if(BUILD_FUZZERS)
     if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         message(FATAL_ERROR "BUILD_FUZZERS requires Clang (libFuzzer runtime)")

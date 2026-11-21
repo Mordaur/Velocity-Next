@@ -10,6 +10,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QMenu>
+#include <QPointer>
 #include <QSet>
 
 #include <QtConcurrent/QtConcurrentRun>
@@ -24,6 +25,7 @@
 #include "packageviewer.h"
 #include "profileselectiondialog.h"
 #include "qthelpers.h"
+#include "devicehelperclient.h"
 #include "svoddialog.h"
 
 #include <cstring>
@@ -140,6 +142,8 @@ DeviceContentViewer::DeviceContentViewer(QStatusBar *statusBar, QWidget *parent)
     deviceNotifier = new FatxDeviceNotifier(this);
     connect(deviceNotifier, SIGNAL(newDevicesDetected(QList<FatxDrive*>)), this,
             SLOT(onNewDevicesDetected(QList<FatxDrive*>)));
+    connect(deviceNotifier, SIGNAL(helperRequired()), this,
+            SLOT(onHelperRequired()));
     deviceNotifier->start();
 
     progressBar = new QProgressBar(this);
@@ -794,6 +798,31 @@ void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStrin
 
     ui->treeWidget->clear();
     LoadDevicesp();
+}
+
+void DeviceContentViewer::onHelperRequired()
+{
+    if (helperClient)
+        return;
+
+    // start() pumps the event loop while the OS password prompt is open, so the
+    // user can close this dialog in the meantime.
+    QPointer<DeviceContentViewer> guard(this);
+
+    auto client = std::make_shared<HelperClient>();
+    QString error;
+    if (!client->start(&error))
+    {
+        if (guard)
+            statusBar->showMessage("Privileged access unavailable: " + error, 5000);
+        return;
+    }
+
+    if (!guard)
+        return;
+
+    helperClient = client;
+    deviceNotifier->SetHelperClient(client);
 }
 
 void DeviceContentViewer::onNewDevicesDetected(QList<FatxDrive*> newDrives)

@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 
 #include <XboxInternals/IO/BaseIO.h>
 
@@ -41,6 +42,11 @@ private:
     using NativeStream = int;
     static constexpr NativeStream kInvalidStream = -1;
 #endif
+
+    // The device notifier and the background content-load worker share one
+    // client. A request/response pair must be atomic, otherwise frames can
+    // interleave and a reply can be matched to the wrong request.
+    std::mutex requestMutex;
 
     QProcess process;
     QString endpoint;

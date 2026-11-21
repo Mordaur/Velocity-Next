@@ -9,6 +9,8 @@
 #include <QStatusBar>
 #include <QTreeWidgetItem>
 
+#include <memory>
+
 #include <XboxInternals/Fatx/XContentDevice.h>
 #include <XboxInternals/Stfs/IXContentHeader.h>
 
@@ -29,6 +31,8 @@ enum class ContentItemType : quint32
     SharedItemCategory
 };
 
+class HelperClient;
+
 class DeviceContentViewer : public QDialog
 {
     Q_OBJECT
@@ -45,6 +49,7 @@ private slots:
     void showContextMenu(const QPoint &pos);
     void on_btnViewPackage_clicked();
     void onNewDevicesDetected(QList<FatxDrive*> newDrives);
+    void onHelperRequired();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -70,6 +75,7 @@ private:
     IXContentHeader *currentPackage;
     QProgressBar *progressBar;
     FatxDeviceNotifier *deviceNotifier;
+    std::shared_ptr<HelperClient> helperClient;
     XContentDevice *currentDevice;
 
     void LoadDevicesp();

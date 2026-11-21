@@ -14,6 +14,9 @@ FatxDeviceNotifier::~FatxDeviceNotifier()
 {
     StopLooking();
     wait();
+
+    std::lock_guard<std::mutex> lock(helperMutex);
+    helper.reset();
 }
 
 void FatxDeviceNotifier::StopLooking()
@@ -21,9 +24,16 @@ void FatxDeviceNotifier::StopLooking()
     stop = true;
 }
 
+void FatxDeviceNotifier::SetHelperClient(std::shared_ptr<HelperClient> client)
+{
+    std::lock_guard<std::mutex> lock(helperMutex);
+    helper = std::move(client);
+}
+
 void FatxDeviceNotifier::run()
 {
     bool helperAttempted = false;
+    bool helperRequested = false;
 
     while (!stop)
     {
@@ -49,8 +59,24 @@ void FatxDeviceNotifier::run()
 
         if (foundDrives.empty() && permissionDenied && !helperAttempted)
         {
-            helperAttempted = true;
-            foundDrives = loadDrivesThroughHelper();
+            std::shared_ptr<HelperClient> client;
+            {
+                std::lock_guard<std::mutex> lock(helperMutex);
+                client = helper;
+            }
+
+            if (client)
+            {
+                helperAttempted = true;
+                foundDrives = loadDrivesThroughHelper(client);
+            }
+            else if (!helperRequested)
+            {
+                // The GUI thread creates and starts the helper, then calls
+                // SetHelperClient; this worker never owns a QProcess.
+                helperRequested = true;
+                emit helperRequired();
+            }
         }
 
         {
@@ -76,14 +102,10 @@ void FatxDeviceNotifier::run()
     }
 }
 
-std::vector<std::unique_ptr<FatxDrive>> FatxDeviceNotifier::loadDrivesThroughHelper()
+std::vector<std::unique_ptr<FatxDrive>> FatxDeviceNotifier::loadDrivesThroughHelper(
+        const std::shared_ptr<HelperClient> &client)
 {
     std::vector<std::unique_ptr<FatxDrive>> drives;
-
-    auto client = std::make_shared<HelperClient>();
-    QString error;
-    if (!client->start(&error))
-        return drives;
 
     for (const auto &path : FatxDriveDetection::GetPhysicalDiskPaths())
     {
@@ -101,10 +123,7 @@ std::vector<std::unique_ptr<FatxDrive>> FatxDeviceNotifier::loadDrivesThroughHel
         }
     }
 
-    // The drives hold the client alive through HelperDeviceIO; if nothing was
-    // found, stop the helper instead of leaving it running.
-    if (drives.empty())
-        client->stop();
-
+    // The drives hold the client alive through HelperDeviceIO. The GUI owns
+    // the process lifetime, so do not stop it from this worker.
     return drives;
 }

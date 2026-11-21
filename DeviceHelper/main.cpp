@@ -191,8 +191,7 @@ namespace
 
         std::vector<uint8_t> buffer;
         if (read_aligned(handle, kFatxDataOffset, sectorSize, buffer) &&
-            buffer.size() >= 4 && buffer[0] == 'F' && buffer[1] == 'A' &&
-            buffer[2] == 'T' && buffer[3] == 'X')
+            vh::IsFatxSuperblock(buffer.data(), buffer.size()))
             return true;
 
         if (removable && read_aligned(handle, 0, sectorSize, buffer))

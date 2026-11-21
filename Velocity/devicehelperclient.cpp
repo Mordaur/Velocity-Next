@@ -521,6 +521,8 @@ QByteArray HelperClient::receiveFrame(uint16_t expectedType, uint32_t requestId)
 
 HelperDeviceHandle HelperClient::openDevice(const std::wstring &path, bool writable)
 {
+    std::lock_guard<std::mutex> lock(requestMutex);
+
     const QByteArray pathBytes = QString::fromStdWString(path).toUtf8();
     QByteArray payload;
     payload.append(static_cast<char>(writable ? vh::OpenMode::ReadWrite : vh::OpenMode::ReadOnly));
@@ -551,6 +553,8 @@ HelperDeviceHandle HelperClient::openDevice(const std::wstring &path, bool writa
 
 QByteArray HelperClient::readAt(uint32_t handle, uint64_t offset, uint32_t length)
 {
+    std::lock_guard<std::mutex> lock(requestMutex);
+
     std::vector<uint8_t> payload;
     vh::append_u32(payload, handle);
     vh::append_u64(payload, offset);
@@ -565,6 +569,8 @@ QByteArray HelperClient::readAt(uint32_t handle, uint64_t offset, uint32_t lengt
 
 uint32_t HelperClient::writeAt(uint32_t handle, uint64_t offset, const QByteArray &data)
 {
+    std::lock_guard<std::mutex> lock(requestMutex);
+
     std::vector<uint8_t> payload;
     vh::append_u32(payload, handle);
     vh::append_u64(payload, offset);
@@ -588,6 +594,8 @@ uint32_t HelperClient::writeAt(uint32_t handle, uint64_t offset, const QByteArra
 
 uint64_t HelperClient::length(uint32_t handle)
 {
+    std::lock_guard<std::mutex> lock(requestMutex);
+
     std::vector<uint8_t> payload;
     vh::append_u32(payload, handle);
 
@@ -608,6 +616,8 @@ uint64_t HelperClient::length(uint32_t handle)
 
 void HelperClient::close(uint32_t handle)
 {
+    std::lock_guard<std::mutex> lock(requestMutex);
+
     std::vector<uint8_t> payload;
     vh::append_u32(payload, handle);
 

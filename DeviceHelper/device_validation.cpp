@@ -272,6 +272,51 @@ bool validate_linux(const std::string &path, std::string &reason)
 
 #elif defined(__APPLE__)
 
+bool read_at(int fd, uint64_t offset, unsigned char *buffer, size_t length)
+{
+    const ssize_t done = pread(fd, buffer, length, static_cast<off_t>(offset));
+    return done == static_cast<ssize_t>(length);
+}
+
+bool fat_boot_sector(const unsigned char *sector)
+{
+    return IsFatBootSector(sector, 512);
+}
+
+bool has_fat_filesystem(int fd)
+{
+    unsigned char sector[512] = {};
+    if (!read_at(fd, 0, sector, sizeof(sector)))
+        return false;
+    if (IsGptProtectiveMbr(sector, sizeof(sector)))
+        return false; // The Xbox 360 only mounts MBR volumes.
+    if (fat_boot_sector(sector))
+        return true;
+
+    // MBR: check the first FAT partition's boot sector.
+    if (sector[510] != 0x55 || sector[511] != 0xAA)
+        return false;
+
+    for (int i = 0; i < 4; ++i)
+    {
+        const unsigned char *entry = sector + 0x1BE + (i * 16);
+        if (entry[4] == 0)
+            continue;
+        if (entry[4] == 0xEE)
+            return false; // GPT protective MBR.
+
+        const uint64_t start = static_cast<uint64_t>(entry[8]) |
+                               (static_cast<uint64_t>(entry[9]) << 8) |
+                               (static_cast<uint64_t>(entry[10]) << 16) |
+                               (static_cast<uint64_t>(entry[11]) << 24);
+        unsigned char boot[512] = {};
+        if (read_at(fd, start * 512, boot, sizeof(boot)) && fat_boot_sector(boot))
+            return true;
+    }
+
+    return false;
+}
+
 std::string mac_disk_name(const std::string &path)
 {
     const std::string base = std::filesystem::path(path).filename().string();
@@ -432,6 +477,13 @@ bool IsGptProtectiveMbr(const unsigned char *sector, std::size_t length)
     return false;
 }
 
+bool IsFatxSuperblock(const unsigned char *sector, std::size_t length)
+{
+    return sector != nullptr && length >= 4 &&
+           sector[0] == 'X' && sector[1] == 'T' &&
+           sector[2] == 'A' && sector[3] == 'F';
+}
+
 bool ValidateDevicePath(const std::string &path, std::string &reason)
 {
     reason.clear();
@@ -507,10 +559,11 @@ bool ValidateDeviceContent(int fd, std::string &reason)
     reason.clear();
 
 #if defined(__linux__)
-    // A retail Xbox 360 hard drive has the FATX magic at HddOffsets::Data.
+    // A retail Xbox 360 hard drive has the big-endian FATX ("XTAF") magic at
+    // HddOffsets::Data.
     unsigned char magic[4] = {};
     if (read_at(fd, 0x130EB0000ULL, magic, sizeof(magic)) &&
-        magic[0] == 'F' && magic[1] == 'A' && magic[2] == 'T' && magic[3] == 'X')
+        IsFatxSuperblock(magic, sizeof(magic)))
         return true;
 
     struct stat status {};
@@ -526,8 +579,22 @@ bool ValidateDeviceContent(int fd, std::string &reason)
 
     reason = disk.empty() ? "not an Xbox device" : "not an Xbox FATX/FAT32 drive";
     return false;
+#elif defined(__APPLE__)
+    // A retail Xbox 360 hard drive has the big-endian FATX ("XTAF") magic at
+    // HddOffsets::Data. Raw macOS disk devices require sector-aligned reads, so
+    // read the whole 512-byte sector and check its first four bytes.
+    unsigned char magic[512] = {};
+    if (read_at(fd, 0x130EB0000ULL, magic, sizeof(magic)) &&
+        IsFatxSuperblock(magic, sizeof(magic)))
+        return true;
+
+    if (has_fat_filesystem(fd))
+        return true;
+
+    reason = "not an Xbox FATX/FAT32 drive";
+    return false;
 #else
-    // macOS has no cheap bus/filesystem probe here; the GUI still validates the
+    // No cheap content probe on other POSIX platforms; the GUI validates the
     // FATX/FAT32 layout after opening.
     (void)fd;
     return true;

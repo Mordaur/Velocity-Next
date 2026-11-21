@@ -7,6 +7,7 @@
 
 #if !defined(_WIN32)
 #include <fcntl.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 
@@ -59,8 +60,73 @@ namespace
     }
 #endif
 
+#if !defined(_WIN32)
+    void testContentGate()
+    {
+        // A regular sparse file is enough for the content gate: it only reads
+        // the FATX magic and does not require a block device. This is the
+        // positive counterpart to the rejection-only path tests.
+        FILE *file = std::tmpfile();
+        if (file == nullptr)
+        {
+            std::fprintf(stderr, "FAIL: could not create the content-gate file\n");
+            ++failures;
+            return;
+        }
+
+        const int fd = fileno(file);
+        const off_t offset = 0x130EB0000LL;
+        if (ftruncate(fd, offset + 512) != 0 ||
+            pwrite(fd, "XTAF", 4, offset) != 4)
+        {
+            std::fprintf(stderr, "FAIL: could not prepare the content-gate file\n");
+            ++failures;
+            std::fclose(file);
+            return;
+        }
+
+        std::string reason;
+        if (!velocity::helper::ValidateDeviceContent(fd, reason))
+        {
+            std::fprintf(stderr, "FAIL: XTAF magic was rejected (%s)\n", reason.c_str());
+            ++failures;
+        }
+
+        const char bad = 'Y';
+        if (pwrite(fd, &bad, 1, offset) != 1 ||
+            velocity::helper::ValidateDeviceContent(fd, reason))
+        {
+            std::fprintf(stderr, "FAIL: non-FATX content was accepted\n");
+            ++failures;
+        }
+
+        std::fclose(file);
+    }
+#endif
+
     void testBootSectorClassifiers()
     {
+        std::array<unsigned char, 512> fatx {};
+        std::memcpy(fatx.data(), "XTAF", 4);
+        if (!velocity::helper::IsFatxSuperblock(fatx.data(), fatx.size()))
+        {
+            std::fprintf(stderr, "FAIL: XTAF superblock was not recognised\n");
+            ++failures;
+        }
+
+        std::memcpy(fatx.data(), "FATX", 4);
+        if (velocity::helper::IsFatxSuperblock(fatx.data(), fatx.size()))
+        {
+            std::fprintf(stderr, "FAIL: reversed FATX magic was accepted\n");
+            ++failures;
+        }
+
+        if (velocity::helper::IsFatxSuperblock(fatx.data(), 3))
+        {
+            std::fprintf(stderr, "FAIL: short XTAF buffer was accepted\n");
+            ++failures;
+        }
+
         std::array<unsigned char, 512> gpt {};
         gpt[510] = 0x55;
         gpt[511] = 0xAA;
@@ -124,6 +190,10 @@ int main()
 #endif
 
     testBootSectorClassifiers();
+
+#if !defined(_WIN32)
+    testContentGate();
+#endif
 
     if (failures != 0)
     {

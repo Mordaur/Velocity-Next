@@ -36,7 +36,7 @@ jobs:
           -DSANITIZERS=address,undefined
 
       - name: Build smoke target
-        run: cmake --build build/sanitize --target xbi_smoke device_policy_test -j"$(nproc)"
+        run: cmake --build build/sanitize --target xbi_smoke device_policy_test velocity-device-helper -j"$(nproc)"
 
       - name: Run smoke test
         env:

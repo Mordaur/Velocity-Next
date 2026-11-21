@@ -10,6 +10,11 @@ namespace velocity::helper {
 bool IsFatBootSector(const unsigned char *sector, std::size_t length);
 bool IsGptProtectiveMbr(const unsigned char *sector, std::size_t length);
 
+// FATX stores its superblock magic big-endian, so the bytes at HddOffsets::Data
+// are "XTAF" (58 54 41 46), not "FATX". This is shared by the Linux, macOS and
+// Windows content gates so they cannot drift apart again.
+bool IsFatxSuperblock(const unsigned char *sector, std::size_t length);
+
 // Validates a device path *before* it is opened. On POSIX this resolves the
 // path and checks the kernel device (removable/USB, not the root/boot/swap
 // disk). On Windows it enforces the raw physical-drive form; the storage bus
