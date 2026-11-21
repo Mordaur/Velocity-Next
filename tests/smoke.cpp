@@ -839,6 +839,29 @@ void testXexType1Tables()
         std::error_code ignored;
         fs::remove(out, ignored);
     }
+
+    {
+        // A compressed image is extracted through a temp file that starts at 0.
+        // ExtractBaseImageFile must not subtract dataAddress from its length.
+        namespace fs = std::filesystem;
+        const fs::path out = fs::temp_directory_path() / "xbi_smoke_xex_base.bin";
+        auto file = makeSyntheticXex(0x18, 0, 1, 16, 0);
+        bool ok = false;
+        try
+        {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+            xex.ExtractBaseImageFile(out.string());
+            ok = fs::exists(out) && fs::file_size(out) == 0x1000;
+        }
+        catch (...)
+        {
+        }
+        check(ok, "XEX compressed base image uses the temp-file length");
+
+        std::error_code ignored;
+        fs::remove(out, ignored);
+    }
 }
 
 void testSvodMultipartRehash()

@@ -229,7 +229,10 @@ DWORD Xex::GetAllowedMediaTypes() const
 void Xex::ExtractBaseImageFile(std::string outPath)
 {
     BaseIO *rawDataIO = GetRawDataIO();
-    const UINT64 dataStart = header.dataAddress;
+    // GetRawDataIO returns the original file positioned at the header for a
+    // plain image, but a temp file starting at 0 for a compressed/encrypted
+    // one. Subtracting dataAddress from the temp length truncates the output.
+    const UINT64 dataStart = (rawDataIO == io) ? header.dataAddress : 0;
     const UINT64 rawLength = rawDataIO->Length();
     const UINT64 available = rawLength > dataStart ? rawLength - dataStart : 0;
 
@@ -279,8 +282,9 @@ void Xex::ExtractResource(std::string resourceName, std::string outPath)
         throw std::string("XEX: Resource address is below the image base.");
     const UINT64 resourceOffset = entry.address - imageBase;
 
-    const UINT64 dataStart = header.dataAddress;
-    const UINT64 rawLength = GetRawDataIO()->Length();
+    BaseIO *rawDataIO = GetRawDataIO();
+    const UINT64 dataStart = (rawDataIO == io) ? header.dataAddress : 0;
+    const UINT64 rawLength = rawDataIO->Length();
     const UINT64 available = rawLength > dataStart ? rawLength - dataStart : 0;
     if (resourceOffset > available || entry.size > available - resourceOffset ||
         resourceOffset > UINT32_MAX || entry.size > UINT32_MAX)
