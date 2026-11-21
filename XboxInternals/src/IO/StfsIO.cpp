@@ -1,5 +1,7 @@
 #include <XboxInternals/IO/StfsIO.h>
 
+#include <cstdint>
+
 #include <XboxInternals/Stfs/StfsPackage.h>
 
 StfsIO::StfsIO(BaseIO *io, StfsPackage *package, StfsFileEntry entry) :
@@ -37,9 +39,22 @@ void StfsIO::SetPosition(u64 position, std::ios_base::seekdir dir)
     if (entry.blockChain.empty())
         return;
 
-    u32 blockNum = (position == Length()) ? entry.blockChain.back() : entry.blockChain.at(position / 0x1000);
-    u64 packagePosition = this->package->BlockToAddress(blockNum) + (position % 0x1000);
+    u32 blockNum;
+    u64 offset = position % 0x1000;
+    if (position == Length())
+    {
+        blockNum = entry.blockChain.back();
+        // A block-aligned end points one byte past the last block. WriteBytes
+        // allocates the next block and seeks again before writing.
+        if (offset == 0)
+            offset = 0x1000;
+    }
+    else
+    {
+        blockNum = entry.blockChain.at(position / 0x1000);
+    }
 
+    u64 packagePosition = this->package->BlockToAddress(blockNum) + offset;
     io->SetPosition(packagePosition);
 }
 
@@ -74,18 +89,24 @@ void StfsIO::ReadBytes(u8 *outBuffer, u32 len)
 
 void StfsIO::WriteBytes(u8 *buffer, u32 len)
 {
-    u64 endingPosition = GetPosition() + len;
+    const u64 startPosition = GetPosition();
+    const u64 endingPosition = startPosition + len;
+    if (endingPosition > UINT32_MAX)
+        throw string("STFS: File size exceeds the 32-bit on-disk limit.\n");
+
     if (endingPosition > Length())
     {
         didChangeSize = true;
 
-        if ((endingPosition + 0xFFF) / 0x1000 > (Length() + 0xFFF) / 0x1000)
+        const u64 originalBlockCount = (Length() + 0xFFF) / 0x1000;
+        const u64 newBlockCount = (endingPosition + 0xFFF) / 0x1000;
+        if (newBlockCount > originalBlockCount)
         {
             if (this->entry.blockChain.empty())
                 throw string("STFS: Cannot grow a file that has no blocks.\n");
 
-            u32 amountOfBlocksToAllocate = ((endingPosition - entry.fileSize) + 0xFFF) / 0x1000;
-            this->package->metaData->stfsVolumeDescriptor.allocatedBlockCount += amountOfBlocksToAllocate;
+            u32 amountOfBlocksToAllocate = static_cast<u32>(newBlockCount - originalBlockCount);
+            // AllocateBlock() increments allocatedBlockCount itself.
             this->package->metaData->stfsVolumeDescriptor.unallocatedBlockCount -= amountOfBlocksToAllocate;
 
             u32 previousBlock = this->entry.blockChain.back();
@@ -104,10 +125,14 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
             this->package->metaData->WriteVolumeDescriptor();
         }
 
-        entry.fileSize = endingPosition;
+        entry.fileSize = static_cast<u32>(endingPosition);
+
+        // Growth may have appended blocks. Re-seek from the saved position so
+        // the first write lands at the new logical offset, not the old block.
+        SetPosition(startPosition);
     }
 
-    u16 maxWrite = 0x1000 - (this->entryPosition % 0x1000);
+    const u16 maxWrite = static_cast<u16>(0x1000 - (this->entryPosition % 0x1000));
     while (len >= maxWrite)
     {
         io->WriteBytes(buffer, maxWrite);
@@ -147,6 +172,9 @@ void StfsIO::Resize(u64 size)
     if (size == this->entry.fileSize)
         return;
 
+    if (size > UINT32_MAX)
+        throw string("STFS: File size exceeds the 32-bit on-disk limit.\n");
+
     // Growing from, or shrinking to, zero blocks would also need the entry's
     // starting block rewritten, which Flush() does not do.
     if (this->entry.blockChain.empty() || (size + 0xFFF) / 0x1000 == 0)
@@ -159,6 +187,9 @@ void StfsIO::Resize(u64 size)
     u32 newBlockCount = (size + 0xFFF) / 0x1000;
     u32 originalBlockCount = (originalSize + 0xFFF) / 0x1000;
     this->entry.blocksForFile = newBlockCount;
+    // Flush() writes blocksAllocated into both the blocks-for-file and
+    // blocks-allocated fields, so keep it in step with the chain.
+    blocksAllocated = newBlockCount;
 
     if (originalBlockCount > newBlockCount)
     {
@@ -168,8 +199,9 @@ void StfsIO::Resize(u64 size)
             u32 currentBlock = this->entry.blockChain.back();
             this->entry.blockChain.pop_back();
 
-            io->SetPosition(this->package->GetHashAddressOfBlock(currentBlock) + 0x15);
-            io->WriteInt24(PreviouslyAllocated);
+            // The status byte is +0x14; +0x15 is the 24-bit next-block field.
+            io->SetPosition(this->package->GetHashAddressOfBlock(currentBlock) + 0x14);
+            io->Write(static_cast<u8>(PreviouslyAllocated));
         }
 
         this->package->SetNextBlock(this->entry.blockChain.back(), kBlockChainTerminator);
@@ -180,6 +212,8 @@ void StfsIO::Resize(u64 size)
     else if (originalBlockCount < newBlockCount)
     {
         u32 amountOfBlocksToAllocate = newBlockCount - originalBlockCount;
+        // AllocateBlock() increments allocatedBlockCount itself.
+        this->package->metaData->stfsVolumeDescriptor.unallocatedBlockCount -= amountOfBlocksToAllocate;
         u32 previousBlock = this->entry.blockChain.back();
         for (u32 i = 0; i < amountOfBlocksToAllocate; i++)
         {

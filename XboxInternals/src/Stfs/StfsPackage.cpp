@@ -1939,6 +1939,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
         io->Write(data.data(), fileSize);
 
         fileSize = 0;
+        prevBlock = block;
 
         // update the progress if needed
         if (injectProgress != NULL)
@@ -1946,7 +1947,10 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     }
     fileIn.Close();
 
-    SetNextBlock(block, kBlockChainTerminator);
+    // An empty file has no block 0 to link; writing the terminator here would
+    // overwrite the first block's next-block field.
+    if (prevBlock != kBlockChainTerminator)
+        SetNextBlock(prevBlock, kBlockChainTerminator);
 
     folder->fileEntries.push_back(entry);
     WriteFileListing();
@@ -2050,13 +2054,16 @@ StfsFileEntry StfsPackage::InjectData(u8* data, u32 length, string pathInPackage
         io->Write(blockData, fileSize);
 
         fileSize = 0;
+        prevBlock = block;
 
         // update the progress if needed
         if (injectProgress != NULL)
             injectProgress(arg, entry.blocksForFile, entry.blocksForFile);
     }
 
-    SetNextBlock(block, kBlockChainTerminator);
+    // Empty data has no last block; do not write the terminator into block 0.
+    if (prevBlock != kBlockChainTerminator)
+        SetNextBlock(prevBlock, kBlockChainTerminator);
 
     folder->fileEntries.push_back(entry);
     WriteFileListing();
