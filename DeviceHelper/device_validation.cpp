@@ -8,6 +8,7 @@
 #include <fstream>
 #include <set>
 #include <string>
+#include <vector>
 
 #if defined(_WIN32)
 // Windows only needs the textual path check here; the bus/system-disk checks
@@ -21,6 +22,8 @@
 #if defined(__linux__)
 #include <sys/sysmacros.h>
 #elif defined(__APPLE__)
+#include <sys/disk.h>
+#include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/param.h>
 #endif
@@ -283,14 +286,15 @@ bool fat_boot_sector(const unsigned char *sector)
     return IsFatBootSector(sector, 512);
 }
 
-bool has_fat_filesystem(int fd)
+bool has_fat_filesystem(int fd, std::size_t sectorSize)
 {
-    unsigned char sector[512] = {};
-    if (!read_at(fd, 0, sector, sizeof(sector)))
+    const std::size_t readSize = std::max<std::size_t>(512, sectorSize);
+    std::vector<unsigned char> sector(readSize, 0);
+    if (!read_at(fd, 0, sector.data(), sector.size()))
         return false;
-    if (IsGptProtectiveMbr(sector, sizeof(sector)))
+    if (IsGptProtectiveMbr(sector.data(), sector.size()))
         return false; // The Xbox 360 only mounts MBR volumes.
-    if (fat_boot_sector(sector))
+    if (fat_boot_sector(sector.data()))
         return true;
 
     // MBR: check the first FAT partition's boot sector.
@@ -299,7 +303,7 @@ bool has_fat_filesystem(int fd)
 
     for (int i = 0; i < 4; ++i)
     {
-        const unsigned char *entry = sector + 0x1BE + (i * 16);
+        const unsigned char *entry = sector.data() + 0x1BE + (i * 16);
         if (entry[4] == 0)
             continue;
         if (entry[4] == 0xEE)
@@ -309,8 +313,15 @@ bool has_fat_filesystem(int fd)
                                (static_cast<uint64_t>(entry[9]) << 8) |
                                (static_cast<uint64_t>(entry[10]) << 16) |
                                (static_cast<uint64_t>(entry[11]) << 24);
-        unsigned char boot[512] = {};
-        if (read_at(fd, start * 512, boot, sizeof(boot)) && fat_boot_sector(boot))
+        const uint64_t byteOffset = start * 512;
+
+        // A 4Kn raw device rejects an unaligned pread; fail closed.
+        if (byteOffset % readSize != 0)
+            continue;
+
+        std::vector<unsigned char> boot(readSize, 0);
+        if (read_at(fd, byteOffset, boot.data(), boot.size()) &&
+            fat_boot_sector(boot.data()))
             return true;
     }
 
@@ -581,14 +592,19 @@ bool ValidateDeviceContent(int fd, std::string &reason)
     return false;
 #elif defined(__APPLE__)
     // A retail Xbox 360 hard drive has the big-endian FATX ("XTAF") magic at
-    // HddOffsets::Data. Raw macOS disk devices require sector-aligned reads, so
-    // read the whole 512-byte sector and check its first four bytes.
-    unsigned char magic[512] = {};
-    if (read_at(fd, 0x130EB0000ULL, magic, sizeof(magic)) &&
-        IsFatxSuperblock(magic, sizeof(magic)))
+    // HddOffsets::Data. Raw macOS disk devices require block-aligned reads, so
+    // use the device block size (4Kn disks reject 512-byte reads).
+    uint32_t blockSize = 512;
+    if (ioctl(fd, DKIOCGETBLOCKSIZE, &blockSize) != 0 || blockSize < 512)
+        blockSize = 512;
+
+    const std::size_t readSize = std::max<std::size_t>(512, blockSize);
+    std::vector<unsigned char> magic(readSize, 0);
+    if (read_at(fd, 0x130EB0000ULL, magic.data(), magic.size()) &&
+        IsFatxSuperblock(magic.data(), magic.size()))
         return true;
 
-    if (has_fat_filesystem(fd))
+    if (has_fat_filesystem(fd, readSize))
         return true;
 
     reason = "not an Xbox FATX/FAT32 drive";
