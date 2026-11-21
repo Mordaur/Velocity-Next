@@ -1,6 +1,13 @@
 #include "singleprogressdialog.h"
 #include "ui_singleprogressdialog.h"
 
+#include <QFileInfo>
+#include <QEventLoop>
+
+#include <exception>
+
+#include <XboxInternals/Fatx/XContentDevice.h>
+
 SingleProgressDialog::SingleProgressDialog(FileSystem system, void *device, Operation op,
         QString internalPath, QString externalPath, void *outEntry, QWidget *parent) :
     QDialog(parent), ui(new Ui::SingleProgressDialog), op(op), system(system), device(device),
@@ -33,10 +40,25 @@ SingleProgressDialog::SingleProgressDialog(FileSystem system, void *device, Oper
     }
 }
 
+SingleProgressDialog::SingleProgressDialog(XContentDevice *device, const QString &sourcePath,
+        QWidget *parent) :
+    SingleProgressDialog(FileSystemFATX, device, OpInject, QString(), sourcePath, nullptr, parent)
+{
+    copyToDevice_ = true;
+    setWindowTitle("Copying " + QFileInfo(sourcePath).fileName());
+}
+
 void SingleProgressDialog::start()
 {
     try
     {
+        if (copyToDevice_)
+        {
+            XContentDevice *contentDevice = reinterpret_cast<XContentDevice *>(device);
+            contentDevice->CopyFileToDevice(externalPath.toStdString(), UpdateProgress, this);
+            return;
+        }
+
         switch (system)
         {
             default: break;
@@ -119,6 +141,18 @@ void SingleProgressDialog::start()
                 "An error occurred during the operation.\n\n" + QString::fromStdString(error));
         close();
     }
+    catch (const std::exception &error)
+    {
+        QMessageBox::critical(this, "Error",
+                "An error occurred during the operation.\n\n" + QString::fromUtf8(error.what()));
+        close();
+    }
+    catch (...)
+    {
+        QMessageBox::critical(this, "Error",
+                "An unexpected error occurred during the operation.");
+        close();
+    }
 }
 
 SingleProgressDialog::~SingleProgressDialog()
@@ -135,7 +169,9 @@ void UpdateProgress(void *arg, DWORD cur, DWORD total)
     if (cur == total)
         dialog->close();
 
-    QApplication::processEvents();
+    // Keep the dialog painting without letting a click re-enter the write that
+    // is currently using the package/device.
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 }
 
 

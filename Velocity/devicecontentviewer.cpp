@@ -20,6 +20,7 @@
 #include <XboxInternals/Stfs/StfsPackage.h>
 
 #include "multiprogressdialog.h"
+#include "singleprogressdialog.h"
 #include "packageviewer.h"
 #include "profileselectiondialog.h"
 #include "qthelpers.h"
@@ -779,18 +780,17 @@ void DeviceContentViewer::CopyFilesToDevice(XContentDevice *device, const QStrin
 
     qDeleteAll(contentFiles);
 
-    QList<void *> filesToInject;
+    // CopyFileToDevice derives the console path from each package header. The
+    // generic FATX inject path expects a FatxDrive and a parent entry, so
+    // routing an XContentDevice through it was a type confusion (and used the
+    // wrong destination even when the types happened to line up).
     for (const QString &file : files)
-        filesToInject.push_back(new std::string(file.toStdString()));
-
-    auto *dialog = new MultiProgressDialog(OpInject, FileSystemFATX, device, "",
-            filesToInject, this);
-    dialog->setModal(true);
-    dialog->show();
-    dialog->start();
-
-    for (void *file : filesToInject)
-        delete static_cast<std::string *>(file);
+    {
+        SingleProgressDialog dialog(device, file, this);
+        dialog.setModal(true);
+        dialog.show();
+        dialog.start();
+    }
 
     ui->treeWidget->clear();
     LoadDevicesp();

@@ -6,7 +6,9 @@
 #include <QFileInfo>
 #include <QMutexLocker>
 #include <XboxInternals/Utils.h>
+#include <exception>
 #include <memory>
+#include <utility>
 
 namespace
 {
@@ -15,6 +17,20 @@ namespace
     struct ExtractionCancelled
     {
     };
+
+    // Run a cleanup on every exit path, including the early `return`s below.
+    template <typename Fn>
+    struct ScopeExit
+    {
+        Fn fn;
+        ~ScopeExit() { fn(); }
+    };
+
+    template <typename Fn>
+    ScopeExit<Fn> makeScopeExit(Fn fn)
+    {
+        return ScopeExit<Fn>{std::move(fn)};
+    }
 
     std::string SafeExtractTarget(const QString &outDir, const QString &relative, const char *what)
     {
@@ -53,10 +69,25 @@ ExtractionWorker::ExtractionWorker(MultiProgressDialog *dialog)
 void ExtractionWorker::run()
 {
     // This runs on the worker thread, not the main GUI thread
+    const bool ownsEntries = dialog_->system == FileSystemSTFS;
+    int deleteFrom = 0;
+    auto cleanupRemaining = makeScopeExit([&]() {
+        if (!ownsEntries)
+            return;
+        for (int j = deleteFrom; j < dialog_->internalFiles.size(); ++j)
+            delete reinterpret_cast<StfsExtractEntry *>(dialog_->internalFiles.at(j));
+    });
+    (void)cleanupRemaining;
+
     try
     {
         for (int i = 0; i < dialog_->internalFiles.size(); i++)
         {
+            // Entry i is not owned yet. The STFS branch moves it into a
+            // unique_ptr and then advances deleteFrom; entries at or after
+            // deleteFrom must be released if an error or cancel returns early.
+            deleteFrom = ownsEntries ? i : 0;
+
             if (isInterruptionRequested())
             {
                 emit extractionComplete(false, "Extraction cancelled by user");
@@ -73,6 +104,7 @@ void ExtractionWorker::run()
                 {
                     StfsExtractEntry *entry = reinterpret_cast<StfsExtractEntry*>(dialog_->internalFiles.at(i));
                     std::unique_ptr<StfsExtractEntry> entryOwner(entry);
+                    deleteFrom = i + 1;
 
                     emit windowTitleUpdate("Extracting " + QString::fromStdString(entry->entry.name));
 
@@ -465,6 +497,16 @@ void MultiProgressDialog::operateOnNextFile()
                 QMessageBox::critical(this, "",
                         "An error occurred while extracting files.\n\n" + QString::fromStdString(error));
             }
+            catch (const std::exception &error)
+            {
+                QMessageBox::critical(this, "",
+                        "An error occurred while extracting files.\n\n" + QString::fromUtf8(error.what()));
+            }
+            catch (...)
+            {
+                QMessageBox::critical(this, "",
+                        "An unexpected error occurred while extracting files.");
+            }
 
             break;
         }
@@ -480,10 +522,11 @@ void MultiProgressDialog::operateOnNextFile()
 
             // get the file from the device
             SVOD *svod = reinterpret_cast<SVOD*>(device);
-            SvodIO io = svod->GetSvodIO(*entry);
 
             try
             {
+                SvodIO io = svod->GetSvodIO(*entry);
+
                 // extract the file
                 const std::string target = SafeExtractTarget(outDir,
                         QString::fromStdString(entry->name), "SVOD");
@@ -494,6 +537,16 @@ void MultiProgressDialog::operateOnNextFile()
             {
                 QMessageBox::critical(this, "",
                         "An error occurred while extracting files.\n\n" + QString::fromStdString(error));
+            }
+            catch (const std::exception &error)
+            {
+                QMessageBox::critical(this, "",
+                        "An error occurred while extracting files.\n\n" + QString::fromUtf8(error.what()));
+            }
+            catch (...)
+            {
+                QMessageBox::critical(this, "",
+                        "An unexpected error occurred while extracting files.");
             }
 
             break;
@@ -599,6 +652,17 @@ void MultiProgressDialog::operateOnNextFile()
                 {
                     QMessageBox::critical(this, "",
                             "An error occurred while copying files to the drive.\n\n" + QString::fromStdString(error));
+                }
+                catch (const std::exception &error)
+                {
+                    QMessageBox::critical(this, "",
+                            "An error occurred while copying files to the drive.\n\n" +
+                            QString::fromUtf8(error.what()));
+                }
+                catch (...)
+                {
+                    QMessageBox::critical(this, "",
+                            "An unexpected error occurred while copying files to the drive.");
                 }
             }
 

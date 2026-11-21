@@ -178,6 +178,18 @@ void IsoDialog::dropEvent(QDropEvent* event) {
 }
 
 void IsoDialog::loadIsoContents(const QString& path) {
+    // Non-modal child viewers hold IsoIO objects that point into the current
+    // IsoImage (raw FileIO plus GdfxFileEntry into `root`). Opening another ISO
+    // calls IsoImage::close(), which frees both while those viewers are still
+    // alive. Destroy them first so no IsoIO outlives the image it reads from.
+    const QList<XexDialog *> xexDialogs = findChildren<XexDialog *>();
+    for (XexDialog *dialog : xexDialogs)
+        delete dialog;
+
+    const QList<PackageViewer *> packageViewers = findChildren<PackageViewer *>();
+    for (PackageViewer *viewer : packageViewers)
+        delete viewer;
+
     tree_->clear();
     folderItems_.clear();
     currentIsoPath_ = path;
@@ -507,7 +519,7 @@ void IsoDialog::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
                     return;
                 }
                 
-                auto package = std::unique_ptr<StfsPackage>(new StfsPackage(io));
+                auto package = std::unique_ptr<StfsPackage>(new StfsPackage(io, StfsPackageDeleteIO));
                 
                 // Create empty action lists for PackageViewer
                 QList<QAction*> gpdActions;
@@ -814,7 +826,7 @@ void IsoDialog::showContextMenu(const QPoint& point) {
                 
                 try {
                     // Get IO for reading the file
-                    IsoIO* io = iso_->GetIO(pathInISO.toStdString());
+                    std::unique_ptr<IsoIO> io(iso_->GetIO(pathInISO.toStdString()));
                     if (!io) {
                         QMessageBox::warning(this, tr("Error"), tr("Failed to open file in ISO"));
                         return;
@@ -829,14 +841,12 @@ void IsoDialog::showContextMenu(const QPoint& point) {
                     // Write to output file
                     QFile outFile(savePath);
                     if (!outFile.open(QIODevice::WriteOnly)) {
-                        delete io;
                         QMessageBox::warning(this, tr("Error"), tr("Failed to create output file"));
                         return;
                     }
                     
                     outFile.write(reinterpret_cast<const char*>(buffer.data()), fileSize);
                     outFile.close();
-                    delete io;
                     
                     if (statusBar_) {
                         statusBar_->showMessage(tr("File extracted successfully"), 5000);

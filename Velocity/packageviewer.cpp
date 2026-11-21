@@ -609,12 +609,11 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
 
         try
         {
-            SingleProgressDialog *dialog = new SingleProgressDialog(FileSystemSTFS, package, OpReplace,
+            SingleProgressDialog dialog(FileSystemSTFS, package, OpReplace,
                     packagePath, path, nullptr, this);
-            dialog->setModal(true);
-            dialog->show();
-            dialog->start();
-
+            dialog.setModal(true);
+            dialog.show();
+            dialog.start();
         }
         catch(string error)
         {
@@ -645,30 +644,30 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
 
         try
         {
-            StfsFileEntry *injectedEntry = new StfsFileEntry;
-            SingleProgressDialog *dialog = new SingleProgressDialog(FileSystemSTFS, package, OpInject,
-                    packagePath, path, injectedEntry, this);
-            dialog->setModal(true);
-            dialog->show();
-            dialog->start();
+            StfsFileEntry injectedEntry;
+            SingleProgressDialog dialog(FileSystemSTFS, package, OpInject,
+                    packagePath, path, &injectedEntry, this);
+            dialog.setModal(true);
+            dialog.show();
+            dialog.start();
 
             listing = package->GetFileListing();
 
             QTreeWidgetItem *fileEntry;
-            if (injectedEntry->pathIndicator != 0xFFFF)
+            if (injectedEntry.pathIndicator != 0xFFFF)
                 fileEntry = new QTreeWidgetItem(items.at(0));
             else
                 fileEntry = new QTreeWidgetItem(ui->treeWidget);
 
             QString filePath;
             GetPackagePath(fileEntry, &filePath);
-            SetIcon(injectedEntry->name, injectedEntry, fileEntry);
+            SetIcon(injectedEntry.name, &injectedEntry, fileEntry);
 
-            fileEntry->setText(0, QString::fromStdString(injectedEntry->name));
-            fileEntry->setText(1, QString::fromStdString(ByteSizeToString(injectedEntry->fileSize)));
+            fileEntry->setText(0, QString::fromStdString(injectedEntry.name));
+            fileEntry->setText(1, QString::fromStdString(ByteSizeToString(injectedEntry.fileSize)));
             fileEntry->setText(2, "0x" + QString::number(package->BlockToAddress(
-                        injectedEntry->startingBlockNum), 16).toUpper());
-            fileEntry->setText(3, "0x" + QString::number(injectedEntry->startingBlockNum, 16).toUpper());
+                        injectedEntry.startingBlockNum), 16).toUpper());
+            fileEntry->setText(3, "0x" + QString::number(injectedEntry.startingBlockNum, 16).toUpper());
 
             statusBar->showMessage("File injected successfully", 3000);
         }

@@ -22,6 +22,7 @@
 
 #include <QtWidgets/QApplication>
 #include <QStringList>
+#include <QFileInfo>
 #include <QNetworkInformation>
 #include "mainwindow.h"
 #include "thememanager.h"
@@ -50,8 +51,9 @@ int main(int argc, char *argv[]) {
     ThemeManager::instance().initialize();
 
     QList<QUrl> args;
-    for (int i = 1; i < argc; i++)
-        args.append(QUrl("file:///" + QString::fromLatin1(argv[i]).replace("\\", "/")));
+    const QStringList commandLine = QCoreApplication::arguments();
+    for (int i = 1; i < commandLine.size(); i++)
+        args.append(QUrl::fromLocalFile(QFileInfo(commandLine.at(i)).absoluteFilePath()));
 
     QNetworkInformation::loadDefaultBackend();
 

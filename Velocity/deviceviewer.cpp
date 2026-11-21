@@ -370,6 +370,10 @@ void DeviceViewer::InjectFiles(QList<void*> files, QString rootPath)
     dialog->show();
     dialog->start();
 
+    // The FATX inject path reads these as QString* and never owns them.
+    for (void *file : files)
+        delete static_cast<QString *>(file);
+
     DrawMemoryGraph();
 
     LoadFolderAll(parentEntry);
@@ -1266,25 +1270,28 @@ void DeviceViewer::onDragEntered(QDragEnterEvent *event)
 
 void DeviceViewer::onDragDropped(QDropEvent *event)
 {
-#ifdef _WIN32
-    int removeSize = 8;
-#else
-    int removeSize = 7;
-#endif
-
     statusBar->showMessage("");
 
-    QList<QUrl> filePaths = event->mimeData()->urls();
-    if (filePaths.size() == 0)
+    const QList<QUrl> filePaths = event->mimeData()->urls();
+    if (filePaths.isEmpty())
         return;
 
-    QString rootPath = QFileInfo(filePaths.at(0).toString().mid(removeSize)).absolutePath();
-
-    // fix the file name to remove the "file:///" at the beginning
-    QList<void*> files;
-    for (int i = 0; i < filePaths.size(); i++)
+    QStringList localPaths;
+    for (const QUrl &url : filePaths)
     {
-        QString rawPath = filePaths.at(i).toString().mid(removeSize);
+        if (!url.isLocalFile())
+            continue;
+        localPaths.append(url.toLocalFile());
+    }
+
+    if (localPaths.isEmpty())
+        return;
+
+    const QString rootPath = QFileInfo(localPaths.first()).absolutePath();
+
+    QList<void*> files;
+    for (const QString &rawPath : localPaths)
+    {
         if (QFileInfo(rawPath).isDir())
             GetSubFilesLocal(rawPath, files);
         else
