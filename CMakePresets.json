@@ -7,65 +7,86 @@
     },
     "configurePresets": [
         {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_CXX_STANDARD": "20",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
             "name": "windows-mingw-release",
             "displayName": "Windows MinGW Release",
-            "generator": "Ninja",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/windows-mingw-release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_CXX_STANDARD": "20",
-                "CMAKE_PREFIX_PATH": "C:/Qt/6.12.0/mingw_64"
+                "CMAKE_BUILD_TYPE": "Release"
             }
         },
         {
             "name": "windows-mingw-debug",
             "displayName": "Windows MinGW Debug",
-            "generator": "Ninja",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/windows-mingw-debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_STANDARD": "20",
-                "CMAKE_PREFIX_PATH": "C:/Qt/6.12.0/mingw_64"
+                "CMAKE_BUILD_TYPE": "Debug"
             }
         },
         {
             "name": "macos-release",
             "displayName": "macOS Release",
-            "generator": "Ninja",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/macos-release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_CXX_STANDARD": "20"
+                "CMAKE_BUILD_TYPE": "Release"
             }
         },
         {
             "name": "macos-debug",
             "displayName": "macOS Debug",
-            "generator": "Ninja",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/macos-debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_STANDARD": "20"
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "macos-sanitize",
+            "displayName": "macOS ASan/UBSan",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/out/build/macos-sanitize",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "SANITIZERS": "address,undefined"
             }
         },
         {
             "name": "linux-release",
             "displayName": "Linux Release",
-            "generator": "Ninja",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/linux-release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_CXX_STANDARD": "20"
+                "CMAKE_BUILD_TYPE": "Release"
             }
         },
         {
             "name": "linux-debug",
             "displayName": "Linux Debug",
-            "generator": "Ninja",
+            "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/linux-debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_STANDARD": "20"
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "linux-sanitize",
+            "displayName": "Linux ASan/UBSan",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/out/build/linux-sanitize",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "SANITIZERS": "address,undefined"
             }
         }
     ],
@@ -87,12 +108,78 @@
             "configurePreset": "macos-debug"
         },
         {
+            "name": "macos-sanitize",
+            "configurePreset": "macos-sanitize"
+        },
+        {
             "name": "linux-release",
             "configurePreset": "linux-release"
         },
         {
             "name": "linux-debug",
             "configurePreset": "linux-debug"
+        },
+        {
+            "name": "linux-sanitize",
+            "configurePreset": "linux-sanitize"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "windows-mingw-release",
+            "configurePreset": "windows-mingw-release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "windows-mingw-debug",
+            "configurePreset": "windows-mingw-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "macos-release",
+            "configurePreset": "macos-release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "macos-debug",
+            "configurePreset": "macos-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "macos-sanitize",
+            "configurePreset": "macos-sanitize",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-release",
+            "configurePreset": "linux-release",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-debug",
+            "configurePreset": "linux-debug",
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "linux-sanitize",
+            "configurePreset": "linux-sanitize",
+            "output": {
+                "outputOnFailure": true
+            }
         }
     ]
 }

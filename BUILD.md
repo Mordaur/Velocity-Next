@@ -196,8 +196,7 @@ builds are unchanged):
 # AddressSanitizer + UndefinedBehaviorSanitizer, with the in-tree smoke test
 cmake -S . -B build/sanitize -G Ninja \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DSANITIZERS=address,undefined \
-  -DQT_FIND_PRIVATE_MODULES=ON
+  -DSANITIZERS=address,undefined
 cmake --build build/sanitize --target xbi_smoke -j
 ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 \
   ctest --test-dir build/sanitize --output-on-failure
@@ -336,10 +335,8 @@ Two things that cause phantom editor errors:
 - **Use the same toolchain the database was generated with.** An MSVC database
   against a MinGW build (or the reverse) evaluates different `_WIN32`/`_MSC_VER`
   branches; MSVC is not a supported toolchain here.
-- **Configure with `-DQT_FIND_PRIVATE_MODULES=ON`.** Without it
-  `${Qt6Core_PRIVATE_INCLUDE_DIRS}` is empty, so `Velocity/zipviewer.cpp`
-  (which includes `qzipreader_p.h`) shows a missing header in the editor even
-  though a correctly configured build succeeds.
+Qt 6.12 exposes `Qt6::CorePrivate` automatically, so `qzipreader_p.h` resolves
+without extra flags. Only pre-6.10 Qt needs `-DQT_FIND_PRIVATE_MODULES=ON`.
 
 Re-run CMake after adding or removing source files so the database stays current.
 
