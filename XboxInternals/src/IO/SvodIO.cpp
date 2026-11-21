@@ -44,7 +44,8 @@ SvodIO::~SvodIO()
 void SvodIO::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex)
 {
     if (!XboxInternals::SvodLayout::Map(sector, DataBlockOffset(metadata),
-            IsEnhanced(metadata), addressInDataFile, dataFileIndex))
+            IsEnhanced(metadata), addressInDataFile, dataFileIndex,
+            metadata->svodVolumeDescriptor.dataBlockCount))
         throw std::string("SvodIO: Sector outside the data volume.\n");
 }
 
@@ -162,7 +163,7 @@ void SvodIO::OverWriteFile(string inPath, void (*progress)(void *, DWORD, DWORD)
 
     // make sure that the files are the same size
     inFile.SetPosition(0, ios_base::end);
-    if ((DWORD)inFile.GetPosition() != fileEntry.size)
+    if (inFile.GetPosition() != static_cast<UINT64>(fileEntry.size))
         throw string("SVOD: Cannot overWrite file of different length.\n");
 
     std::vector<BYTE> buffer(0x10000);

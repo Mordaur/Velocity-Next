@@ -286,6 +286,17 @@ namespace
             }
         }
 
+        // The volume bound: 40 data blocks = 80 sectors.
+        DWORD boundAddress = 0, boundPart = 0;
+        check(XboxInternals::SvodLayout::Map(0, 0, false, &boundAddress, &boundPart, 40),
+              "SVOD volume accepts sector 0");
+        check(XboxInternals::SvodLayout::Map(0x4F, 0, false, &boundAddress, &boundPart, 40),
+              "SVOD volume accepts its last sector");
+        check(!XboxInternals::SvodLayout::Map(0x50, 0, false, &boundAddress, &boundPart, 40),
+              "SVOD volume rejects the first sector past the end");
+        check(!XboxInternals::SvodLayout::Map(0x198, 0, false, &boundAddress, &boundPart, 40),
+              "SVOD volume rejects a sector in a later part");
+
         check(BytesUntilHashBlock(0x2000) == 0xCC000, "SVOD chunk starts a group");
         check(BytesUntilHashBlock(0xCDFFF) == 1, "SVOD chunk ends before the hash block");
         check(BytesUntilHashBlock(0xCE000) == 0, "SVOD level-0 block is not data");

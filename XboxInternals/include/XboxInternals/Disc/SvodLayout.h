@@ -16,7 +16,7 @@
 //
 //   SvodCreateDevice  bits 0..5 of the descriptor flags must be zero and bit 6
 //                     (0x40) selects the enhanced layout. Enhanced packages
-//                     store dataBlockOffset as a big-endian 24-bit value;
+//                     store dataBlockOffset as a little-endian 24-bit value;
 //                     otherwise only its low byte is used.
 //   SvodRead          skips dataBlockOffset blocks, adds one more block for
 //                     enhanced packages, and aliases volume block 16 (the GDF
@@ -87,12 +87,22 @@ inline bool GdfHeaderBlock(DWORD dataBlockOffset, bool enhanced, DWORD *dataBloc
 
 // Map a logical GDF sector to (offset in part, part index). Returns false for a
 // sector the kernel would zero-fill (below dataBlockOffset, or outside the
-// part).
+// part). `dataBlockCount` optionally bounds the volume; pass 0 to skip that
+// check (used by the low-level layout tests).
 inline bool Map(DWORD sector, DWORD dataBlockOffset, bool enhanced,
-                DWORD *addressInDataFile, DWORD *dataFileIndex)
+                DWORD *addressInDataFile, DWORD *dataFileIndex,
+                DWORD dataBlockCount = 0)
 {
     const uint64_t offsetSectors = static_cast<uint64_t>(dataBlockOffset) * 2;
     const uint64_t logical = static_cast<uint64_t>(sector);
+
+    if (dataBlockCount != 0)
+    {
+        const uint64_t volumeSectors =
+                (static_cast<uint64_t>(dataBlockCount) + dataBlockOffset) * 2;
+        if (logical >= volumeSectors)
+            return false;
+    }
 
     uint64_t dataBlock = 0;
     uint64_t inBlock = 0;
@@ -116,6 +126,13 @@ inline bool Map(DWORD sector, DWORD dataBlockOffset, bool enhanced,
         // parts, so the shift is global, not per part.
         dataBlock = relative / 2 + (enhanced ? 1 : 0);
         inBlock = relative % 2;
+    }
+
+    if (dataBlockCount != 0)
+    {
+        const uint64_t maxBlock = static_cast<uint64_t>(dataBlockCount) + (enhanced ? 1 : 0);
+        if (dataBlock >= maxBlock)
+            return false;
     }
 
     const uint64_t part = dataBlock / kDataBlocksPerPart;

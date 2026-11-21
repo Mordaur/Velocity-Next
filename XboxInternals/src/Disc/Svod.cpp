@@ -15,7 +15,6 @@
 #include <XboxInternals/Disc/SvodLayout.h>
 
 #include <cstdio>
-#include <unordered_set>
 
 namespace {
 bool SvodNameEquals(const std::string &a, const std::string &b)
@@ -107,6 +106,11 @@ SVOD::SVOD(string rootPath, FatxDrive *drive, bool readFileListing)
     if (metaData->fileSystem != FileSystemSVOD)
         throw string("SVOD: Invalid file system header.\n");
 
+    // A zero data-block count would silently disable the volume bound in
+    // SvodLayout::Map, so a corrupt/truncated descriptor must fail here.
+    if (metaData->svodVolumeDescriptor.dataBlockCount == 0)
+        throw string("SVOD: The data volume is empty.\n");
+
     switch (metaData->contentType)
     {
         case GameOnDemand:
@@ -162,7 +166,8 @@ void SVOD::Resign(string kvPath)
 void SVOD::SectorToAddress(DWORD sector, DWORD *addressInDataFile, DWORD *dataFileIndex)
 {
     if (!XboxInternals::SvodLayout::Map(sector, SvodDataBlockOffset(*metaData),
-            SvodIsEnhanced(*metaData), addressInDataFile, dataFileIndex))
+            SvodIsEnhanced(*metaData), addressInDataFile, dataFileIndex,
+            metaData->svodVolumeDescriptor.dataBlockCount))
         throw string("SVOD: Sector outside the data volume.\n");
 }
 
@@ -197,7 +202,8 @@ void SVOD::ValidateDataFiles()
 }
 
 void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT64 size,
-                          string path, int depth, std::unordered_set<uint64_t> &visited)
+                          string path, int depth,
+                          std::set<std::pair<DWORD, UINT64>> &visited)
 {
     auto finish = [entryList]() {
         std::sort(entryList->begin(), entryList->end(), DirectoryFirstCompareGdfxEntries);
@@ -215,8 +221,7 @@ void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT6
         return;
     }
 
-    const uint64_t key = (static_cast<uint64_t>(sector) << 32) ^ size;
-    if (!visited.insert(key).second)
+    if (!visited.insert({sector, size}).second)
     {
         finish();
         return;
@@ -237,7 +242,8 @@ void SVOD::ReadFileListing(vector<GdfxFileEntry> *entryList, DWORD sector, UINT6
 
         DWORD addressInFile = 0, fileIndex = 0;
         if (!XboxInternals::SvodLayout::Map(sectorIndex, dataBlockOffset, enhanced,
-                                            &addressInFile, &fileIndex))
+                                            &addressInFile, &fileIndex,
+                                            metaData->svodVolumeDescriptor.dataBlockCount))
             break;
 
         if (static_cast<UINT64>(addressInFile) + inSector + 14 >
@@ -347,18 +353,39 @@ void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
 
     for (DWORD i = fileCount; i--;)
     {
-        io->SetPosition(static_cast<DWORD>(0x2000), static_cast<int>(i));
-        DWORD hashTableCount = ((io->CurrentFileLength() - 0x2000) + 0xCCFFF) / 0xCD000;
-        if (hashTableCount > 203)
+        // CurrentFileLength() reports the *current* part. Rehash walks parts in
+        // reverse, so select the part before asking for its length; otherwise a
+        // multi-part GOD rehash uses the wrong size and rewrites bad hashes.
+        io->SetPosition(static_cast<DWORD>(0), static_cast<int>(i));
+
+        const DWORD fileLength = io->CurrentFileLength();
+        if (fileLength < 0x2000)
+            throw string("SVOD: Data part is too small for a master block.\n");
+
+        const UINT64 hashBytes = static_cast<UINT64>(fileLength) - 0x2000;
+        const DWORD hashTableCount = static_cast<DWORD>(
+                (hashBytes + XboxInternals::SvodLayout::kGroupStrideBytes - 1) /
+                XboxInternals::SvodLayout::kGroupStrideBytes);
+        if (hashTableCount > XboxInternals::SvodLayout::kGroupsPerPart)
             throw string("SVOD: Hash table count exceeds the master block.\n");
-        DWORD totalBlockCount = (io->CurrentFileLength() - 0x1000 - (hashTableCount * 0x1000)) >> 0xC;
+
+        const UINT64 tableBytes = static_cast<UINT64>(hashTableCount) * 0x1000;
+        if (static_cast<UINT64>(fileLength) < 0x1000 + tableBytes)
+            throw string("SVOD: Data part is shorter than its hash tables.\n");
+
+        DWORD totalBlockCount = static_cast<DWORD>(
+                (static_cast<UINT64>(fileLength) - 0x1000 - tableBytes) >> 0xC);
 
         for (DWORD x = 0; x < hashTableCount; x++)
         {
-            io->SetPosition(static_cast<DWORD>(0x2000 + x * 0xCD000), static_cast<int>(i));
+            io->SetPosition(static_cast<DWORD>(0x2000 +
+                    static_cast<UINT64>(x) * XboxInternals::SvodLayout::kGroupStrideBytes),
+                    static_cast<int>(i));
 
-            DWORD blockCount = (totalBlockCount >= 0xCC) ? 0xCC : totalBlockCount % 0xCC;
-            totalBlockCount -= 0xCC;
+            const DWORD blockCount = std::min<DWORD>(
+                    static_cast<DWORD>(XboxInternals::SvodLayout::kDataBlocksPerGroup),
+                    totalBlockCount);
+            totalBlockCount -= blockCount;
 
             for (DWORD y = 0; y < blockCount; y++)
             {
@@ -366,7 +393,9 @@ void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
                 HashBlock(currentBlock, level0 + y * 0x14);
             }
 
-            io->SetPosition(static_cast<DWORD>(0x1000 + x * 0xCD000), static_cast<int>(i));
+            io->SetPosition(static_cast<DWORD>(0x1000 +
+                    static_cast<UINT64>(x) * XboxInternals::SvodLayout::kGroupStrideBytes),
+                    static_cast<int>(i));
             io->WriteBytes(level0, 0x1000);
 
             HashBlock(level0, master + x * 0x14);
@@ -374,7 +403,8 @@ void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
         }
 
         // Slot 203 (offset 4060) carries the next part's master hash.
-        memcpy(master + 4060, prevHash, 0x14);
+        memcpy(master + static_cast<std::size_t>(XboxInternals::SvodLayout::kGroupsPerPart) * 0x14,
+               prevHash, 0x14);
 
         io->SetPosition(static_cast<DWORD>(0), static_cast<int>(i));
         io->WriteBytes(master, 0x1000);
@@ -430,8 +460,10 @@ bool SVOD::Verify()
     const DWORD totalDataBlocks = metaData->svodVolumeDescriptor.dataBlockCount +
             (enhanced ? 1 : 0);
     const DWORD partCount = metaData->dataFileCount;
-    constexpr DWORD blocksPerPart = 41412;
-    constexpr DWORD blocksPerGroup = 204;
+    constexpr DWORD blocksPerPart =
+            static_cast<DWORD>(XboxInternals::SvodLayout::kDataBlocksPerPart);
+    constexpr DWORD blocksPerGroup =
+            static_cast<DWORD>(XboxInternals::SvodLayout::kDataBlocksPerGroup);
 
     BYTE master[0x1000];
     BYTE level0[0x1000];
@@ -478,7 +510,8 @@ bool SVOD::Verify()
             for (DWORD k = 0; k < blocks; ++k)
             {
                 const DWORD block = group * blocksPerGroup + k;
-                const DWORD address = (block + block / blocksPerGroup + 2) * 0x1000;
+                const DWORD address = static_cast<DWORD>(
+                        XboxInternals::SvodLayout::DataBlockAddress(block));
 
                 io->SetPosition(address, static_cast<int>(part));
                 io->ReadBytes(data, 0x1000);
@@ -508,7 +541,10 @@ void SVOD::WriteFileEntry(GdfxFileEntry *entry)
 
 DWORD SVOD::GetSectorCount()
 {
-    return metaData->svodVolumeDescriptor.dataBlockCount * 2;
+    const UINT64 blocks = static_cast<UINT64>(metaData->svodVolumeDescriptor.dataBlockCount) +
+            SvodDataBlockOffset(*metaData);
+    const UINT64 sectors = blocks * 2;
+    return sectors > UINT32_MAX ? UINT32_MAX : static_cast<DWORD>(sectors);
 }
 
 std::string SVOD::GetContentName()
@@ -524,7 +560,7 @@ void SVOD::GetFileListing()
     if (!didReadFileListing)
     {
         didReadFileListing = true;
-        std::unordered_set<uint64_t> visited;
+        std::set<std::pair<DWORD, UINT64>> visited;
         ReadFileListing(&root, header.rootSector, header.rootSize, "/", 0, visited);
     }
 }
