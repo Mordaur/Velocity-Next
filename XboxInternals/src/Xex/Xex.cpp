@@ -334,7 +334,11 @@ void Xex::ExtractDecryptedData(std::string path) const
     io->SetPosition(header.dataAddress);
 
     // calculate how many blocks there are
-    DWORD blockCount = (io->Length() - header.dataAddress) / XEX_AES_BLOCK_SIZE;
+    const UINT64 fileLength = io->Length();
+    if (header.dataAddress > fileLength)
+        throw std::string("XEX: Data starts past the end of the file.\n");
+    DWORD blockCount = static_cast<DWORD>(
+            (fileLength - header.dataAddress) / XEX_AES_BLOCK_SIZE);
 
     // open an out file
     FileIO outFile(path, true);
@@ -950,7 +954,7 @@ void Xex::ParseExecutionInfo(DWORD address)
 void Xex::ExtractFromRawData(std::string outPath, DWORD address, DWORD size)
 {
     BaseIO *rawDataIO = GetRawDataIO();
-    DWORD offset = rawDataIO->GetPosition();
+    const UINT64 offset = rawDataIO->GetPosition();
 
     rawDataIO->SetPosition(offset + address);
 
@@ -1264,7 +1268,18 @@ BaseIO *Xex::GetRawDataIO()
         // create a temporary file with the cleaned data
         auto tempPath = fs::temp_directory_path() / ("xex_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".tmp");
         rawDataPath = tempPath.string();
-        ExtractData(rawDataPath);
+        try
+        {
+            ExtractData(rawDataPath);
+        }
+        catch (...)
+        {
+            // Do not leave a half-written temp file behind when extraction
+            // fails; the next call would otherwise overwrite rawDataPath.
+            std::remove(rawDataPath.c_str());
+            rawDataPath.clear();
+            throw;
+        }
 
         rawDataIO = std::make_unique<FileIO>(rawDataPath);
         return rawDataIO.get();

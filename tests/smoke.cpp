@@ -841,6 +841,28 @@ void testXexType1Tables()
     }
 
     {
+        // A plain image keeps ExtractBaseImageFile's original-file offset.
+        namespace fs = std::filesystem;
+        const fs::path out = fs::temp_directory_path() / "xbi_smoke_xex_plain_base.bin";
+        auto file = makeSyntheticXex(0x8, 0, 0, 0, 0);
+        bool ok = false;
+        try
+        {
+            MemoryIO io(file.data(), file.size());
+            Xex xex(&io);
+            xex.ExtractBaseImageFile(out.string());
+            ok = fs::exists(out) && fs::file_size(out) == 0x800;
+        }
+        catch (...)
+        {
+        }
+        check(ok, "XEX plain base image uses the original-file offset");
+
+        std::error_code ignored;
+        fs::remove(out, ignored);
+    }
+
+    {
         // A compressed image is extracted through a temp file that starts at 0.
         // ExtractBaseImageFile must not subtract dataAddress from its length.
         namespace fs = std::filesystem;
