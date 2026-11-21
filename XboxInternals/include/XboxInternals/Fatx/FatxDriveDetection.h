@@ -19,7 +19,13 @@ public:
     static std::vector<std::wstring> GetPhysicalDiskPaths();
 
 private:
+#ifdef _WIN32
     static std::vector<std::wstring> getLogicalDrives();
+#else
+    // POSIX mount paths are native bytes; converting them through a wchar_t
+    // intermediate breaks non-ASCII labels.
+    static std::vector<std::string> getLogicalDrives();
+#endif
 };
 
 #endif // FATXDRIVEDETECTION_H

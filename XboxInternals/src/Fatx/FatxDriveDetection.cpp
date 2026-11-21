@@ -21,10 +21,12 @@
     #ifdef __APPLE__
         #include <sys/disk.h>
         #include <sys/ioctl.h>
+        #include <sys/mount.h>
     #endif
 
     #ifdef __linux
         #include <linux/hdreg.h>
+        #include <mntent.h>
         #include <pwd.h>
     #endif
 #endif
@@ -32,7 +34,7 @@
 std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives(
         std::vector<DeviceDiagnostic> *diagnostics)
 {
-    std::vector<std::wstring> logicalDrivePaths = getLogicalDrives();
+    auto logicalDrivePaths = getLogicalDrives();
     std::vector<std::unique_ptr<FatxDrive>> drives;
 
     auto physicalDiskPaths = GetPhysicalDiskPaths();
@@ -93,13 +95,8 @@ std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives(
                 WideCharToMultiByte(CP_UTF8, 0, logicalDrivePath.c_str(), -1, &directory[0], size, nullptr, nullptr);
             }
             #else
-            // Convert wide string to narrow string using wcstombs
-            size_t len = wcstombs(nullptr, logicalDrivePath.c_str(), 0);
-            if (len != static_cast<size_t>(-1))
-            {
-                directory.resize(len);
-                wcstombs(&directory[0], logicalDrivePath.c_str(), len + 1);
-            }
+            // POSIX mount paths are already native bytes; no wide round-trip.
+            directory = logicalDrivePath;
             #endif
 
             #ifdef _WIN32
@@ -230,47 +227,32 @@ std::vector<std::wstring> FatxDriveDetection::GetPhysicalDiskPaths()
     return physicalDiskPaths;
 }
 
+#ifdef _WIN32
 std::vector<std::wstring> FatxDriveDetection::getLogicalDrives()
 {
     std::vector<std::wstring> driveStrings;
 
-#ifdef _WIN32
-    DWORD drives = GetLogicalDrives();
+    const DWORD drives = GetLogicalDrives();
     std::wstringstream ss;
     char currentChar = 'A';
 
     for (int i = 0; i < 32; i++)
     {
-        if (drives & 1)
+        if (drives & (1u << i))
         {
             ss << currentChar << ":\\Xbox360";
             driveStrings.push_back(ss.str());
             ss.str(std::wstring());
         }
-
-        drives >>= 1;
         currentChar++;
     }
-#elif __APPLE__
-    DIR *dir = opendir("/Volumes/");
-    if (dir != NULL)
-    {
-        while (dirent *ent = readdir(dir))
-        {
-            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
-                continue;
 
-            std::string xboxDirPath = std::string("/Volumes/") + ent->d_name + "/Xbox360/";
-            struct stat status {};
-            if (stat(xboxDirPath.c_str(), &status) != 0 || !S_ISDIR(status.st_mode))
-                continue;
-
-            std::wstring widePathStr(xboxDirPath.begin(), xboxDirPath.end());
-            driveStrings.push_back(widePathStr);
-        }
-        closedir(dir);
-    }
-#elif __linux
+    return driveStrings;
+}
+#else
+std::vector<std::string> FatxDriveDetection::getLogicalDrives()
+{
+    std::vector<std::string> driveStrings;
     std::set<std::string> seen;
 
     const auto addCandidate = [&](const std::string &base) {
@@ -280,45 +262,90 @@ std::vector<std::wstring> FatxDriveDetection::getLogicalDrives()
             return;
 
         const std::string drive = xboxPath + "/";
-        if (!seen.insert(drive).second)
-            return;
-
-        driveStrings.emplace_back(drive.begin(), drive.end());
+        if (seen.insert(drive).second)
+            driveStrings.push_back(drive);
     };
 
-    // Walk `root` and check the expected mount layout at each level:
-    // /media/<user>/<label>, /run/media/<user>/<label>, /mnt/<label>.
-    std::function<void(const std::string &, int)> scan = [&](const std::string &root, int depth) {
-        DIR *dir = opendir(root.c_str());
-        if (dir == nullptr)
-            return;
+#ifdef __APPLE__
+    struct statfs *mounts = nullptr;
+    const int mountCount = getmntinfo(&mounts, MNT_NOWAIT);
+    for (int i = 0; i < mountCount; ++i)
+    {
+        const char *type = mounts[i].f_fstypename;
+        if (strcmp(type, "msdos") == 0 || strcmp(type, "exfat") == 0)
+            addCandidate(mounts[i].f_mntonname);
+    }
 
-        addCandidate(root);
-        if (depth > 0)
+    // Fallback for systems where the mount table is unavailable.
+    if (driveStrings.empty())
+    {
+        DIR *dir = opendir("/Volumes/");
+        if (dir != nullptr)
         {
             while (dirent *ent = readdir(dir))
             {
                 if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
                     continue;
-
-                const std::string child = root + "/" + ent->d_name;
-                struct stat status {};
-                if (stat(child.c_str(), &status) == 0 && S_ISDIR(status.st_mode))
-                    scan(child, depth - 1);
+                addCandidate(std::string("/Volumes/") + ent->d_name);
             }
+            closedir(dir);
         }
+    }
+#elif __linux
+    // Enumerate the actual mount table so udisks2 mounts under
+    // /run/media/<user>, /mnt and non-standard locations are found.
+    bool mountTableRead = false;
+    FILE *mountTable = setmntent("/proc/self/mounts", "r");
+    if (mountTable != nullptr)
+    {
+        mountTableRead = true;
+        while (mntent *entry = getmntent(mountTable))
+        {
+            const char *type = entry->mnt_type;
+            if (strcmp(type, "vfat") == 0 || strcmp(type, "exfat") == 0 ||
+                strcmp(type, "msdos") == 0)
+                addCandidate(entry->mnt_dir);
+        }
+        endmntent(mountTable);
+    }
 
-        closedir(dir);
-    };
+    // Fallback only when /proc is unavailable; an empty mount table means
+    // there is genuinely no FAT/Xbox volume mounted.
+    if (!mountTableRead)
+    {
+        std::function<void(const std::string &, int)> scan =
+            [&](const std::string &root, int depth) {
+            DIR *dir = opendir(root.c_str());
+            if (dir == nullptr)
+                return;
 
-    scan("/media", 2);
+            addCandidate(root);
+            if (depth > 0)
+            {
+                while (dirent *ent = readdir(dir))
+                {
+                    if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                        continue;
 
-    if (const char *user = std::getenv("USER"))
-        scan(std::string("/run/media/") + user, 1);
-    else
-        scan("/run/media", 2);
+                    const std::string child = root + "/" + ent->d_name;
+                    struct stat status {};
+                    if (stat(child.c_str(), &status) == 0 && S_ISDIR(status.st_mode))
+                        scan(child, depth - 1);
+                }
+            }
 
-    scan("/mnt", 1);
+            closedir(dir);
+        };
+
+        scan("/media", 2);
+        if (const char *user = std::getenv("USER"))
+            scan(std::string("/run/media/") + user, 1);
+        else
+            scan("/run/media", 2);
+        scan("/mnt", 1);
+    }
 #endif
+
     return driveStrings;
 }
+#endif

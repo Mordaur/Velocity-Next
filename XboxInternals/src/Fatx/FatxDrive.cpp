@@ -794,34 +794,32 @@ BYTE FatxDrive::cntlzw(DWORD x)
 
 bool FatxDrive::validFileChar(char c)
 {
-    if (isalpha(c) || isdigit(c))
-        return true;
+    const unsigned char value = static_cast<unsigned char>(c);
 
-    switch (c)
+    // FatxIsValidFatFileName rejects only control bytes and the punctuation
+    // below. Everything else, including 0x7F and 0x80..0xFF, is a legal byte;
+    // the kernel does not interpret FATX names as UTF-8 or UTF-16.
+    if (value < 0x20)
+        return false;
+
+    switch (value)
     {
-        case '!':
-        case '#':
-        case '$':
-        case '%':
-        case '&':
-        case '\'':
-        case '(':
-        case ')':
-        case '-':
-        case '.':
-        case '@':
-        case '[':
-        case ']':
-        case '^':
-        case '_':
-        case '`':
-        case '{':
-        case '}':
-        case '~':
-        case ' ':
-            return true;
-        default:
+        case '"':
+        case '*':
+        case '+':
+        case ',':
+        case '/':
+        case ':':
+        case ';':
+        case '<':
+        case '=':
+        case '>':
+        case '?':
+        case '\\':
+        case '|':
             return false;
+        default:
+            return true;
     }
 }
 
@@ -831,13 +829,43 @@ FatxDrive::~FatxDrive()
         io->Close();
 }
 
+namespace
+{
+std::string TrimDriveSerial(const std::string &serial)
+{
+    const auto isPadding = [](unsigned char character) {
+        return character == 0 || character == 0xFF || character == ' ';
+    };
+
+    std::size_t begin = 0;
+    std::size_t end = serial.size();
+    while (begin < end && isPadding(static_cast<unsigned char>(serial[begin])))
+        ++begin;
+    while (end > begin && isPadding(static_cast<unsigned char>(serial[end - 1])))
+        --end;
+
+    return serial.substr(begin, end - begin);
+}
+} // namespace
+
 bool FatxDrive::operator==(const FatxDrive &other) const
 {
     if (type != other.type)
         return false;
 
     if (type == FatxHarddrive)
-        return securityBlob.modelNumber == other.securityBlob.modelNumber;
+    {
+        // Model alone collapses two identical drives (for example two retail
+        // 320 GB units in USB enclosures). Serial is unique per drive; fall back
+        // to model + addressable size when a dump has no serial. A blank serial
+        // is often space- or 0xFF-padded, so trim it before deciding.
+        const std::string serial = TrimDriveSerial(securityBlob.serialNumber);
+        const std::string otherSerial = TrimDriveSerial(other.securityBlob.serialNumber);
+        if (!serial.empty() || !otherSerial.empty())
+            return serial == otherSerial;
+        return securityBlob.modelNumber == other.securityBlob.modelNumber &&
+               securityBlob.userAddressableSectors == other.securityBlob.userAddressableSectors;
+    }
     else
         return memcmp(configurationData.deviceID, other.configurationData.deviceID, 0x14) == 0;
 }
@@ -1250,7 +1278,11 @@ void FatxDrive::SetDriveName(std::wstring name)
 
 bool FatxDrive::ValidFileName(std::string fileName)
 {
-    if (fileName.size() > FATX_ENTRY_MAX_NAME_LENGTH)
+    if (fileName.empty() || fileName.size() > FATX_ENTRY_MAX_NAME_LENGTH)
+        return false;
+
+    // FatxIsValidFatFileName also rejects the dot entries.
+    if (fileName == "." || fileName == "..")
         return false;
 
     for (DWORD i = 0; i < fileName.size(); i++)
