@@ -19,8 +19,8 @@ namespace
 {
     constexpr qint64 kDefaultExpiryDays = 30; // GODspeed's default
     constexpr const char *kTitleListUrl =
-            "http://xboxunity.net/Resources/Lib/TitleList.php?search=%1&category=0";
-    constexpr const char *kIconUrl = "http://xboxunity.net/Resources/Lib/Icon.php?tid=%1";
+            "https://xboxunity.net/Resources/Lib/TitleList.php?search=%1&category=0";
+    constexpr const char *kIconUrl = "https://xboxunity.net/Resources/Lib/Icon.php?tid=%1";
 
     bool useUnityEnabled()
     {

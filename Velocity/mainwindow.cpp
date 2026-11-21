@@ -1,5 +1,48 @@
 #include "mainwindow.h"
 
+#include <QDesktopServices>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
+#include <QUrl>
+#include <QVersionNumber>
+
+namespace
+{
+constexpr const char *kGitHubReleasesApi =
+        "https://api.github.com/repos/Mordaur/Velocity-Next/releases/latest";
+constexpr const char *kGitHubReleasesPage =
+        "https://github.com/Mordaur/Velocity-Next/releases";
+constexpr const char *kGitHubReleasePath = "/Mordaur/Velocity-Next/releases/";
+
+QNetworkRequest githubReleaseRequest()
+{
+    QNetworkRequest request(QUrl(QString::fromLatin1(kGitHubReleasesApi)));
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
+    request.setRawHeader("User-Agent", "VelocityNext/" VERSION);
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                         QNetworkRequest::NoLessSafeRedirectPolicy);
+    return request;
+}
+
+QVersionNumber parseReleaseTag(QString tag)
+{
+    tag = tag.trimmed();
+    if (tag.startsWith(QLatin1Char('v'), Qt::CaseInsensitive))
+        tag.remove(0, 1);
+    return QVersionNumber::fromString(tag);
+}
+
+bool isAllowedReleaseUrl(const QUrl &url)
+{
+    return url.isValid() &&
+           url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0 &&
+           url.host().compare(QStringLiteral("github.com"), Qt::CaseInsensitive) == 0 &&
+           url.path().startsWith(QString::fromLatin1(kGitHubReleasePath), Qt::CaseInsensitive);
+}
+}
+
 MainWindow::MainWindow(QList<QUrl> arguments, QWidget *parent) : QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
@@ -28,6 +71,9 @@ MainWindow::MainWindow(QList<QUrl> arguments, QWidget *parent) : QMainWindow(par
     QtHelpers::AddSubWindow(ui->mdiArea, dialog);
     dialog->show();
 
+    // TODO(M-3): per-plugin HTTPS release manifests. The central plugin.php
+    // endpoint is retired; keep the manager for the slot until plugins carry
+    // their own metadata.
     pluginManager = new QNetworkAccessManager(this);
     connect(pluginManager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(pluginVersionReplyFinished(QNetworkReply*)));
@@ -37,7 +83,7 @@ MainWindow::MainWindow(QList<QUrl> arguments, QWidget *parent) : QMainWindow(par
     manager = new QNetworkAccessManager(this);
     connect(manager, SIGNAL(finished(QNetworkReply*)), this,
             SLOT(versionReplyFinished(QNetworkReply*)));
-    manager->get(QNetworkRequest(QUrl("http://velocity.expetelek.com/app.data")));
+    manager->get(githubReleaseRequest());
 
     // Initialize theme action states
     updateThemeActions();
@@ -76,10 +122,12 @@ void MainWindow::LoadPlugin(QString filename, bool addToMenu, StfsPackage *packa
         }
         else
         {
-            pluginManager->setProperty("name", game->ToolName());
-            pluginManager->setProperty("version", game->Version());
-            pluginManager->get(QNetworkRequest(QUrl("http://velocity.expetelek.com/plugin.php?tid=" +
-                    QString::number(game->TitleID(), 16) + "&type=0")));
+            // TODO(M-3): central plugin updates are disabled. Requires a
+            // per-plugin HTTPS release manifest instead of plugin.php.
+            // pluginManager->setProperty("name", game->ToolName());
+            // pluginManager->setProperty("version", game->Version());
+            // pluginManager->get(QNetworkRequest(QUrl("http://velocity.expetelek.com/plugin.php?tid=" +
+            //         QString::number(game->TitleID(), 16) + "&type=0")));
 
             QDialog *widget = static_cast<QDialog*>(game->GetDialog());
             connect(widget, SIGNAL(PluginFinished()), this, SLOT(PluginFinished()));
@@ -164,10 +212,12 @@ void MainWindow::LoadPlugin(QString filename, bool addToMenu, StfsPackage *packa
         }
         else
         {
-            pluginManager->setProperty("name", gpd->ToolName());
-            pluginManager->setProperty("version", gpd->Version());
-            pluginManager->get(QNetworkRequest(QUrl("http://velocity.expetelek.com/plugin.php?tid=" +
-                    QString::number(gpd->TitleID(), 16) + "&type=1")));
+            // TODO(M-3): central plugin updates are disabled. Requires a
+            // per-plugin HTTPS release manifest instead of plugin.php.
+            // pluginManager->setProperty("name", gpd->ToolName());
+            // pluginManager->setProperty("version", gpd->Version());
+            // pluginManager->get(QNetworkRequest(QUrl("http://velocity.expetelek.com/plugin.php?tid=" +
+            //         QString::number(gpd->TitleID(), 16) + "&type=1")));
 
             QDialog *widget = static_cast<QDialog*>(gpd->GetDialog());
             connect(widget, SIGNAL(PluginFinished()), this, SLOT(PluginFinished()));
@@ -868,59 +918,67 @@ void MainWindow::on_actionFATX_File_Path_triggered()
 
 void MainWindow::versionReplyFinished(QNetworkReply *aReply)
 {
-    // Read the JSON response
-    QByteArray jsonData = aReply->readAll();
-    QJsonParseError parseError;
-    QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonData, &parseError);
-
-    if (parseError.error != QJsonParseError::NoError)
-        return;
-
-    QJsonObject jsonObject = jsonDoc.object();
-    QVariantMap result = jsonObject.toVariantMap(); // Convert to QVariantMap
-
-    QString version = result.value("version").toString();
-    QString downloadPage = result.value("dl_page").toString();
-
-    // Check if a message is present
-    bool hasMessage = result.contains("message");
-    QString message = "<br><br>";
-    if (hasMessage)
-        message += result.value("message").toString();
-
-    // Convert version strings to integers for comparison
-    bool ok, ok1;
-    int versionNum = version.replace('.', "").toInt(&ok);
-    int currentVersionNum = QString(VERSION).replace('.', "").toInt(&ok1);
-
-    if (!ok || !ok1)
-        return;
-
-    // Check if a newer version is available
-    if (versionNum > currentVersionNum)
-    {
-        auto selection = QMessageBox::question(
-            this,
-            "Version " + version,
-            "Version " + version + " of Velocity is available for download. Your current version is " +
-                VERSION + ". Would you like to be brought to the download page?" + (hasMessage ? message : ""),
-            QMessageBox::Yes,
-            QMessageBox::No
-            );
-
-        if (selection == QMessageBox::Yes)
-            QDesktopServices::openUrl(QUrl(downloadPage));
-    }
-    else if (!firstUpdateCheck)
-    {
-        QMessageBox::information(
-            this,
-            "Already Up-to-Date",
-            "This version of Velocity is already the latest."
-            );
-    }
-
+    const bool manualCheck = !firstUpdateCheck;
     firstUpdateCheck = false;
+
+    if (aReply->error() != QNetworkReply::NoError)
+    {
+        aReply->deleteLater();
+        if (manualCheck)
+            QMessageBox::information(this, "Update Check",
+                    "Could not check for updates. Please try again later.");
+        return;
+    }
+
+    const QByteArray jsonData = aReply->readAll();
+    aReply->deleteLater();
+
+    QJsonParseError parseError;
+    const QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonData, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !jsonDoc.isObject())
+    {
+        if (manualCheck)
+            QMessageBox::information(this, "Update Check",
+                    "Could not check for updates. Please try again later.");
+        return;
+    }
+
+    const QJsonObject object = jsonDoc.object();
+    const QString tag = object.value(QStringLiteral("tag_name")).toString();
+    const QVersionNumber latest = parseReleaseTag(tag);
+    const QVersionNumber current = QVersionNumber::fromString(QString::fromLatin1(VERSION));
+    if (latest.isNull() || current.isNull())
+        return;
+
+    if (latest > current)
+    {
+        QUrl target(object.value(QStringLiteral("html_url")).toString());
+        if (!isAllowedReleaseUrl(target))
+            target = QUrl(QString::fromLatin1(kGitHubReleasesPage));
+
+        QString notes = object.value(QStringLiteral("body")).toString().trimmed();
+        if (notes.size() > 4000)
+            notes = notes.left(4000) + QStringLiteral("\n…");
+
+        QString text = QStringLiteral("Version %1 of Velocity is available for download. "
+                                      "Your current version is %2. Would you like to be brought "
+                                      "to the download page?")
+                .arg(tag, QString::fromLatin1(VERSION));
+        if (!notes.isEmpty())
+            text += QStringLiteral("\n\n") + notes;
+
+        QMessageBox box(QMessageBox::Question, "Version " + tag, text,
+                        QMessageBox::Yes | QMessageBox::No, this);
+        box.setTextFormat(Qt::PlainText);
+        box.setDefaultButton(QMessageBox::No);
+        if (box.exec() == QMessageBox::Yes)
+            QDesktopServices::openUrl(target);
+    }
+    else if (manualCheck)
+    {
+        QMessageBox::information(this, "Already Up-to-Date",
+                "This version of Velocity is already the latest.");
+    }
 }
 
 void MainWindow::pluginVersionReplyFinished(QNetworkReply *aReply)
@@ -951,6 +1009,13 @@ void MainWindow::pluginVersionReplyFinished(QNetworkReply *aReply)
     QString version = result.value("version").toString();
     QString downloadPage = result.value("dl_page").toString();
 
+    // TODO(M-3): this path is currently disabled at the request site. If it is
+    // re-enabled for per-plugin HTTPS manifests, only ever open an HTTPS URL;
+    // never allow file://, smb:// or other schemes from the response.
+    QUrl target(downloadPage);
+    if (target.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) != 0)
+        return;
+
     // Check if the current version is different from the new version
     if (currVersion != version)
     {
@@ -964,7 +1029,7 @@ void MainWindow::pluginVersionReplyFinished(QNetworkReply *aReply)
             );
 
         if (selection == QMessageBox::Yes)
-            QDesktopServices::openUrl(QUrl(downloadPage));
+            QDesktopServices::openUrl(target);
     }
 }
 
@@ -976,7 +1041,7 @@ void MainWindow::on_actionProfile_Cleaner_triggered()
 
 void MainWindow::on_actionCheck_For_Updates_triggered()
 {
-    manager->get(QNetworkRequest(QUrl("http://velocity.expetelek.com/app.data")));
+    manager->get(githubReleaseRequest());
 }
 
 void MainWindow::on_actionSVOD_System_triggered()
