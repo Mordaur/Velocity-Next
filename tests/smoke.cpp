@@ -11,6 +11,7 @@
 #include <XboxInternals/Disc/Svod.h>
 #include <XboxInternals/Disc/SvodLayout.h>
 #include <XboxInternals/Gpd/Xdbf.h>
+#include <XboxInternals/IO/FileIO.h>
 #include <XboxInternals/IO/MemoryIO.h>
 #include <XboxInternals/IO/StfsIO.h>
 #include <XboxInternals/Stfs/StfsDefinitions.h>
@@ -85,6 +86,15 @@ namespace
         check(io.ReadUInt64() == 0x0102030405060708ull, "little-endian UINT64 round-trip");
         check(io.ReadString() == "hello", "NUL-terminated string round-trip");
 
+        u8 fp[16] = {};
+        MemoryIO fpio(fp, sizeof(fp));
+        fpio.SetEndian(LittleEndian);
+        fpio.Write(static_cast<u32>(0x3F800000)); // 1.0f
+        fpio.Write(static_cast<u64>(0x3FF0000000000000ull)); // 1.0
+        fpio.SetPosition(0);
+        check(fpio.ReadFloat() == 1.0f, "little-endian Float bit round-trip");
+        check(fpio.ReadDouble() == 1.0, "little-endian Double bit round-trip");
+
         u8 be[16] = {};
         MemoryIO big(be, sizeof(be));
         big.SetEndian(BigEndian);
@@ -110,6 +120,53 @@ namespace
             MemoryIO tiny(raw, 2);
             tiny.SetPosition(3);
         }), "seek past the end throws");
+    }
+
+    void testFileIOReadWritePosition()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_fileio_rw.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        {
+            FileIO io(path.string(), true);
+            check(io.GetPosition() == 0, "FileIO starts at position 0");
+
+            io.WriteBytes(reinterpret_cast<u8*>(const_cast<char*>("abcdefgh")), 8);
+            check(io.GetPosition() == 8, "FileIO write advances the position");
+
+            // A read-write fstream has separate get/put pointers; BaseIO has one.
+            io.SetPosition(0);
+            u8 buf[8] = {};
+            io.ReadBytes(buf, 4);
+            check(std::memcmp(buf, "abcd", 4) == 0, "FileIO reads after a write");
+            check(io.GetPosition() == 4, "FileIO read advances the position");
+
+            // A write after a read must continue at the read position, not at
+            // the stale put pointer.
+            io.WriteBytes(reinterpret_cast<u8*>(const_cast<char*>("WXYZ")), 4);
+            check(io.GetPosition() == 8, "FileIO write continues after the read");
+
+            io.SetPosition(0);
+            io.ReadBytes(buf, 8);
+            check(std::memcmp(buf, "abcdWXYZ", 8) == 0,
+                  "FileIO read/write share one logical position");
+
+            // A read after a write must continue at the write position.
+            io.SetPosition(0);
+            io.WriteBytes(reinterpret_cast<u8*>(const_cast<char*>("1234")), 4);
+            io.ReadBytes(buf, 4);
+            check(std::memcmp(buf, "WXYZ", 4) == 0, "FileIO reads after the write");
+
+            io.SetPosition(0);
+            io.ReadBytes(buf, 8);
+            check(std::memcmp(buf, "1234WXYZ", 8) == 0,
+                  "FileIO interleaved read/write keeps one position");
+        }
+
+        fs::remove(path, ignored);
     }
 
     void testLzxGarbage()
@@ -683,6 +740,51 @@ namespace
             check(readBack == data, "StfsIO reads a file to EOF");
             io.reset();
 
+            // Appending at a block-aligned EOF must allocate a new block, not
+            // overwrite the start of the last existing block.
+            std::vector<u8> aligned(0x1000, 0x5A);
+            package.InjectData(aligned.data(), static_cast<u32>(aligned.size()), "aligned.bin");
+            std::unique_ptr<StfsIO> alignedIO(package.GetStfsIO("aligned.bin"));
+            alignedIO->SetPosition(0x1000);
+            u8 extra = 0xA5;
+            alignedIO->WriteBytes(&extra, 1);
+            check(alignedIO->GetPosition() == 0x1001,
+                  "StfsIO append advances one byte");
+
+            std::vector<u8> appended(0x1001);
+            alignedIO->SetPosition(0);
+            alignedIO->ReadBytes(appended.data(), static_cast<u32>(appended.size()));
+            check(std::equal(aligned.begin(), aligned.end(), appended.begin()),
+                  "StfsIO block-aligned append preserves the last block");
+            check(appended.back() == extra, "StfsIO block-aligned append writes the new byte");
+
+            // Growing a 1-byte file by 0x1001 bytes needs exactly two blocks;
+            // a size-delta split over-allocated a third one.
+            const u8 seed = 0x11;
+            package.InjectData(const_cast<u8*>(&seed), 1, "grow.bin");
+            std::unique_ptr<StfsIO> growIO(package.GetStfsIO("grow.bin"));
+            std::vector<u8> grown(0x1001, 0x77);
+            growIO->SetPosition(0);
+            growIO->WriteBytes(grown.data(), static_cast<u32>(grown.size()));
+            check(growIO->Length() == 0x1001, "StfsIO growth sets the new size");
+            growIO.reset();
+
+            // StfsIO writes the entry straight to disk; StfsPackage's cached
+            // listing is not updated, so verify through a fresh package.
+            StfsPackage reopened(path.string());
+            StfsFileEntry grownEntry = reopened.GetFileEntry("grow.bin");
+            check(grownEntry.fileSize == 0x1001, "StfsIO growth persists the file size");
+            check(grownEntry.blocksForFile == 2, "StfsIO growth allocates ceil(size/0x1000) blocks");
+            reopened.GenerateBlockChain(&grownEntry, true);
+            check(grownEntry.blockChain.size() == 2, "StfsIO growth chain matches the block count");
+
+            std::unique_ptr<StfsIO> grownIO(reopened.GetStfsIO("grow.bin"));
+            std::vector<u8> grownBack(0x1001);
+            grownIO->ReadBytes(grownBack.data(), static_cast<u32>(grownBack.size()));
+            check(grownBack == grown, "StfsIO growth preserves the written data");
+            grownIO.reset();
+            alignedIO.reset();
+
             StfsFileEntry empty = package.GetFileEntry("empty.bin");
             check(empty.startingBlockNum == kBlockChainTerminator,
                   "empty STFS file starts at the terminator");
@@ -1062,6 +1164,7 @@ int main()
     testXexType1Tables();
     testSvodMultipartRehash();
     testMemoryIO();
+    testFileIOReadWritePosition();
     testLzxGarbage();
     testLzxRegression();
     testCorruptStfsHeaders();
