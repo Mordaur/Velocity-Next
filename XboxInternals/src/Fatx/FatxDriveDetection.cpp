@@ -98,18 +98,28 @@ std::vector<std::unique_ptr<FatxDrive>> FatxDriveDetection::GetAllFatxDrives(
             #endif
 
             #ifdef _WIN32
-                WIN32_FIND_DATA fi;
+                WIN32_FIND_DATAW fi;
 
-                HANDLE h = FindFirstFile((logicalDrivePath + L"\\Data*").c_str(), &fi);
+                HANDLE h = FindFirstFileW((logicalDrivePath + L"\\Data*").c_str(), &fi);
                 if (h != INVALID_HANDLE_VALUE)
                 {
                     do
                     {
-                        char path[9];
-                        wcstombs(path, fi.cFileName, wcslen(fi.cFileName) + 1);
-                        dataFiles.push_back(directory + "\\" + std::string(path));
+                        // Convert the wide name with the same UTF-8 mapping used
+                        // for the directory; never into a fixed-size buffer.
+                        const int nameSize = WideCharToMultiByte(CP_UTF8, 0,
+                                fi.cFileName, -1, nullptr, 0, nullptr, nullptr);
+                        if (nameSize <= 0)
+                            continue;
+
+                        std::string fileName(static_cast<size_t>(nameSize), '\0');
+                        WideCharToMultiByte(CP_UTF8, 0, fi.cFileName, -1,
+                                &fileName[0], nameSize, nullptr, nullptr);
+                        fileName.resize(static_cast<size_t>(nameSize - 1));
+
+                        dataFiles.push_back(directory + "\\" + fileName);
                     }
-                    while (FindNextFile(h, &fi));
+                    while (FindNextFileW(h, &fi));
 
                     FindClose(h);
 

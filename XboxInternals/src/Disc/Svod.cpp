@@ -175,7 +175,7 @@ void SVOD::ValidateDataFiles()
     for (DWORD i = 0; i < expected; ++i)
     {
         char name[16];
-        std::snprintf(name, sizeof(name), "Data%04u", i);
+        std::snprintf(name, sizeof(name), "Data%04u", static_cast<unsigned>(i));
 
         bool found = false;
         for (const auto &path : paths)

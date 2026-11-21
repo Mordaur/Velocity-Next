@@ -38,6 +38,7 @@
 
 namespace
 {
+#ifndef _WIN32
     DeviceErrorCode mapPosixError(int error)
     {
         switch (error)
@@ -53,6 +54,7 @@ namespace
             return DeviceErrorCode::IoError;
         }
     }
+#endif
 
 #ifdef _WIN32
     DeviceErrorCode mapWindowsError(DWORD error)
@@ -468,7 +470,7 @@ void DeviceIO::loadDevice(std::wstring devicePath, DeviceErrorCode *error)
     memset(&impl->offset, 0, sizeof(OVERLAPPED));
 
     // Try read/write first; fall back to read-only for browsing without UAC.
-    impl->deviceHandle = CreateFile(
+    impl->deviceHandle = CreateFileW(
                 devicePath.c_str(),
                 GENERIC_READ | GENERIC_WRITE,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -479,7 +481,7 @@ void DeviceIO::loadDevice(std::wstring devicePath, DeviceErrorCode *error)
 
     if (impl->deviceHandle == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED)
     {
-        impl->deviceHandle = CreateFile(
+        impl->deviceHandle = CreateFileW(
                     devicePath.c_str(),
                     GENERIC_READ,
                     FILE_SHARE_READ | FILE_SHARE_WRITE,
