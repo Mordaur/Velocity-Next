@@ -39,6 +39,9 @@ jobs:
       - name: Build
         run: cmake --build --preset linux-release
       
+      - name: Test
+        run: ctest --test-dir out/build/linux-release --output-on-failure
+      
       - name: Package
         run: |
           mkdir release-linux

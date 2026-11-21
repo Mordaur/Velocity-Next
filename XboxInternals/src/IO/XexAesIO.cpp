@@ -88,7 +88,8 @@ void XexAesIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
 
 void XexAesIO::WriteBytes(BYTE *buffer, DWORD len)
 {
-
+    (void)buffer;
+    (void)len;
 }
 
 UINT64 XexAesIO::Length()

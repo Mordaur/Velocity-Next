@@ -4,6 +4,6 @@ target_compile_features(device_helper_protocol PUBLIC cxx_std_20)
 set_target_properties(device_helper_protocol PROPERTIES FOLDER "Tools")
 
 add_executable(velocity-device-helper main.cpp)
-target_link_libraries(velocity-device-helper PRIVATE device_helper_protocol)
+target_link_libraries(velocity-device-helper PRIVATE device_helper_protocol velocity_compiler_flags)
 target_compile_features(velocity-device-helper PRIVATE cxx_std_20)
 set_target_properties(velocity-device-helper PROPERTIES FOLDER "Tools")

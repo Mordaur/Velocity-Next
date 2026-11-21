@@ -10,7 +10,7 @@
 #   specs/          - Feature specifications and documentation
 #
 # Botan CMake integration adapted from: https://github.com/Tectu/botan-cmake
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 
 # Prevent in-source builds
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
@@ -68,6 +68,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Create an INTERFACE library to hold common compile options
 add_library(velocity_compiler_flags INTERFACE)
 
+# Warnings are opt-out only for consumers that cannot tolerate them; the
+# project targets stay warning-clean on GCC, Clang/AppleClang and MinGW.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(velocity_compiler_flags INTERFACE -Wall -Wextra)
+endif()
+
 # All Velocity targets (XboxInternals, Velocity) must link against velocity_compiler_flags
 # so the common compile options apply uniformly to GCC, Clang and MinGW.
 # Example: target_link_libraries(MyTarget PRIVATE velocity_compiler_flags)
@@ -90,6 +96,11 @@ endif()
 
 # libFuzzer targets (Clang only; see tests/). Off by default.
 option(BUILD_FUZZERS "Build libFuzzer targets (requires Clang)" OFF)
+
+# Configure-time network probes (GitHub API). Off by default: they are not
+# needed to build and consume the anonymous rate limit.
+option(VELOCITY_CHECK_DEPENDENCY_UPDATES
+    "Query GitHub for newer Botan/Python versions at configure time" OFF)
 
 # ------------------------------
 # Options
@@ -232,7 +243,7 @@ find_package(Botan ${BOTAN_VERSION} REQUIRED)
 # Skipped if curl is not available or network request fails
 # ====================================================================
 find_program(CURL_EXECUTABLE curl)
-if(CURL_EXECUTABLE)
+if(VELOCITY_CHECK_DEPENDENCY_UPDATES AND CURL_EXECUTABLE)
     message(STATUS "Checking for Botan updates...")
     execute_process(
         COMMAND ${CURL_EXECUTABLE} -s https://api.github.com/repos/randombit/botan/tags?per_page=1
@@ -280,7 +291,6 @@ botan_generate(
 include(GNUInstallDirs)
 install(FILES ${CMAKE_BINARY_DIR}/botan_all.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/botan
-  OPTIONAL  # File might not exist until build time
 )
 
 # ====================================================================
@@ -336,7 +346,7 @@ if(Python_FOUND)
     set(PYTHON_VERSION_STR "${Python_VERSION}")
     
     # Check for newer Python versions online via GitHub API
-    if(CURL_EXECUTABLE)
+    if(VELOCITY_CHECK_DEPENDENCY_UPDATES AND CURL_EXECUTABLE)
         execute_process(
             COMMAND ${CURL_EXECUTABLE} -s https://api.github.com/repos/python/cpython/tags?per_page=100
             OUTPUT_VARIABLE PYTHON_TAGS_JSON

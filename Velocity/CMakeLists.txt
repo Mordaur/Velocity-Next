@@ -209,7 +209,7 @@ target_link_libraries(VelocityNext
 # Define VERSION and platform build name
 target_compile_definitions(VelocityNext 
   PRIVATE 
-    VERSION="\\\"${PROJECT_VERSION}\\\""
+    VERSION="${PROJECT_VERSION}"
     PLATFORM_BUILD_NAME="${PLATFORM_BUILD_NAME}"
 )
 
@@ -239,3 +239,31 @@ if(BUILD_XBOXINTERNALS_SHARED)
         COMMENT "Copying libXboxInternals.dll to Velocity output directory"
     )
 endif()
+
+# ------------------------------
+# Install
+# ------------------------------
+include(GNUInstallDirs)
+if(APPLE)
+  # macdeployqt puts dependencies in Contents/Frameworks; also support a plain
+  # prefix install where the library lives in <prefix>/lib.
+  set_target_properties(VelocityNext PROPERTIES
+    INSTALL_RPATH "@executable_path/../Frameworks;@executable_path/../../lib")
+elseif(UNIX)
+  set_target_properties(VelocityNext PROPERTIES
+    INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+endif()
+
+install(TARGETS VelocityNext
+  BUNDLE  DESTINATION .
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+if(APPLE)
+  install(TARGETS velocity-device-helper RUNTIME DESTINATION VelocityNext.app/Contents/MacOS)
+else()
+  install(TARGETS velocity-device-helper RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+install(FILES ${PROJECT_SOURCE_DIR}/COPYING ${PROJECT_SOURCE_DIR}/NOTICE
+  DESTINATION ${CMAKE_INSTALL_DOCDIR})

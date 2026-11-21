@@ -141,15 +141,15 @@ void Xdbf::init()
     titlesPlayed.syncs.lengthChanged = false;
     avatarAwards.syncs.lengthChanged = false;
 
-    memset(&achievements.syncs.entry, 0, sizeof(XdbfEntry));
-    memset(&settings.syncs.entry, 0, sizeof(XdbfEntry));
-    memset(&titlesPlayed.syncs.entry, 0, sizeof(XdbfEntry));
-    memset(&avatarAwards.syncs.entry, 0, sizeof(XdbfEntry));
+    achievements.syncs.entry = XdbfEntry{};
+    settings.syncs.entry = XdbfEntry{};
+    titlesPlayed.syncs.entry = XdbfEntry{};
+    avatarAwards.syncs.entry = XdbfEntry{};
 
-    memset(&achievements.syncData.entry, 0, sizeof(XdbfEntry));
-    memset(&settings.syncData.entry, 0, sizeof(XdbfEntry));
-    memset(&titlesPlayed.syncData.entry, 0, sizeof(XdbfEntry));
-    memset(&avatarAwards.syncData.entry, 0, sizeof(XdbfEntry));
+    achievements.syncData.entry = XdbfEntry{};
+    settings.syncData.entry = XdbfEntry{};
+    titlesPlayed.syncData.entry = XdbfEntry{};
+    avatarAwards.syncData.entry = XdbfEntry{};
 }
 
 void Xdbf::readHeader()
@@ -389,6 +389,7 @@ XdbfEntry Xdbf::CreateEntry(EntryType type, UINT64 id, DWORD size)
     // add the entry to the listing, and create a new sync for the entry if needed
     switch (entry.type)
     {
+            default: break;
         case Undefined:
             throw std::string("Xdbf: Cannot create entry with Undefined type.\n");
         case Achievement:

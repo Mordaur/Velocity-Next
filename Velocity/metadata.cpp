@@ -104,6 +104,7 @@ Metadata::Metadata(QStatusBar *statusBar, XContentHeader *header, bool pec, QWid
         ui->tableWidget->setCellWidget(0, 0, cmbxMagic);
         switch (header->magic)
         {
+            default: break;
             case CON:
                 cmbxMagic->setCurrentIndex(0);
                 break;

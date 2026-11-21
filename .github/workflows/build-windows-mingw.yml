@@ -122,6 +122,12 @@ jobs:
           cmake --build --preset windows-mingw-release
         shell: pwsh
       
+      - name: Test
+        run: |
+          $env:PATH = "${{ steps.mingw-setup.outputs.mingw-path }};$PWD/out/build/windows-mingw-release/XboxInternals;$env:PATH"
+          ctest --test-dir out/build/windows-mingw-release --output-on-failure
+        shell: pwsh
+      
       - name: Package
         run: |
           mkdir release-mingw

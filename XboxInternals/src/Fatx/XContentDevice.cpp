@@ -53,7 +53,7 @@ bool XContentDevice::LoadDevice(void(*progress)(void*, bool), void *arg)
 
     // locate the content partition
     std::vector<Partition*> partitions = drive->GetPartitions();
-    for (int i = 0; i < partitions.size(); i++)
+    for (size_t i = 0; i < partitions.size(); i++)
     {
         if (partitions.at(i)->name == "Content")
         {
@@ -86,7 +86,7 @@ bool XContentDevice::LoadDevice(void(*progress)(void*, bool), void *arg)
     drive->GetChildFileEntries(fileEntry);
 
     // check for profile folders
-    for (int i = 0; i< fileEntry->cachedFiles.size(); i++)
+    for (size_t i = 0; i < fileEntry->cachedFiles.size(); i++)
     {
         FatxFileEntry profileFolderEntry = fileEntry->cachedFiles.at(i);
 
@@ -119,7 +119,7 @@ bool XContentDevice::LoadDevice(void(*progress)(void*, bool), void *arg)
 
         // get all of the game save data for this profile
         drive->GetChildFileEntries(&profileFolderEntry);
-        for (int x = 0; x < profileFolderEntry.cachedFiles.size(); x++)
+        for (size_t x = 0; x < profileFolderEntry.cachedFiles.size(); x++)
         {
             // verify that the entry is a valid title folder, should be named with title ID
             FatxFileEntry titleFolder = profileFolderEntry.cachedFiles.at(x);
@@ -158,7 +158,7 @@ bool XContentDevice::LoadDevice(void(*progress)(void*, bool), void *arg)
 
     // check for shared items
     drive->GetChildFileEntries(sharedItemsFolder);
-    for (int i = 0; i < sharedItemsFolder->cachedFiles.size(); i++)
+    for (size_t i = 0; i < sharedItemsFolder->cachedFiles.size(); i++)
     {
         // verify that the entry is a valid title folder, should be named with title ID
         FatxFileEntry titleFolder = sharedItemsFolder->cachedFiles.at(i);
@@ -171,7 +171,7 @@ bool XContentDevice::LoadDevice(void(*progress)(void*, bool), void *arg)
         GetAllContentItems(titleFolder, items, progress, arg);
 
         // put the content items in the correct category
-        for (int x = 0; x < items.size(); x++)
+        for (size_t x = 0; x < items.size(); x++)
         {
             // update progress if needed
             if (progress)
@@ -460,15 +460,15 @@ void XContentDevice::DeleteFile(IXContentHeader *package, std::string pathOnDevi
     // file is from a profile, so it's not shared
     if ((memcmp(package->metaData->profileID, nullID, 8)) != 0)
     {
-        for (int i = 0; i < profiles->size(); i++)
+        for (size_t i = 0; i < profiles->size(); i++)
         {
             if (profiles->at(i).GetProfileID() && memcmp(profiles->at(i).GetProfileID(), package->metaData->profileID, 8) == 0)
             {
-                for (int x = 0; x < profiles->at(i).titles.size(); x++)
+                for (size_t x = 0; x < profiles->at(i).titles.size(); x++)
                 {
                     if (profiles->at(i).titles.at(x).GetTitleID() == package->metaData->titleID)
                     {
-                        for (int y = 0; y < profiles->at(i).titles.at(x).titleSaves.size(); y++)
+                        for (size_t y = 0; y < profiles->at(i).titles.at(x).titleSaves.size(); y++)
                         {
                             if (profiles->at(i).titles.at(x).titleSaves.at(y).content.get() == package)
                             {
@@ -536,7 +536,7 @@ void XContentDevice::DeleteFile(IXContentHeader *package, std::string pathOnDevi
                 break;
         }
 
-        for (int i = 0; sharedItemCategory && i < sharedItemCategory->size(); i++)
+        for (size_t i = 0; sharedItemCategory && i < sharedItemCategory->size(); i++)
         {
             if (sharedItemCategory->at(i).content.get() == package)
             {
@@ -582,7 +582,7 @@ bool XContentDevice::ValidTitleID(std::string id)
 void XContentDevice::GetAllContentItems(FatxFileEntry &titleFolder, vector<XContentDeviceItem> &itemsFound, void(*progress)(void *, bool), void *arg)
 {
     // iterate through all of the content types for this title
-    for (int y = 0; y < titleFolder.cachedFiles.size(); y++)
+    for (size_t y = 0; y < titleFolder.cachedFiles.size(); y++)
     {
         // verify that the entry is a folder and named with the content type as a string in hex,
         // so for savegames the folder would be named 00000001
@@ -594,7 +594,7 @@ void XContentDevice::GetAllContentItems(FatxFileEntry &titleFolder, vector<XCont
         drive->GetChildFileEntries(&contentTypeFolder);
 
         // iterate through all of the STFS packages in this content type folder
-        for (int z = 0; z < contentTypeFolder.cachedFiles.size(); z++)
+        for (size_t z = 0; z < contentTypeFolder.cachedFiles.size(); z++)
         {
             // we're looking for STFS packages, so make sure the entry isn't another directory
             FatxFileEntry *contentPackage = &contentTypeFolder.cachedFiles.at(z);
@@ -676,7 +676,7 @@ void XContentDevice::CleanupSharedFiles(std::vector<XContentDeviceSharedItem> *c
 std::string XContentDevice::ToUpper(std::string str)
 {
     std::string toReturn;
-    for (int i = 0; i < str.size(); i++)
+    for (size_t i = 0; i < str.size(); i++)
         toReturn += toupper(str.at(i));
     return toReturn;
 }

@@ -34,6 +34,9 @@ jobs:
       - name: Build
         run: cmake --build --preset macos-release
       
+      - name: Test
+        run: ctest --test-dir out/build/macos-release --output-on-failure
+      
       - name: Deploy Qt dependencies
         run: |
           chmod +x deploy_mac.sh

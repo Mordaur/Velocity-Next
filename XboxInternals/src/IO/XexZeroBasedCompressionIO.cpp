@@ -116,7 +116,8 @@ void XexZeroBasedCompressionIO::ReadBytes(BYTE *outBuffer, DWORD readLength)
 
 void XexZeroBasedCompressionIO::WriteBytes(BYTE *buffer, DWORD len)
 {
-
+    (void)buffer;
+    (void)len;
 }
 
 UINT64 XexZeroBasedCompressionIO::Length()

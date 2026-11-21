@@ -39,6 +39,7 @@ void ExtractionWorker::run()
 
             switch (dialog_->system)
             {
+            default: break;
                 case FileSystemSTFS:
                 {
                     StfsExtractEntry *entry = reinterpret_cast<StfsExtractEntry*>(dialog_->internalFiles.at(i));
@@ -285,6 +286,7 @@ void MultiProgressDialog::start()
     // calculate the total overall progress
     switch(system)
     {
+            default: break;
         case FileSystemSTFS:
             for (int i = 0; i < internalFiles.size(); i++)
             {
@@ -342,6 +344,7 @@ void MultiProgressDialog::start()
 
 void MultiProgressDialog::onProgressUpdate(int fileIndex, DWORD curProgress, DWORD total)
 {
+    (void)fileIndex;
     QMutexLocker locker(&progressMutex_);
     
     ui->progressBar->setValue(curProgress);
@@ -357,6 +360,7 @@ void MultiProgressDialog::onProgressUpdate(int fileIndex, DWORD curProgress, DWO
 
 void MultiProgressDialog::onFileComplete(int fileIndex)
 {
+    (void)fileIndex;
     // File completed, progress update already handled
 }
 
@@ -404,6 +408,7 @@ void MultiProgressDialog::operateOnNextFile()
 
     switch(system)
     {
+            default: break;
         case FileSystemSTFS:
         {
             // get the file entry

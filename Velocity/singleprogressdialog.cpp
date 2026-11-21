@@ -39,6 +39,7 @@ void SingleProgressDialog::start()
     {
         switch (system)
         {
+            default: break;
             case FileSystemSTFS:
             {
                 StfsPackage *package = reinterpret_cast<StfsPackage*>(device);

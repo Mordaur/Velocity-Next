@@ -6,7 +6,7 @@
 # error paths and the image openers, plus (optionally) libFuzzer targets.
 
 add_executable(xbi_smoke smoke.cpp)
-target_link_libraries(xbi_smoke PRIVATE XboxInternals)
+target_link_libraries(xbi_smoke PRIVATE XboxInternals velocity_compiler_flags)
 add_test(NAME xbi_smoke COMMAND xbi_smoke)
 set_tests_properties(xbi_smoke PROPERTIES TIMEOUT 120)
 

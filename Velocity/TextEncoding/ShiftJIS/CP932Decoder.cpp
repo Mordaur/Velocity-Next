@@ -68,7 +68,6 @@ QString CP932Decoder::decode(const QByteArray& data) const {
             const quint8 trail = p[i + 1];
             
             // Lookup in mapping table
-            const quint16 sjis = (static_cast<quint16>(byte) << 8) | trail;
             const quint16 unicode = lookupUnicode(byte, trail);
             
             if (unicode != 0) {

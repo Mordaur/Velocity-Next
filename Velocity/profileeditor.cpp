@@ -109,7 +109,9 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
         "").replace("}", "").replace("-", "")).toStdString();
     profile->ExtractFile("Account", accountTempPath);
     if (!accountTempPath.empty())
+    {
         tempFiles.push_back(accountTempPath);
+    }
 
         // parse the account file
         account = new Account(accountTempPath, true, profile->metaData->certificate.ownerConsoleType);
@@ -186,7 +188,9 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
         "").replace("}", "").replace("-", "")).toStdString();
     profile->ExtractFile("FFFE07D1.gpd", dashGpdTempPath);
     if (!dashGpdTempPath.empty())
+    {
         tempFiles.push_back(dashGpdTempPath);
+    }
 
         // parse the dashboard gpd
         dashGpd = new DashboardGpd(dashGpdTempPath);
@@ -462,7 +466,9 @@ ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool d
         "").replace("}", "").replace("-", "")).toStdString();
     PEC->ExtractFile(gpdName.toStdString(), tempGpdName);
     if (!tempGpdName.empty())
+    {
         tempFiles.push_back(tempGpdName);
+    }
 
         // Only create cached copy if anonymous data sharing is enabled
         if (anonDataEnabled)
@@ -689,6 +695,7 @@ void ProfileEditor::addToDashGpd(SettingEntry *entry, SettingEntryType type, UIN
 
     switch (type)
     {
+        default: break;
         case Context:
             break;
         case Int32:

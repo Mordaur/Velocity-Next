@@ -91,6 +91,7 @@ SettingEntry GpdBase::readSettingEntry(XdbfEntry entry)
 
     switch (toReturn.type)
     {
+            default: break;
         case Context:
             io->SetPosition(entryAddr);
 
@@ -241,6 +242,7 @@ void GpdBase::WriteSettingEntry(SettingEntry setting)
     // Write setting
     switch (setting.type)
     {
+            default: break;
         case Context:
         {
             const DWORD binaryLength = static_cast<DWORD>(setting.binaryData.size());

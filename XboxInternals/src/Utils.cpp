@@ -19,7 +19,7 @@ std::string Utils::ConvertToHexString(BYTE *buffer, DWORD len, std::ios_base&(le
 {
     std::ostringstream ss;
     ss << std::hex << std::setfill('0');
-    for (int i = 0; i < len; i++)
+    for (DWORD i = 0; i < len; i++)
         ss << letterCase << std::hex << std::setw(2) << (int)buffer[i];
     return ss.str();
 }

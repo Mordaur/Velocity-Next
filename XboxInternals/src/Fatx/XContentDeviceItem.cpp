@@ -7,13 +7,13 @@ XContentDeviceItem::XContentDeviceItem() :
 }
 
 XContentDeviceItem::XContentDeviceItem(FatxFileEntry *fileEntry, std::shared_ptr<IXContentHeader> content, std::vector<std::string> contentFilePaths) :
-    content(std::move(content)), pathOnDevice(fileEntry->path + fileEntry->name), rawName(fileEntry->name), fileSize(fileEntry->fileSize), contentFilePaths(contentFilePaths)
+    content(std::move(content)), pathOnDevice(fileEntry->path + fileEntry->name), contentFilePaths(std::move(contentFilePaths)), rawName(fileEntry->name), fileSize(fileEntry->fileSize)
 {
 
 }
 
 XContentDeviceItem::XContentDeviceItem(std::string pathOnDevice, std::string rawName, std::shared_ptr<IXContentHeader> content, UINT64 fileSize, std::vector<std::string> contentFilePaths) :
-    content(std::move(content)), pathOnDevice(pathOnDevice), rawName(rawName), fileSize(fileSize), contentFilePaths(contentFilePaths)
+    content(std::move(content)), pathOnDevice(std::move(pathOnDevice)), contentFilePaths(std::move(contentFilePaths)), rawName(std::move(rawName)), fileSize(fileSize)
 {
 
 }

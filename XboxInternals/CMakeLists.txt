@@ -178,7 +178,7 @@ install(EXPORT XboxInternalsTargets
 # Use case: Link XboxInternals statically when BUILD_XBOXINTERNALS_STATIC=ON
 # The main XboxInternals target follows BUILD_XBOXINTERNALS_SHARED setting
 if(BUILD_XBOXINTERNALS_STATIC)
-  add_library(XboxInternalsStatic STATIC EXCLUDE_FROM_ALL
+  add_library(XboxInternalsStatic STATIC
     $<TARGET_OBJECTS:XboxInternals>
   )
   target_link_libraries(XboxInternalsStatic 

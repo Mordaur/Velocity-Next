@@ -549,6 +549,7 @@ void XContentHeader::WriteMetaData()
         io->Write((DWORD)installerType);
         switch (installerType)
         {
+            default: break;
             case SystemUpdate:
             case TitleUpdate:
             {
