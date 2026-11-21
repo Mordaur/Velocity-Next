@@ -1,7 +1,7 @@
 #ifndef FATXIO_H
 #define FATXIO_H
 
-#include <XboxInternals/IO/DeviceIO.h>
+#include <XboxInternals/IO/BaseIO.h>
 #include <XboxInternals/IO/FileIO.h>
 #include <XboxInternals/IO/MemoryIO.h>
 #include "../Fatx/FatxConstants.h"
@@ -22,7 +22,7 @@ class XBOXINTERNALS_EXPORT FatxIO : public BaseIO
 public:
     FatxFileEntry *entry;
 
-    FatxIO(DeviceIO *device, FatxFileEntry *entry);
+    FatxIO(BaseIO *device, FatxFileEntry *entry);
     virtual ~FatxIO();
 
     // get the current file entry
@@ -69,7 +69,7 @@ public:
     static UINT64 ClusterToOffset(Partition *part, DWORD cluster);
 
     // sets all the clusters equal to value
-    static void SetAllClusters(DeviceIO *device, Partition *part, std::vector<DWORD> &clusters,
+    static void SetAllClusters(BaseIO *device, Partition *part, std::vector<DWORD> &clusters,
             DWORD value);
 
     // get the ranges of consecutive numbers in list where it's sorted
@@ -83,7 +83,7 @@ private:
     // Writes the cluster chain (and links them correctly) starting from startingCluster
     void WriteClusterChain(Partition *part, DWORD startingCluster, std::vector<DWORD> clusterChain);
 
-    DeviceIO *device;
+    BaseIO *device;
     UINT64 pos;
     DWORD maxReadConsecutive;
 };

@@ -30,7 +30,7 @@ public:
     bool valid;
 
 private:
-    FileIO *io;
+    FileIO *io = nullptr;
     bool ioPassedIn;
 
     // parse Ytgr header

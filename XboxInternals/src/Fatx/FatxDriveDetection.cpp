@@ -13,6 +13,11 @@
     #include <unistd.h>
     #include <sys/stat.h>
 
+    #include <cstdlib>
+    #include <cstring>
+    #include <functional>
+    #include <set>
+
     #ifdef __APPLE__
         #include <sys/disk.h>
         #include <sys/ioctl.h>
@@ -247,103 +252,73 @@ std::vector<std::wstring> FatxDriveDetection::getLogicalDrives()
         currentChar++;
     }
 #elif __APPLE__
-    DIR *dir = NULL;
-    dirent *ent = NULL;
-    dir = opendir("/Volumes/");
+    DIR *dir = opendir("/Volumes/");
     if (dir != NULL)
     {
-        std::stringstream path;
-
-        // search for valid flash drives
-        while ((ent = readdir(dir)) != NULL)
+        while (dirent *ent = readdir(dir))
         {
-            try
-            {
-                // initialize the path
-                path << "/Volumes/";
-                path << ent->d_name;
-                path << "/Xbox360/";
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+                continue;
 
-                // get the xbox360 folder path
-                std::string xboxDirPath = path.str();
+            std::string xboxDirPath = std::string("/Volumes/") + ent->d_name + "/Xbox360/";
+            struct stat status {};
+            if (stat(xboxDirPath.c_str(), &status) != 0 || !S_ISDIR(status.st_mode))
+                continue;
 
-                // add it to our list of drives
-                std::wstring widePathStr;
-                widePathStr.assign(xboxDirPath.begin(), xboxDirPath.end());
-                driveStrings.push_back(widePathStr);
-            }
-            catch(...)
-            {
-                // something bad happened
-                // skip this device, and try the next one
-            }
-
-            // clear the stringstream
-            path.str(std::string());
+            std::wstring widePathStr(xboxDirPath.begin(), xboxDirPath.end());
+            driveStrings.push_back(widePathStr);
         }
-        if (dir)
-            closedir(dir);
-        if (ent)
-            delete ent;
+        closedir(dir);
     }
 #elif __linux
-    DIR *dir = NULL, *dir2 = NULL;
-    dirent *ent = NULL, *ent2 = NULL;
-    dir = opendir("/media/");
-    if (dir != NULL)
-    {
-        std::stringstream path;
+    std::set<std::string> seen;
 
-        // search for valid flash drives
-        while ((ent = readdir(dir)) != NULL)
+    const auto addCandidate = [&](const std::string &base) {
+        const std::string xboxPath = base + "/Xbox360";
+        struct stat status {};
+        if (stat(xboxPath.c_str(), &status) != 0 || !S_ISDIR(status.st_mode))
+            return;
+
+        const std::string drive = xboxPath + "/";
+        if (!seen.insert(drive).second)
+            return;
+
+        driveStrings.emplace_back(drive.begin(), drive.end());
+    };
+
+    // Walk `root` and check the expected mount layout at each level:
+    // /media/<user>/<label>, /run/media/<user>/<label>, /mnt/<label>.
+    std::function<void(const std::string &, int)> scan = [&](const std::string &root, int depth) {
+        DIR *dir = opendir(root.c_str());
+        if (dir == nullptr)
+            return;
+
+        addCandidate(root);
+        if (depth > 0)
         {
-            if (ent->d_type != DT_DIR)
-                continue;
-
-            path.str(std::string());
-            path << "/media/" << ent->d_name;
-            dir2 = opendir(path.str().c_str());
-            if (dir2 == NULL)
-                continue;
-
-            // search for valid flash drives
-            while ((ent2 = readdir(dir2)) != NULL)
+            while (dirent *ent = readdir(dir))
             {
-
-                if (strcmp(ent2->d_name, ".") == 0 || strcmp(ent2->d_name, "..") == 0)
+                if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
                     continue;
 
-                try
-                {
-                    // initialize the path
-                    path << "/" << ent2->d_name << "/Xbox360/";
-
-                    // get the xbox360 folder path
-                    std::string xboxDirPath = path.str();
-
-                    // add it to our list of drives
-                    std::wstring widePathStr;
-                    widePathStr.assign(xboxDirPath.begin(), xboxDirPath.end());
-                    driveStrings.push_back(widePathStr);
-                }
-                catch(...)
-                {
-                    // something bad happened
-                    // skip this device, and try the next one
-                }
-
-                // clear the stringstream
-                path.str(std::string());
-                path << "/media/" << ent->d_name;
+                const std::string child = root + "/" + ent->d_name;
+                struct stat status {};
+                if (stat(child.c_str(), &status) == 0 && S_ISDIR(status.st_mode))
+                    scan(child, depth - 1);
             }
         }
-        if (dir)
-            closedir(dir);
-        if (ent)
-            delete ent;
-        if (ent2)
-            delete ent2;
-    }
+
+        closedir(dir);
+    };
+
+    scan("/media", 2);
+
+    if (const char *user = std::getenv("USER"))
+        scan(std::string("/run/media/") + user, 1);
+    else
+        scan("/run/media", 2);
+
+    scan("/mnt", 1);
 #endif
     return driveStrings;
 }

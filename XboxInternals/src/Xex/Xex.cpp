@@ -229,16 +229,31 @@ DWORD Xex::GetAllowedMediaTypes() const
 void Xex::ExtractBaseImageFile(std::string outPath)
 {
     BaseIO *rawDataIO = GetRawDataIO();
-    DWORD baseImageSize = rawDataIO->Length();
+    const UINT64 dataStart = header.dataAddress;
+    const UINT64 rawLength = rawDataIO->Length();
+    const UINT64 available = rawLength > dataStart ? rawLength - dataStart : 0;
+
+    // The logical image size is authoritative; never read past the raw data.
+    UINT64 baseImageSize = securityInfo.imageSize;
+    if (baseImageSize == 0 || baseImageSize > available)
+        baseImageSize = available;
 
     // if there are resources then the PE file runs right up until the first resource
     if (firstResourceFileAddr != 0xFFFFFFFF)
     {
-        DWORD firstResourceFileDataOffset = firstResourceFileAddr - GetImageBaseAddress();
+        const UINT64 imageBase = GetImageBaseAddress();
+        if (firstResourceFileAddr < imageBase)
+            throw std::string("XEX: Resource address is below the image base.");
+        const UINT64 firstResourceFileDataOffset = firstResourceFileAddr - imageBase;
+        if (firstResourceFileDataOffset > baseImageSize)
+            throw std::string("XEX: Resource address is outside the image.");
         baseImageSize = firstResourceFileDataOffset;
     }
 
-    ExtractFromRawData(outPath, 0, baseImageSize);
+    if (baseImageSize > UINT32_MAX)
+        throw std::string("XEX: Base image is too large to extract.");
+
+    ExtractFromRawData(outPath, 0, static_cast<DWORD>(baseImageSize));
 }
 
 void Xex::ExtractResource(std::string resourceName, std::string outPath)
@@ -259,7 +274,19 @@ void Xex::ExtractResource(std::string resourceName, std::string outPath)
     if (!found)
         throw std::string("XEX: Couldn't find resource to extract.");
 
-    ExtractFromRawData(outPath, entry.address - GetImageBaseAddress(), entry.size);
+    const UINT64 imageBase = GetImageBaseAddress();
+    if (entry.address < imageBase)
+        throw std::string("XEX: Resource address is below the image base.");
+    const UINT64 resourceOffset = entry.address - imageBase;
+
+    const UINT64 dataStart = header.dataAddress;
+    const UINT64 rawLength = GetRawDataIO()->Length();
+    const UINT64 available = rawLength > dataStart ? rawLength - dataStart : 0;
+    if (resourceOffset > available || entry.size > available - resourceOffset ||
+        resourceOffset > UINT32_MAX || entry.size > UINT32_MAX)
+        throw std::string("XEX: Resource is outside the image.");
+
+    ExtractFromRawData(outPath, static_cast<DWORD>(resourceOffset), entry.size);
 }
 
 void Xex::ExtractData(std::string path)
@@ -318,12 +345,19 @@ void Xex::ExtractDecompressedData(std::string path)
     // seek to the beginning of the data
     io->SetPosition(header.dataAddress);
 
-    DWORD produced = 0;
+    UINT64 produced = 0;
 
     // decompress the data
     for (DWORD i = 0; i < compressionBlocks.size(); i++)
     {
         XexCompressionBlock block = compressionBlocks.at(i);
+
+        // Check the whole run before writing anything. A corrupt table could
+        // otherwise make us write up to 4 GiB per entry before the final size
+        // check, and a DWORD sum could wrap past imageSize.
+        const UINT64 blockTotal = static_cast<UINT64>(block.size) + block.nullSize;
+        if (blockTotal > static_cast<UINT64>(securityInfo.imageSize) - produced)
+            throw std::string("XEX: The compression block table exceeds the image size.\n");
 
         // determine how many copy iterations it will take
         DWORD copyIterations = block.size / XEX_COPY_BUFFER_SIZE;
@@ -618,6 +652,11 @@ void Xex::Parse()
         ParseOptionalHeaderEntry(i);
 
     // read the security info
+    const UINT64 fileLength = io->Length();
+    if (header.headerAddress >= header.dataAddress ||
+        static_cast<UINT64>(header.headerAddress) + 0x184 > fileLength)
+        throw std::string("XEX: Invalid security header offset.");
+
     io->SetPosition(header.headerAddress);
     securityInfo.size = io->ReadDword();
     securityInfo.imageSize = io->ReadDword();
@@ -820,6 +859,8 @@ void Xex::ParseStaticLibraryTable(DWORD address)
     io->SetPosition(address);
 
     DWORD staticLibraryStructSize = io->ReadDword();
+    if (staticLibraryStructSize < 4)
+        return;
     DWORD libraryCount = (staticLibraryStructSize - 4) / XEX_STATIC_LIBRARY_ENTRY_SIZE;
 
     for (DWORD i = 0; i < libraryCount; i++)
@@ -848,6 +889,8 @@ void Xex::ParseResourceFileTable(DWORD address)
 {
     io->SetPosition(address);
     DWORD tableSize = io->ReadDword();
+    if (tableSize < 4)
+        return;
     DWORD entryCount = (tableSize - 4) / XEX_RESOURCE_FILE_ENTRY_SIZE;
 
     for (DWORD i = 0; i < entryCount; i++)
@@ -1024,7 +1067,13 @@ bool Xex::VerifyHeaderHash()
     // XexpVerifyXexHeaders hashes the part of the header after the RSA-signed
     // block and then the part before it; the signed block itself (which holds
     // the hash field) is skipped.
-    if (headerSize > fileLength || securityOffset + 0x17C > headerSize)
+    if (securityOffset > headerSize || headerSize > fileLength)
+        return false;
+    if (securityInfo.size < 0x184 || securityInfo.size > headerSize - securityOffset)
+        return false;
+    if (securityInfo.imageInfoSize > headerSize - securityOffset - 0x184)
+        return false;
+    if (securityOffset + 0x17C > headerSize)
         return false;
 
     const size_t headLength = static_cast<size_t>(securityOffset + 8);

@@ -128,7 +128,7 @@ public:
     void Save(ConsoleType type = Retail);
 
 private:
-    FileIO *io;
+    FileIO *io = nullptr;
     bool ioPassedIn, decrypt;
     AccountInfo account;
     std::string outPath, path;

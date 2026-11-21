@@ -12,6 +12,18 @@
 namespace
 {
 constexpr DWORD dataBlocksPerHashTreeLevel[3] = {1, 0xAA, 0x70E4};
+
+// A level's final hash table holds the remainder of the level's entries. An
+// exact multiple means the final table is full, not empty: returning 0 drops
+// the last table from every hash walk (e.g. 340 data blocks, 510 tables).
+DWORD FinalHashTableEntryCount(DWORD totalEntries)
+{
+    if (totalEntries == 0)
+        return 0;
+
+    const DWORD remainder = totalEntries % 0xAA;
+    return remainder == 0 ? 0xAA : remainder;
+}
 }
 
 StfsPackage::StfsPackage(BaseIO* io, DWORD flags) :
@@ -919,25 +931,40 @@ HashTable StfsPackage::GetLevelNHashTable(DWORD index, Level lvl)
         return topTable;
     else if (lvl + 1 == topLevel)
     {
+        // `index` selects an entry in the top-level table. Valid table
+        // geometry keeps it below both bounds; corrupt metadata must not index
+        // past the fixed 0xAA-entry array.
+        if (index >= 0xAA || index >= topTable.entryCount)
+            throw string("STFS: Hash table index out of range.\n");
+
         // add the hash offset to the base address so we use the correct table
         baseHashAddress += ((topTable.entries[index].status & 0x40) << 6);
 
         // calculate the number of entries in the requested table
         if (index + 1 == tablesPerLevel[lvl])
-            toReturn.entryCount = (lvl == Zero) ? metaData->stfsVolumeDescriptor.allocatedBlockCount % 0xAA :
-            tablesPerLevel[lvl - 1] % 0xAA;
+            toReturn.entryCount = (lvl == Zero) ?
+            FinalHashTableEntryCount(metaData->stfsVolumeDescriptor.allocatedBlockCount) :
+            FinalHashTableEntryCount(tablesPerLevel[lvl - 1]);
         else
             toReturn.entryCount = 0xAA;
     }
     else
     {
-        if (cached.trueBlockNumber != ComputeLevelNBackingHashBlockNumber(index * 0xAA, One))
-            cached = GetLevelNHashTable(index % 0xAA, One);
+        // `index` is a global table index at this level. For a level-0 table
+        // its parent is the level-1 table index / 0xAA and the status lives at
+        // entry index % 0xAA. The old code loaded the level-1 table at
+        // `index % 0xAA`, i.e. the wrong table for volumes with more than one
+        // level-1 table, and could add a bogus swap offset.
+        const DWORD parentIndex = index / 0xAA;
+        if (cached.trueBlockNumber !=
+            ComputeLevelNBackingHashBlockNumber(parentIndex * 0x70E4, One))
+            cached = GetLevelNHashTable(parentIndex, One);
         baseHashAddress += ((cached.entries[index % 0xAA].status & 0x40) << 6);
 
         // calculate the number of entries in the requested table
         if (index + 1 == tablesPerLevel[lvl])
-            toReturn.entryCount = metaData->stfsVolumeDescriptor.allocatedBlockCount % 0xAA;
+            toReturn.entryCount =
+            FinalHashTableEntryCount(metaData->stfsVolumeDescriptor.allocatedBlockCount);
         else
             toReturn.entryCount = 0xAA;
     }
@@ -966,15 +993,16 @@ DWORD StfsPackage::GetHashTableEntryCount(DWORD index, Level lvl)
     else if (lvl + 1 == topLevel)
     {
         if (index + 1 == tablesPerLevel[lvl])
-            return (lvl == Zero) ? metaData->stfsVolumeDescriptor.allocatedBlockCount % 0xAA :
-            tablesPerLevel[lvl - 1] % 0xAA;
+            return (lvl == Zero) ?
+            FinalHashTableEntryCount(metaData->stfsVolumeDescriptor.allocatedBlockCount) :
+            FinalHashTableEntryCount(tablesPerLevel[lvl - 1]);
         else
             return 0xAA;
     }
     else
     {
         if (index + 1 == tablesPerLevel[lvl])
-            return metaData->stfsVolumeDescriptor.allocatedBlockCount % 0xAA;
+            return FinalHashTableEntryCount(metaData->stfsVolumeDescriptor.allocatedBlockCount);
         else
             return 0xAA;
     }
@@ -1308,7 +1336,12 @@ DWORD StfsPackage::GetTableHashAddress(DWORD index, Level lvl)
     if (lvl + 1 == topLevel)
         baseHashAddress += ((metaData->stfsVolumeDescriptor.blockSeparation & 2) << 0xB);
     else
+    {
+        if (index >= 0xAA || index >= topTable.entryCount)
+            throw string("STFS: Hash table index out of range.\n");
+
         baseHashAddress += ((topTable.entries[index].status & 0x40) << 6);
+    }
 
     return baseHashAddress + (index * 0x18);
 }
@@ -1769,26 +1802,36 @@ UINT24 StfsPackage::AllocateBlocks(DWORD blockCount)
 void StfsPackage::FindDirectoryListing(vector<string> locationOfDirectory, StfsFileListing* start,
     StfsFileListing** out, bool useWildcards)
 {
-    if (locationOfDirectory.size() == 0)
-        *out = start;
+    if (out == nullptr || start == nullptr || *out != nullptr)
+        return;
 
-    bool finalLoop = (locationOfDirectory.size() == 1);
+    if (locationOfDirectory.empty())
+    {
+        *out = start;
+        return;
+    }
+
+    const bool finalLoop = (locationOfDirectory.size() == 1);
+    const string &childName = locationOfDirectory.front();
+
     for (DWORD i = 0; i < start->folderEntries.size(); i++)
     {
-        if (MatchesFileName(locationOfDirectory.at(0), start->folderEntries.at(i).folder.name, useWildcards))
-        {
-            locationOfDirectory.erase(locationOfDirectory.begin());
-            if (finalLoop)
-                *out = &start->folderEntries.at(i);
-            else
-                for (DWORD i = 0; i < start->folderEntries.size(); i++)
-                    if (*out == NULL)
-                        FindDirectoryListing(locationOfDirectory, &start->folderEntries.at(i), out, useWildcards);
-                    else
-                        break;
+        StfsFileListing &child = start->folderEntries.at(i);
+        if (!MatchesFileName(childName, child.folder.name, useWildcards))
+            continue;
 
-            break;
+        if (finalLoop)
+        {
+            *out = &child;
+            return;
         }
+
+        // Descend into the matching folder only. Searching every sibling here
+        // made "A\Q" resolve to "Z\Q" whenever A had no Q.
+        vector<string> remaining(locationOfDirectory.begin() + 1, locationOfDirectory.end());
+        FindDirectoryListing(remaining, &child, out, useWildcards);
+        if (*out != nullptr)
+            return;
     }
 }
 
@@ -2244,6 +2287,28 @@ void StfsPackage::CreateFolder(string pathInPackage)
     entry.blocksForFile = 0;
     entry.createdTimeStamp = MSTimeToDWORD(TimetToMSTime(time(NULL)));
     entry.accessTimeStamp = entry.createdTimeStamp;
+
+    // WriteFileListing keys its path-indicator remap on the pre-write entry
+    // indices. A new folder has no slot yet, so give it an index that no
+    // existing folder uses; the default 0 collides with the first folder and
+    // makes siblings resolve to the wrong parent (or to themselves).
+    {
+        std::unordered_set<DWORD> usedIndices;
+        vector<StfsFileEntry> allFiles, allFolders;
+        GenerateRawFileListing(&fileListing, &allFiles, &allFolders);
+        for (const StfsFileEntry &existing : allFolders)
+            if (existing.entryIndex != 0xFFFF)
+                usedIndices.insert(existing.entryIndex);
+
+        DWORD newIndex = 0;
+        while (newIndex < 0xFFFF && usedIndices.count(newIndex) != 0)
+            ++newIndex;
+
+        if (newIndex == 0xFFFF)
+            throw string("STFS: Too many folders in the package.\n");
+
+        entry.entryIndex = newIndex;
+    }
 
     StfsFileListing newFolder;
     newFolder.folder = entry;

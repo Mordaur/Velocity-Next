@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <utility>
+#include <vector>
 
 #include <XboxInternals/Utils.h>
 #include <XboxInternals/Fatx/FatxDrive.h>
@@ -388,17 +389,22 @@ void SVOD::Rehash(void (*progress)(DWORD, DWORD, void*), void *arg)
     memcpy(metaData->svodVolumeDescriptor.rootHash, prevHash, 0x14);
     metaData->WriteVolumeDescriptor();
 
-    DWORD dataLen = ((metaData->headerSize + 0xFFF) & 0xFFFFF000) - 0x344;
-    BYTE *buff = new BYTE[dataLen];
+    // The header hash covers 0x344 up to the aligned header end. `headerSize`
+    // comes straight from the file, so bound it before allocating: a small or
+    // corrupt value used to underflow to ~4 GiB or read past the file.
+    const DWORD alignedHeaderSize = (metaData->headerSize + 0xFFF) & 0xFFFFF000;
+    if (alignedHeaderSize < 0x344 || static_cast<UINT64>(alignedHeaderSize) > rootFile->Length())
+        throw string("SVOD: Invalid header size while rehashing.\n");
+
+    const DWORD dataLen = alignedHeaderSize - 0x344;
+    std::vector<BYTE> buff(dataLen);
 
     rootFile->SetPosition(0x344);
-    rootFile->ReadBytes(buff, dataLen);
+    rootFile->ReadBytes(buff.data(), dataLen);
 
     const auto sha1 = Botan::HashFunction::create_or_throw("SHA-1");
-    sha1->update(buff, dataLen);
+    sha1->update(buff.data(), dataLen);
     sha1->final(metaData->headerHash);
-
-    delete [] buff;
 
     metaData->WriteMetaData();
 }

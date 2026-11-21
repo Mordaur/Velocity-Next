@@ -18,63 +18,105 @@ Xdbf::Xdbf(shared_ptr<FileIO> io) : io(std::move(io))
 
 void Xdbf::Clean()
 {
-    // Create a temporary file using C++17 filesystem (cross-platform)
-    std::filesystem::path tempDir = std::filesystem::temp_directory_path();
-    
-    // Generate unique filename
+    const string originalPath = io->GetFilePath();
+
+    // Build the replacement in the target's own directory. The system temp
+    // directory can be a different filesystem (/tmp on tmpfs), and renaming
+    // across filesystems fails with EXDEV after the original was already
+    // deleted, losing the file.
+    const std::filesystem::path targetPath(originalPath);
+    const std::filesystem::path targetDir = targetPath.parent_path();
+
+    // Generate a unique filename next to the target
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(100000, 999999);
-    std::string uniqueId = "xdbf_" + std::to_string(dis(gen)) + ".tmp";
-    
-    std::filesystem::path tempFilePath = tempDir / uniqueId;
-    string tempFileName = tempFilePath.string();
+    const std::string suffix = ".xdbf-" + std::to_string(dis(gen)) + ".tmp";
+
+    const std::filesystem::path tempFilePath =
+        targetDir / (targetPath.filename().string() + suffix);
+    const string tempFileName = tempFilePath.string();
 
     FileIO tempFile(tempFileName.c_str(), true);
 
-    // Write the old header
-    tempFile.SetPosition(0);
-    tempFile.Write(header.magic);
-    tempFile.Write(header.version);
-    tempFile.Write(header.entryTableLength);
-    tempFile.Write(header.entryCount);
-    tempFile.Write(header.freeMemTableLength);
-    tempFile.Write((DWORD)1);
+    try
+    {
+        // Write the old header
+        tempFile.SetPosition(0);
+        tempFile.Write(header.magic);
+        tempFile.Write(header.version);
+        tempFile.Write(header.entryTableLength);
+        tempFile.Write(header.entryCount);
+        tempFile.Write(header.freeMemTableLength);
+        tempFile.Write((DWORD)1);
 
-    // seek to the first position in the file where data can be written
-    tempFile.SetPosition(GetRealAddress(0) - 1);
-    tempFile.Write((BYTE)0);
+        // seek to the first position in the file where data can be written
+        tempFile.SetPosition(GetRealAddress(0) - 1);
+        tempFile.Write((BYTE)0);
 
-    tempFile.Flush();
+        tempFile.Flush();
 
-    // Write all of the achievements
-    WriteNewEntryGroup(&achievements, &tempFile);
+        // Write all of the achievements
+        WriteNewEntryGroup(&achievements, &tempFile);
 
-    // Write all of the images
-    WriteNewEntryGroup(&images, &tempFile);
+        // Write all of the images
+        WriteNewEntryGroup(&images, &tempFile);
 
-    // Write all of the settings
-    WriteNewEntryGroup(&settings, &tempFile);
+        // Write all of the settings
+        WriteNewEntryGroup(&settings, &tempFile);
 
-    // Write all of the title entries
-    WriteNewEntryGroup(&titlesPlayed, &tempFile);
+        // Write all of the title entries
+        WriteNewEntryGroup(&titlesPlayed, &tempFile);
 
-    // Write all of the strings
-    WriteNewEntryGroup(&strings, &tempFile);
+        // Write all of the strings
+        WriteNewEntryGroup(&strings, &tempFile);
 
-    // Write all of the achievements
-    WriteNewEntryGroup(&avatarAwards, &tempFile);
+        // Write all of the achievements
+        WriteNewEntryGroup(&avatarAwards, &tempFile);
+    }
+    catch (...)
+    {
+        tempFile.Close();
+        std::error_code ignore;
+        std::filesystem::remove(tempFilePath, ignore);
+        throw;
+    }
 
     tempFile.Close();
     io->Close();
 
-    const string originalPath = io->GetFilePath();
+    // Replace atomically where the platform supports it (POSIX rename replaces
+    // an existing file). MinGW's rename cannot replace, so move the original
+    // aside first and restore it if the swap fails.
+    std::error_code renameError;
+    std::filesystem::rename(tempFilePath, targetPath, renameError);
+    if (renameError)
+    {
+        const std::filesystem::path backupPath =
+            targetDir / (targetPath.filename().string() + suffix + ".bak");
 
-    // delete the original file
-    remove(originalPath.c_str());
+        std::error_code backupError;
+        std::filesystem::rename(targetPath, backupPath, backupError);
+        if (backupError)
+        {
+            std::error_code ignore;
+            std::filesystem::remove(tempFilePath, ignore);
+            throw string("XDBF: Could not replace the file while cleaning it.\n");
+        }
 
-    // move the temp file to the old file's location
-    rename(tempFileName.c_str(), originalPath.c_str());
+        std::error_code moveError;
+        std::filesystem::rename(tempFilePath, targetPath, moveError);
+        if (moveError)
+        {
+            std::error_code ignore;
+            std::filesystem::rename(backupPath, targetPath, ignore);
+            std::filesystem::remove(tempFilePath, ignore);
+            throw string("XDBF: Could not replace the file while cleaning it.\n");
+        }
+
+        std::error_code ignore;
+        std::filesystem::remove(backupPath, ignore);
+    }
 
     io = std::make_shared<FileIO>(originalPath);
 

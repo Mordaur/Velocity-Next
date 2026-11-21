@@ -3,6 +3,8 @@
 
 #include <XboxInternals/Fatx/FatxDrive.h>
 
+#include <algorithm>
+#include <cerrno>
 #include <unordered_set>
 #include <vector>
 
@@ -93,7 +95,7 @@ FatxIO FatxDrive::GetFatxIO(FatxFileEntry *entry)
     if (entry->clusterChain.size() == 0)
         ReadClusterChain(entry);
 
-    return FatxIO(static_cast<DeviceIO*>(io.get()), entry);
+    return FatxIO(io.get(), entry);
 }
 
 void FatxDrive::processBootSector(Partition *part)
@@ -289,7 +291,7 @@ FatxFileEntry* FatxDrive::createFileEntry(FatxFileEntry *parent, FatxFileEntry *
     DWORD fileSize = newEntry->fileSize;
     newEntry->fileSize = 0;
 
-    FatxIO childIO(static_cast<DeviceIO*>(io.get()), newEntry);
+    FatxIO childIO(io.get(), newEntry);
     childIO.AllocateMemory(fileSize);
     childIO.WriteEntryToDisk();
 
@@ -352,7 +354,7 @@ void FatxDrive::RemoveFile(FatxFileEntry *entry, void(*progress)(void*), void *a
 
     // set all the clusters to available
     entry->clusterChain.push_back(entry->startingCluster);
-    FatxIO::SetAllClusters(static_cast<DeviceIO*>(io.get()), entry->partition, entry->clusterChain, FAT_CLUSTER_AVAILABLE);
+    FatxIO::SetAllClusters(io.get(), entry->partition, entry->clusterChain, FAT_CLUSTER_AVAILABLE);
 
     // generate cluster ranges for fast insertion into the cluster chain
     std::vector<Range> clusterRanges;
@@ -634,92 +636,126 @@ void FatxDrive::CreateBackup(std::string outPath, void (*progress)(void *, DWORD
 
 void FatxDrive::RestoreFromBackup(std::string backupPath, void (*progress)(void *, DWORD, DWORD), void *arg)
 {
-    /* Here's the thing... fstream is trash. It will only handle files up to 2GB or 4GB,
-       at least on my windows 7 machine. That's a huge problem because drive backups will
-       most likely be a lot larger than that. SOOOOOO it looks like I'll have to use OS
-       specific functions in order to get this to work properly. It makes more sense
-       to just make the FileIO class use the OS specific functions to begin with, but
-       the ReadFile/WriteFile functions are slower than fstream functions, probably because
-       they don't cache a bunch of stuff.
-    */
-
     std::vector<BYTE> buffer(0x100000);
-    UINT64 bytesLeft;
+    const UINT64 deviceLength = io->Length();
 
 #ifdef _WIN32
     std::wstring wBackupPath;
     wBackupPath.assign(backupPath.begin(), backupPath.end());
-    HANDLE hFile = CreateFileW(wBackupPath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
+    HANDLE hFile = CreateFileW(wBackupPath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
         throw std::string("FATX: Could not open drive backup.");
 
-    DWORD high;
-    DWORD low = GetFileSize(hFile, &high);
-    bytesLeft = ((UINT64)high << 32) | low;
+    LARGE_INTEGER backupSize {};
+    if (!GetFileSizeEx(hFile, &backupSize))
+    {
+        CloseHandle(hFile);
+        throw std::string("FATX: Could not determine the backup size.");
+    }
 
-    SetFilePointer(hFile, 0, 0, FILE_BEGIN);
+    const UINT64 bytesLeftTotal = static_cast<UINT64>(backupSize.QuadPart);
+    if (deviceLength != 0 && bytesLeftTotal != deviceLength)
+    {
+        CloseHandle(hFile);
+        throw std::string("FATX: Backup size does not match the device size.");
+    }
+
+    io->SetPosition(0);
+    const UINT64 totalProgress = bytesLeftTotal / 0x100000;
+    UINT64 bytesLeft = bytesLeftTotal;
+    DWORD i = 0;
+
+    try
+    {
+        while (bytesLeft > 0)
+        {
+            const DWORD toRead = static_cast<DWORD>(
+                    std::min<UINT64>(bytesLeft, buffer.size()));
+            DWORD totalRead = 0;
+            while (totalRead < toRead)
+            {
+                DWORD got = 0;
+                if (!ReadFile(hFile, buffer.data() + totalRead, toRead - totalRead, &got, NULL) ||
+                    got == 0)
+                    throw std::string("FATX: Error reading from the backup file.");
+                totalRead += got;
+            }
+
+            io->WriteBytes(buffer.data(), toRead);
+            bytesLeft -= toRead;
+
+            if (progress)
+                progress(arg, i, totalProgress);
+            ++i;
+        }
+    }
+    catch (...)
+    {
+        CloseHandle(hFile);
+        throw;
+    }
+
+    CloseHandle(hFile);
 #else
-    struct stat sb;
-    stat(backupPath.c_str(), &sb);
-    bytesLeft = sb.st_size;
+    struct stat sb {};
+    if (stat(backupPath.c_str(), &sb) != 0)
+        throw std::string("FATX: Could not determine the backup size.");
 
-    int backupFile = open(backupPath.c_str(), O_RDWR);
+    const UINT64 bytesLeftTotal = static_cast<UINT64>(sb.st_size);
+    if (deviceLength != 0 && bytesLeftTotal != deviceLength)
+        throw std::string("FATX: Backup size does not match the device size.");
+
+    const int backupFile = open(backupPath.c_str(), O_RDONLY);
     if (backupFile == -1)
         throw std::string("FATX: Could not open drive backup.");
 
-    lseek(backupFile, 0, SEEK_SET);
-#endif // _WIN32
-
     io->SetPosition(0);
-
-    UINT64 totalProgress = bytesLeft / 0x100000;
+    const UINT64 totalProgress = bytesLeftTotal / 0x100000;
+    UINT64 bytesLeft = bytesLeftTotal;
     DWORD i = 0;
-    while (bytesLeft >= 0x100000)
+
+    try
     {
-#ifdef _WIN32
-        high = (i * (UINT64)0x100000) >> 32;
-        SetFilePointer(hFile, static_cast<LONG>((i * static_cast<UINT64>(0x100000)) & 0xFFFFFFFF), reinterpret_cast<PLONG>(&high), FILE_BEGIN);
+        while (bytesLeft > 0)
+        {
+            const size_t toRead = static_cast<size_t>(
+                    std::min<UINT64>(bytesLeft, buffer.size()));
+            size_t totalRead = 0;
+            while (totalRead < toRead)
+            {
+                const ssize_t got = read(backupFile, buffer.data() + totalRead,
+                                         toRead - totalRead);
+                if (got < 0)
+                {
+                    if (errno == EINTR)
+                        continue;
+                    throw std::string("FATX: Error reading from the backup file.");
+                }
+                if (got == 0)
+                    throw std::string("FATX: Backup file ended early.");
+                totalRead += static_cast<size_t>(got);
+            }
 
-        DWORD bytesRead = 0;
-        ReadFile(hFile, buffer.data(), 0x100000, &bytesRead, NULL);
-#else
-        lseek(backupFile, (UINT64)i * (UINT64)0x100000, SEEK_SET);
-        ssize_t bytesRead = read(backupFile, buffer.data(), 0x100000);
-        if (bytesRead < 0)
-            throw std::string("FatxDrive: Error reading from backup file.\n");
-#endif
-        io->WriteBytes(buffer.data(), 0x100000);
-        bytesLeft -= 0x100000;
+            io->WriteBytes(buffer.data(), static_cast<DWORD>(toRead));
+            bytesLeft -= toRead;
 
-        if (progress)
-            progress(arg, i, totalProgress);
-        i++;
+            if (progress)
+                progress(arg, i, totalProgress);
+            ++i;
+        }
+    }
+    catch (...)
+    {
+        close(backupFile);
+        throw;
     }
 
-    if (bytesLeft > 0)
-    {
-#ifdef _WIN32
-        SetFilePointer(hFile, (i * (UINT64)0x100000) & 0xFFFFFFFF, (PLONG)&high, FILE_BEGIN);
-        DWORD bytesRead = 0;
-        ReadFile(hFile, buffer.data(), static_cast<DWORD>(bytesLeft), &bytesRead, NULL);
-#else
-        lseek(backupFile, (UINT64)i * (UINT64)0x100000, SEEK_SET);
-        ssize_t bytesRead = read(backupFile, buffer.data(), static_cast<size_t>(bytesLeft));
-        if (bytesRead < 0)
-            throw std::string("FatxDrive: Error reading from backup file.\n");
+    close(backupFile);
 #endif
-        io->WriteBytes(buffer.data(), static_cast<DWORD>(bytesLeft));
-    }
 
     if (progress)
         progress(arg, totalProgress, totalProgress);
-
-#ifdef _WIN32
-    CloseHandle(hFile);
-#else
-    close(backupFile);
-#endif
 
     // reload the entire drive
     ReloadDrive();

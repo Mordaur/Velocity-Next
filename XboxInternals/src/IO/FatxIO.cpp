@@ -1,8 +1,9 @@
 #include <XboxInternals/IO/FatxIO.h>
+#include <XboxInternals/Fatx/FatxHelpers.h>
 
 #include <vector>
 
-FatxIO::FatxIO(DeviceIO *device, FatxFileEntry *entry) : entry(entry), device(device)
+FatxIO::FatxIO(BaseIO *device, FatxFileEntry *entry) : entry(entry), device(device)
 {
     // if it's a new file, then don't do any seeking yet
     if (entry->startingCluster != 0)
@@ -252,7 +253,7 @@ std::vector<DWORD> FatxIO::getFreeClusters(Partition *part, DWORD count)
     return freeClusters;
 }
 
-void FatxIO::SetAllClusters(DeviceIO *device, Partition *part, std::vector<DWORD> &clusters,
+void FatxIO::SetAllClusters(BaseIO *device, Partition *part, std::vector<DWORD> &clusters,
         DWORD value)
 {
     // sort the clusters numerically, order doesn't matter any more since we're just setting them all to the same value

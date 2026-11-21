@@ -31,18 +31,32 @@ namespace
 Account::Account(std::string path, bool decrypt, ConsoleType type) : ioPassedIn(false),
     decrypt(decrypt), path(path), type(type)
 {
-    if (decrypt)
+    try
     {
-        decryptAccount(path, &outPath, type);
-        io = new FileIO(outPath);
-    }
-    else
-    {
-        io = new FileIO(path);
-        outPath = path;
-    }
+        if (decrypt)
+        {
+            decryptAccount(path, &outPath, type);
+            io = new FileIO(outPath);
+        }
+        else
+        {
+            io = new FileIO(path);
+            outPath = path;
+        }
 
-    parseFile();
+        parseFile();
+    }
+    catch (...)
+    {
+        // The constructor never completed, so ~Account will not run. Release
+        // the FileIO and remove the decrypted temporary, which holds key
+        // material, when it is not the caller's original file.
+        delete io;
+        io = nullptr;
+        if (decrypt && !outPath.empty() && outPath != path)
+            remove(outPath.c_str());
+        throw;
+    }
 }
 
 void Account::parseFile()

@@ -9,6 +9,7 @@
 #include <XboxInternals/Stfs/StfsDefinitions.h>
 #include <XboxInternals/Stfs/XContentHeader.h>
 
+#include <deque>
 #include <vector>
 #include <iostream>
 
@@ -92,7 +93,11 @@ struct FatxFileEntry
     INT64 address = 0;
     DWORD magic = 0;
     FileSystem fileSystem = FileSystemSTFS;
-    std::vector<FatxFileEntry> cachedFiles;
+    // std::deque, not std::vector: callers (and the GUI tree) hold raw
+    // FatxFileEntry* for children. push_back on a deque never invalidates
+    // references to existing elements, while a vector reallocation freed every
+    // sibling pointer handed out earlier.
+    std::deque<FatxFileEntry> cachedFiles;
     std::vector<DWORD> clusterChain;
     std::string path;
 };

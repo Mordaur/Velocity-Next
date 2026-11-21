@@ -1,14 +1,23 @@
 #include <XboxInternals/AvatarAsset/Ytgr.h>
 
-Ytgr::Ytgr(std::string filePath) : ioPassedIn(false)
+Ytgr::Ytgr(std::string filePath) : io(nullptr), ioPassedIn(false)
 {
     io = new FileIO(filePath);
-    Parse();
+    try
+    {
+        Parse();
+    }
+    catch (...)
+    {
+        // The constructor never completed, so ~Ytgr will not run.
+        delete io;
+        io = nullptr;
+        throw;
+    }
 }
 
-Ytgr::Ytgr(FileIO *io) : ioPassedIn(true)
+Ytgr::Ytgr(FileIO *io) : io(io), ioPassedIn(true)
 {
-    this->io = io;
     Parse();
 }
 

@@ -29,7 +29,6 @@
 #endif
 
 #ifdef __linux__
-#define SECTOR_COUNT BLKGETSIZE
 #define SECTOR_SIZE BLKSSZGET
 #elif __APPLE__
 #define SECTOR_COUNT DKIOCGETBLOCKCOUNT
@@ -172,8 +171,15 @@ size_t DeviceIO::RoundUpToSector(size_t length) const
 void DeviceIO::ReadRaw(BYTE *buffer, DWORD length)
 {
 #ifdef _WIN32
-    if (!ReadFile(impl->deviceHandle, buffer, length, nullptr, &impl->offset))
-        throw std::string("DeviceIO: Error reading from device, may be disconnected.\n");
+    size_t done = 0;
+    while (done < length)
+    {
+        DWORD count = 0;
+        if (!ReadFile(impl->deviceHandle, buffer + done, length - done, &count, nullptr) ||
+            count == 0)
+            throw std::string("DeviceIO: Error reading from device, may be disconnected.\n");
+        done += count;
+    }
 #else
     size_t done = 0;
     while (done < length)
@@ -189,8 +195,15 @@ void DeviceIO::ReadRaw(BYTE *buffer, DWORD length)
 void DeviceIO::WriteRaw(const BYTE *buffer, DWORD length)
 {
 #ifdef _WIN32
-    if (!WriteFile(impl->deviceHandle, buffer, length, nullptr, &impl->offset))
-        throw std::string("DeviceIO: Error writing to the device, may be disconnected.\n");
+    size_t done = 0;
+    while (done < length)
+    {
+        DWORD count = 0;
+        if (!WriteFile(impl->deviceHandle, buffer + done, length - done, &count, nullptr) ||
+            count == 0)
+            throw std::string("DeviceIO: Error writing to the device, may be disconnected.\n");
+        done += count;
+    }
 #else
     size_t done = 0;
     while (done < length)
@@ -237,8 +250,7 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
             {
                 size_t windowLength = kCacheWindow;
                 if (impl->deviceLength != 0 && windowStart + windowLength > impl->deviceLength)
-                    windowLength = RoundUpToSector(
-                            static_cast<size_t>(impl->deviceLength - windowStart));
+                    windowLength = static_cast<size_t>(impl->deviceLength - windowStart);
 
                 impl->cacheValid = 0;
                 SetPosition(windowStart);
@@ -258,6 +270,8 @@ void DeviceIO::ReadBytes(BYTE *outBuffer, DWORD len)
 
     UINT64 cursor = DownToSector(requestStart);
     UINT64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
+    if (impl->deviceLength != 0 && cursor < impl->deviceLength)
+        remaining = std::min<UINT64>(remaining, impl->deviceLength - cursor);
 
     while (remaining > 0)
     {
@@ -301,6 +315,8 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
 
     UINT64 cursor = DownToSector(requestStart);
     UINT64 remaining = RoundUpToSector(static_cast<size_t>(requestStart - cursor) + len);
+    if (impl->deviceLength != 0 && cursor < impl->deviceLength)
+        remaining = std::min<UINT64>(remaining, impl->deviceLength - cursor);
 
     while (remaining > 0)
     {
@@ -337,34 +353,61 @@ void DeviceIO::WriteBytes(BYTE *buffer, DWORD len)
 
 UINT64 DeviceIO::Length()
 {
-    UINT64 length;
+    UINT64 length = 0;
 #ifdef _WIN32
-    DISK_GEOMETRY geometry;
-    DWORD bytesReturned;
+    GET_LENGTH_INFORMATION lengthInfo {};
+    DWORD bytesReturned = 0;
+    if (DeviceIoControl(impl->deviceHandle, IOCTL_DISK_GET_LENGTH_INFO, nullptr, 0,
+                        &lengthInfo, sizeof(lengthInfo), &bytesReturned, nullptr) &&
+        lengthInfo.Length.QuadPart > 0)
+    {
+        length = static_cast<UINT64>(lengthInfo.Length.QuadPart);
+    }
 
-    memset(&geometry, 0, sizeof(DISK_GEOMETRY));
-    const BOOL geometryOk = DeviceIoControl(
-        impl->deviceHandle,			// Device to get the geometry from
-        IOCTL_DISK_GET_DRIVE_GEOMETRY,	// Action we're taking (getting the geometry)
-        NULL,							// Not used since this requires no input data
-        0,								// No data
-        &geometry,						// Output struct
-        sizeof(DISK_GEOMETRY),			// Output buffer size
-        &bytesReturned,					// Number of bytes returned
-        NULL);							// Not used
+    if (length == 0)
+    {
+        DISK_GEOMETRY geometry;
+        memset(&geometry, 0, sizeof(DISK_GEOMETRY));
+        const BOOL geometryOk = DeviceIoControl(
+            impl->deviceHandle,			// Device to get the geometry from
+            IOCTL_DISK_GET_DRIVE_GEOMETRY,	// Action we're taking (getting the geometry)
+            NULL,							// Not used since this requires no input data
+            0,								// No data
+            &geometry,						// Output struct
+            sizeof(DISK_GEOMETRY),			// Output buffer size
+            &bytesReturned,					// Number of bytes returned
+            NULL);							// Not used
 
-    UINT64 cylinders = (UINT64)((UINT64)geometry.Cylinders.HighPart << 32) |
-            geometry.Cylinders.LowPart; // Convert the BIG_INTEGER to UINT64
-    length = cylinders * (UINT64)geometry.TracksPerCylinder	* (UINT64)geometry.SectorsPerTrack *
-             (UINT64)geometry.BytesPerSector;
+        if (geometryOk)
+        {
+            const UINT64 cylinders = (UINT64)((UINT64)geometry.Cylinders.HighPart << 32) |
+                    geometry.Cylinders.LowPart;
+            length = cylinders * (UINT64)geometry.TracksPerCylinder *
+                     (UINT64)geometry.SectorsPerTrack * (UINT64)geometry.BytesPerSector;
+        }
+    }
 
     // The geometry ioctl fails for a regular file; fall back to its size so an
     // image file can be used as a device.
-    if (!geometryOk || length == 0)
+    if (length == 0)
     {
         LARGE_INTEGER fileSize;
         if (GetFileSizeEx(impl->deviceHandle, &fileSize))
             length = (UINT64)fileSize.QuadPart;
+    }
+#elif defined(__linux__)
+    // BLKGETSIZE64 returns bytes directly; BLKGETSIZE is in 512-byte units and
+    // multiplying it by the logical sector size overstates 4Kn disks 8x.
+    UINT64 byteLength = 0;
+    if (ioctl(impl->device, BLKGETSIZE64, &byteLength) == 0 && byteLength != 0)
+    {
+        length = byteLength;
+    }
+    else
+    {
+        struct stat st;
+        if (fstat(impl->device, &st) == 0 && S_ISREG(st.st_mode))
+            length = (UINT64)st.st_size;
     }
 #else
     UINT64 numberOfSectors = 0;
@@ -402,19 +445,19 @@ void DeviceIO::SetPosition(UINT64 address, std::ios_base::seekdir dir)
 #ifdef _WIN32
     impl->offset.Offset = (DWORD)address;
     impl->offset.OffsetHigh = (DWORD)(address >> 32);
+
+    LARGE_INTEGER target {};
+    target.QuadPart = static_cast<LONGLONG>(address);
+    if (!SetFilePointerEx(impl->deviceHandle, target, nullptr, FILE_BEGIN))
+        throw std::string("DeviceIO: seek failed.\n");
+#elif defined(__linux__)
+    impl->offset = address;
+    if (lseek64(impl->device, address, SEEK_SET) == static_cast<off_t>(-1))
+        throw std::string("DeviceIO: seek failed.\n");
 #else
     impl->offset = address;
-#endif
-
-#ifdef __linux__
-    lseek64(impl->device, address, SEEK_SET);
-#else
-#ifdef _WIN32
-    LONG addressHigh = impl->offset.OffsetHigh;
-    SetFilePointer(impl->deviceHandle, impl->offset.Offset, &addressHigh, FILE_BEGIN);
-#else
-    lseek(impl->device, address, SEEK_SET);
-#endif
+    if (lseek(impl->device, address, SEEK_SET) == static_cast<off_t>(-1))
+        throw std::string("DeviceIO: seek failed.\n");
 #endif
 }
 
@@ -561,8 +604,11 @@ void DeviceIO::loadDevice(std::wstring devicePath, DeviceErrorCode *error)
 void DeviceIO::Flush()
 {
 #ifdef _WIN32
-    if (!readOnly)
-        FlushFileBuffers(impl->deviceHandle);
+    if (!readOnly && !FlushFileBuffers(impl->deviceHandle))
+        throw std::string("DeviceIO: flush failed.\n");
+#else
+    if (!readOnly && fsync(impl->device) != 0 && errno != EINVAL && errno != EROFS)
+        throw std::string("DeviceIO: flush failed.\n");
 #endif
 }
 
