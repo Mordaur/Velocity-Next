@@ -1,0 +1,15 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.exportCompileCommandsFile": true,
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "files.watcherExclude": {
+    "**/out/**": true,
+    "**/build/**": true,
+    "**/botan/**": true
+  },
+  "search.exclude": {
+    "out": true,
+    "build": true,
+    "botan": true
+  }
+}

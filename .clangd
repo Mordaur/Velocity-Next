@@ -1,0 +1,4 @@
+CompileFlags:
+  # GCC emits this flag for some targets; clangd/clang rejects it.
+  Remove:
+    - -mno-direct-extern-access

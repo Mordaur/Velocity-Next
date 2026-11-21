@@ -129,24 +129,19 @@ set(BOTAN_VERSION "3.14.1" CACHE STRING "Botan version to fetch/use")
 # The FindBotan.cmake module automatically chooses between these options.
 # ====================================================================
 
-# Primary location for Botan Git submodule (if available)
-# This is the preferred source for developers and CI systems
-set(BOTAN_SUBMODULE_DIR "${CMAKE_SOURCE_DIR}/botan" 
-    CACHE PATH 
-    "Path to Botan Git submodule at repository root. Used when submodule is initialized."
-)
+# Botan source: an existing tree (Botan_PATH), or the pinned release tarball.
+# BOTAN_URL can point at a mirror or a local file:// archive for offline builds.
+set(Botan_PATH "" CACHE PATH "Existing Botan source tree containing configure.py; empty downloads BOTAN_VERSION")
+set(BOTAN_URL "https://github.com/randombit/botan/archive/refs/tags/${BOTAN_VERSION}.tar.gz"
+    CACHE STRING "Botan release archive (URL or file://)")
+set(BOTAN_SHA256 "d1046b8f5b18b80197cd1d62cf66743edfc0a54ab91bf8e5d916a99212ffc5e0"
+    CACHE STRING "SHA-256 of BOTAN_URL; empty skips verification")
+if(NOT Botan_PATH AND EXISTS "${CMAKE_SOURCE_DIR}/botan/configure.py")
+  set(Botan_PATH "${CMAKE_SOURCE_DIR}/botan" CACHE PATH "" FORCE)
+endif()
 
-# Fallback download location for Botan source
-# Used when submodule is not available (end-user builds)
-set(BOTAN_FALLBACK_DIR "${CMAKE_BINARY_DIR}/botan" 
-    CACHE PATH 
-    "Where to download Botan tarball if Git submodule is absent. Used for end-user builds."
-)
-
-# Qt setup
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
+# Qt code generators are enabled per target (Velocity/CMakeLists.txt). The
+# backend, Botan, helper and tests contain no Q_OBJECT/.ui/.qrc.
 
 # ------------------------------
 # Qt Discovery
@@ -222,20 +217,10 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # BOTAN INTEGRATION
 # ====================================================================
 # The FindBotan.cmake module will:
-# 1. Check if BOTAN_SUBMODULE_DIR exists and contains configure.py
-# 2. If yes: Use the submodule as Botan source
-# 3. If no:  Download Botan ${BOTAN_VERSION} to BOTAN_FALLBACK_DIR
-# 4. Generate amalgamated build (botan_all.cpp/h) with only required modules
+# 1. Use an existing tree (Botan_PATH, or ./botan when it contains configure.py)
+# 2. Otherwise fetch BOTAN_URL, optionally verified against BOTAN_SHA256
+# 3. Generate the amalgamated build (botan_all.cpp/h) with the required modules
 # ====================================================================
-
-if(EXISTS "${BOTAN_SUBMODULE_DIR}/configure.py")
-  message(STATUS "Using Botan submodule at: ${BOTAN_SUBMODULE_DIR}")
-  set(Botan_PATH "${BOTAN_SUBMODULE_DIR}")
-else()
-  message(STATUS "Botan submodule not found, will download to: ${BOTAN_FALLBACK_DIR}")
-  set(Botan_PATH "")  # Empty triggers download in FindBotan.cmake
-  set(BOTAN_DOWNLOAD_DIR "${BOTAN_FALLBACK_DIR}")
-endif()
 
 # Locate Botan source and generate amalgamation
 find_package(Botan ${BOTAN_VERSION} REQUIRED)

@@ -1,5 +1,7 @@
 # Build output
 out/
+build/
+.cache/
 
 # Dependencies
 botan/
@@ -14,7 +16,9 @@ TEST_PLAN.md
 
 # IDE configurations
 .vs/
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 CMakeUserPresets.json
 CMakeSettings.json

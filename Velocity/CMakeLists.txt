@@ -1,7 +1,3 @@
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
-
 # TextEncoding module sources
 set(TEXT_ENCODING_SOURCES
   TextEncoding/TextDecoder.cpp
@@ -144,16 +140,40 @@ if(APPLE)
     set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
     set(MACOSX_BUNDLE_ICON_FILE velocity.icns)
     
-    add_executable(VelocityNext MACOSX_BUNDLE ${SOURCES} ${UI_FORMS} Resources.qrc)
+    add_executable(VelocityNext MACOSX_BUNDLE ${SOURCES} ${UI_FORMS})
     
 else()
     # Windows/Linux executable
-    add_executable(VelocityNext ${SOURCES} ${UI_FORMS} Resources.qrc)
+    add_executable(VelocityNext ${SOURCES} ${UI_FORMS})
     
     if(WIN32)
         set_target_properties(VelocityNext PROPERTIES WIN32_EXECUTABLE TRUE)
         target_sources(VelocityNext PRIVATE velocity.rc)
     endif()
+endif()
+
+set_target_properties(VelocityNext PROPERTIES
+    AUTOMOC ON
+    AUTOUIC ON
+    AUTORCC ON
+    # moc/uic only need Qt headers, not the linked XboxInternals binary.
+    AUTOGEN_ORIGIN_DEPENDS OFF
+)
+
+# Resources compile in their own object library so rcc does not wait for
+# XboxInternals (and the single-TU Botan build behind it) to link.
+add_library(velocity_resources OBJECT Resources.qrc)
+set_target_properties(velocity_resources PROPERTIES AUTORCC ON FOLDER "Applications")
+target_link_libraries(velocity_resources PRIVATE Qt6::Core)
+target_sources(VelocityNext PRIVATE $<TARGET_OBJECTS:velocity_resources>)
+
+option(VELOCITY_PCH "Precompile common Qt headers for the GUI" ON)
+if(VELOCITY_PCH)
+  target_precompile_headers(VelocityNext PRIVATE
+    <QtWidgets/QtWidgets>
+    <QtNetwork/QNetworkAccessManager>
+    <QtNetwork/QNetworkReply>
+  )
 endif()
 
 # Common include directories for all platforms

@@ -26,11 +26,7 @@
 ##    )
 ##
 
-cmake_minimum_required(VERSION 3.19)
 include(FetchContent)
-
-# Policy for download timestamps
-cmake_policy(SET CMP0135 NEW)
 
 # Find python
 find_package(
@@ -42,12 +38,9 @@ find_package(
 
 # Assemble version string
 set(Botan_VERSION_STRING ${Botan_FIND_VERSION_MAJOR}.${Botan_FIND_VERSION_MINOR}.${Botan_FIND_VERSION_PATCH})
-
-# Assemble download URL
-set(DOWNLOAD_URL https://github.com/randombit/botan/archive/refs/tags/${Botan_VERSION_STRING}.tar.gz)
-
-# Optional Botan PATH hinting
-set(Botan_PATH "" CACHE PATH "Path to Botan installation")
+if(NOT BOTAN_URL)
+    set(BOTAN_URL "https://github.com/randombit/botan/archive/refs/tags/${Botan_VERSION_STRING}.tar.gz")
+endif()
 
 if(NOT Botan_PATH)
     # Ensure that find_package() got a version specification
@@ -55,20 +48,15 @@ if(NOT Botan_PATH)
         message(FATAL_ERROR "Cannot download Botan tarball without a version specified in find_package()")
     endif()
 
-    # Just do a dummy download to see whether we can download the tarball
-    file(
-        DOWNLOAD
-        ${DOWNLOAD_URL}
-        STATUS download_status
-    )
-    if (NOT download_status EQUAL 0)
-        message(FATAL_ERROR "Could not download Botan tarball (status = ${download_status}): ${DOWNLOAD_URL}")
+    set(_botan_hash "")
+    if(BOTAN_SHA256)
+        set(_botan_hash URL_HASH SHA256=${BOTAN_SHA256})
     endif()
-
-    # Download the tarball
     FetchContent_Declare(
         botan_upstream
-        URL ${DOWNLOAD_URL}
+        URL ${BOTAN_URL}
+        ${_botan_hash}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(botan_upstream)
 else()

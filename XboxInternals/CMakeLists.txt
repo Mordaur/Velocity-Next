@@ -98,14 +98,20 @@ target_link_libraries(XboxInternals
   PUBLIC
     BotanAmalgamation  # Required by public headers (StfsPackage.h includes botan_all.h)
   PRIVATE
-    Qt6::Core          # Used internally, not exposed in API
-    Qt6::Xml           # Used internally, not exposed in API
-    velocity_compiler_flags  # Inherit common compile options
+    $<BUILD_INTERFACE:velocity_compiler_flags>
     $<$<PLATFORM_ID:Windows>:shlwapi>
 )
 
 # Organize in the IDE tree (Qt Creator, VS Code, ...)
-set_target_properties(XboxInternals PROPERTIES FOLDER "Libraries")
+set_target_properties(XboxInternals PROPERTIES
+  FOLDER "Libraries"
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN ON
+)
+if(BUILD_XBOXINTERNALS_SHARED AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Keep the embedded Botan out of the .so's dynamic symbol table.
+  target_link_options(XboxInternals PRIVATE "LINKER:--exclude-libs,libBotanAmalgamation.a")
+endif()
 
 # Create alias target for namespaced access (modern CMake pattern)
 # Allows: target_link_libraries(MyApp PRIVATE XboxInternals::XboxInternals)
@@ -179,9 +185,7 @@ if(BUILD_XBOXINTERNALS_STATIC)
     PUBLIC 
       BotanAmalgamation
     PRIVATE
-      Qt6::Core 
-      Qt6::Xml 
-      velocity_compiler_flags
+      $<BUILD_INTERFACE:velocity_compiler_flags>
   )
   target_include_directories(XboxInternalsStatic
     PUBLIC
