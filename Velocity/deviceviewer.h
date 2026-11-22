@@ -97,6 +97,9 @@ private:
     // GetChildFileEntries pumps: a nested load would clear the tree the outer
     // loop is still iterating and interleave reads on the same drive.
     bool loadingFolder;
+    // True between a Ctrl+press on the file-list header and its release, so a
+    // filtered click never leaves the header half-way through a section move.
+    bool headerCtrlClick;
     // Set while a device file is open in a modal viewer. Title-name callbacks
     // can fire during exec() and would read the same FATX drive as the viewer.
     bool openingDeviceFile;

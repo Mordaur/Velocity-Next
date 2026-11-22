@@ -96,6 +96,11 @@
 
 ### 🗂️ Device Viewer
 
+- Ctrl+clicking a column header in the file list now toggles Friendly Folder
+  Names again. The event filter was installed on the header widget, but Qt
+  delivers header mouse events through its viewport, so the shortcut never
+  fired. Press, double-click and release are filtered together so the header
+  never keeps a pressed section or a half-finished section drag.
 - Every format the app can render can now be opened from the file list:
   STFS packages (including PEC awards), SVOD/GOD, XEX, XUIZ, XDBF/GPD, STRB,
   YTGR, images, ZIP, text, XML and ISO. The context menu offers Open (the

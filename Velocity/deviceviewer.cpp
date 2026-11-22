@@ -62,7 +62,7 @@ DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
     QDialog(parent), ui(new Ui::DeviceViewer), currentDrive(nullptr), parentEntry(nullptr),
     gpdActions(gpdActions), gameActions(gameActions), statusBar(statusBar), drivesLoaded(false),
     friendlyNames(QSettings("Exetelek", "Velocity").value("FriendlyNames", false).toBool()),
-    loadingFolder(false), openingDeviceFile(false), refreshTreePending(false)
+    loadingFolder(false), headerCtrlClick(false), openingDeviceFile(false), refreshTreePending(false)
 {
     ui->setupUi(this);
 
@@ -87,9 +87,10 @@ DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
     connect(ui->treeWidget, SIGNAL(dragLeft(QDragLeaveEvent*)), this,
             SLOT(onDragLeft(QDragLeaveEvent*)));
 
-    // Ctrl+Click on the Name column toggles friendly folder names, matching
-    // GODspeed's Title/Name switch.
-    ui->treeWidget->header()->installEventFilter(this);
+    // Ctrl+Click on a column header toggles friendly folder names, matching
+    // GODspeed's Title/Name switch. Mouse events belong to the header's
+    // viewport, not to the header widget.
+    ui->treeWidget->header()->viewport()->installEventFilter(this);
 
     connect(&TitleNameService::instance(), &TitleNameService::resolved, this,
             [this](const QString &, const QString &) { RefreshTreeNames(); });
@@ -1049,14 +1050,38 @@ void DeviceViewer::ToggleFriendlyNames()
 
 bool DeviceViewer::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == ui->treeWidget->header() && event->type() == QEvent::MouseButtonRelease)
+    if (watched == ui->treeWidget->header()->viewport())
     {
-        auto *mouseEvent = static_cast<QMouseEvent *>(event);
-        if (mouseEvent->button() == Qt::LeftButton &&
-            mouseEvent->modifiers().testFlag(Qt::ControlModifier))
+        switch (event->type())
         {
-            ToggleFriendlyNames();
-            return true;
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonDblClick:
+        {
+            // Swallow the press too: filtering only the release would leave the
+            // header mid-gesture (pressed section drawn sunken, or a section
+            // drag that never finishes).
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton &&
+                    mouseEvent->modifiers().testFlag(Qt::ControlModifier))
+            {
+                headerCtrlClick = true;
+                return true;
+            }
+            break;
+        }
+        case QEvent::MouseButtonRelease:
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (headerCtrlClick && mouseEvent->button() == Qt::LeftButton)
+            {
+                headerCtrlClick = false;
+                ToggleFriendlyNames();
+                return true;
+            }
+            break;
+        }
+        default:
+            break;
         }
     }
 
