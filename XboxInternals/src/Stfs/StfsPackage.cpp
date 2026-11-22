@@ -1897,12 +1897,25 @@ void StfsPackage::UpdateEntry(string pathInPackage, StfsFileEntry entry)
 
 StfsFileEntry* StfsPackage::FindCachedFileEntry(StfsFileListing *listing, const StfsFileEntry &entry)
 {
-    // A file's first block belongs to no other file; its table slot moves
-    // whenever WriteFileListing rewrites the table.
     for (StfsFileEntry &file : listing->fileEntries)
-        if (file.blocksForFile != 0 && file.startingBlockNum == entry.startingBlockNum &&
-                file.name == entry.name)
+    {
+        if (file.name != entry.name)
+            continue;
+
+        if (entry.blocksForFile != 0)
+        {
+            // A file's first block belongs to no other file; its table slot
+            // moves whenever WriteFileListing rewrites the table.
+            if (file.blocksForFile != 0 && file.startingBlockNum == entry.startingBlockNum)
+                return &file;
+        }
+        // An entry without blocks has no unique block; match its exact slot.
+        else if (file.blocksForFile == 0 && file.fileEntryAddress == entry.fileEntryAddress &&
+                 file.pathIndicator == entry.pathIndicator)
+        {
             return &file;
+        }
+    }
 
     for (StfsFileListing &folder : listing->folderEntries)
         if (StfsFileEntry *found = FindCachedFileEntry(&folder, entry))

@@ -27,6 +27,9 @@ private:
     BaseIO *io;
     StfsPackage *package;
     StfsFileEntry entry;
+    // The entry as the package's listing last recorded it; used to find the
+    // cached entry even after growth changes the first block.
+    StfsFileEntry synced;
 
     u64 entryPosition;
     bool didChangeSize;

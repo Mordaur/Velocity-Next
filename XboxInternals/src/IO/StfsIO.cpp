@@ -8,6 +8,7 @@
 StfsIO::StfsIO(BaseIO *io, StfsPackage *package, StfsFileEntry entry) :
     io(io), package(package), entry(entry), didChangeSize(false)
 {
+    synced = entry;
     package->GenerateBlockChain(&this->entry);
 
     // An empty or short entry must not adopt blocks that belong to another
@@ -117,23 +118,28 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
     {
         const u64 originalBlockCount = (Length() + 0xFFF) / 0x1000;
         const u64 newBlockCount = (endingPosition + 0xFFF) / 0x1000;
+        const bool wasEmpty = this->entry.blockChain.empty();
         if (newBlockCount > originalBlockCount)
         {
-            if (this->entry.blockChain.empty())
-                throw string("STFS: Cannot grow a file that has no blocks.\n");
-
             u32 amountOfBlocksToAllocate = static_cast<u32>(newBlockCount - originalBlockCount);
             // AllocateBlock() appends new blocks; it never consumes a block that
             // was already free inside the package, so the free count is unchanged.
-            u32 previousBlock = this->entry.blockChain.back();
+            u32 previousBlock = wasEmpty ? kBlockChainTerminator : this->entry.blockChain.back();
             while (amountOfBlocksToAllocate-- > 0)
             {
                 u32 currentBlock = this->package->AllocateBlock();
 
-                if (currentBlock != previousBlock + 1)
-                    this->entry.flags &= static_cast<u8>(~ConsecutiveBlocks);
+                if (previousBlock == kBlockChainTerminator)
+                {
+                    this->entry.startingBlockNum = currentBlock;
+                }
+                else
+                {
+                    if (currentBlock != previousBlock + 1)
+                        this->entry.flags &= static_cast<u8>(~ConsecutiveBlocks);
 
-                this->package->SetNextBlock(previousBlock, currentBlock);
+                    this->package->SetNextBlock(previousBlock, currentBlock);
+                }
 
                 this->entry.blockChain.push_back(currentBlock);
                 previousBlock = currentBlock;
@@ -146,6 +152,11 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
 
         didChangeSize = true;
         entry.fileSize = static_cast<u32>(endingPosition);
+
+        // Growth gave an empty file its first block; switch the cache key from
+        // the empty slot to the block-based form before any table rewrite.
+        if (wasEmpty)
+            Flush();
     }
 
     if ((static_cast<u64>(this->entry.blockChain.size()) << 12) < endingPosition)
@@ -175,7 +186,7 @@ void StfsIO::Flush()
 
         // Not found means the file was removed while open; its old slot may now
         // hold another entry, so write nothing.
-        if (StfsFileEntry *cached = package->FindCachedFileEntry(&package->fileListing, this->entry))
+        if (StfsFileEntry *cached = package->FindCachedFileEntry(&package->fileListing, this->synced))
         {
             this->entry.fileEntryAddress = cached->fileEntryAddress;
             this->entry.nameLen = cached->nameLen;
@@ -184,6 +195,7 @@ void StfsIO::Flush()
             this->io->Write(static_cast<u8>((this->entry.nameLen & 0x3F) | (this->entry.flags << 6)));
             this->io->WriteInt24(blocksAllocated, LittleEndian);
             this->io->WriteInt24(blocksAllocated, LittleEndian);
+            this->io->WriteInt24(this->entry.startingBlockNum, LittleEndian);
 
             this->io->SetPosition(this->entry.fileEntryAddress + 0x34);
             this->io->Write(static_cast<u32>(this->entry.fileSize));
@@ -192,6 +204,8 @@ void StfsIO::Flush()
             cached->blocksForFile = this->entry.blocksForFile;
             cached->flags = this->entry.flags;
             cached->blockChain = this->entry.blockChain;
+            cached->startingBlockNum = this->entry.startingBlockNum;
+            this->synced = *cached;
         }
 
         didChangeSize = false;
@@ -213,28 +227,16 @@ void StfsIO::Resize(u64 size)
     if (size > UINT32_MAX)
         throw string("STFS: File size exceeds the 32-bit on-disk limit.\n");
 
-    // Growing from, or shrinking to, zero blocks would also need the entry's
-    // starting block rewritten, which Flush() does not do.
-    if (this->entry.blockChain.empty() || (size + 0xFFF) / 0x1000 == 0)
-        throw string("STFS: Cannot resize a file to or from zero blocks.\n");
-
     if (this->entry.blockChain.size() != (static_cast<u64>(this->entry.fileSize) + 0xFFF) / 0x1000)
         throw string("STFS: The file's block chain does not match its size.\n");
 
-    u32 originalSize = this->entry.fileSize;
-    this->entry.fileSize = (u32)size;
-    didChangeSize = true;
-
-    u32 newBlockCount = (size + 0xFFF) / 0x1000;
-    u32 originalBlockCount = (originalSize + 0xFFF) / 0x1000;
-    this->entry.blocksForFile = newBlockCount;
-    // Flush() writes blocksAllocated into both the blocks-for-file and
-    // blocks-allocated fields, so keep it in step with the chain.
-    blocksAllocated = newBlockCount;
+    const u32 originalBlockCount = static_cast<u32>(
+            (static_cast<u64>(this->entry.fileSize) + 0xFFF) / 0x1000);
+    const u32 newBlockCount = static_cast<u32>((size + 0xFFF) / 0x1000);
 
     if (originalBlockCount > newBlockCount)
     {
-        u32 amountOfBlocksToDeallocate = originalBlockCount - newBlockCount;
+        const u32 amountOfBlocksToDeallocate = originalBlockCount - newBlockCount;
         for (u32 i = 0; i < amountOfBlocksToDeallocate; i++)
         {
             u32 currentBlock = this->entry.blockChain.back();
@@ -245,21 +247,34 @@ void StfsIO::Resize(u64 size)
             this->package->FreeBlock(currentBlock);
         }
 
-        this->package->SetNextBlock(this->entry.blockChain.back(), kBlockChainTerminator);
+        if (this->entry.blockChain.empty())
+            this->entry.startingBlockNum = kBlockChainTerminator;
+        else
+            this->package->SetNextBlock(this->entry.blockChain.back(), kBlockChainTerminator);
+
         this->package->metaData->WriteVolumeDescriptor();
     }
     else if (originalBlockCount < newBlockCount)
     {
-        u32 amountOfBlocksToAllocate = newBlockCount - originalBlockCount;
-        u32 previousBlock = this->entry.blockChain.back();
+        const u32 amountOfBlocksToAllocate = newBlockCount - originalBlockCount;
+        u32 previousBlock = this->entry.blockChain.empty()
+                ? kBlockChainTerminator : this->entry.blockChain.back();
         for (u32 i = 0; i < amountOfBlocksToAllocate; i++)
         {
             u32 currentBlock = this->package->AllocateBlock();
 
-            if (currentBlock != previousBlock + 1)
-                this->entry.flags &= static_cast<u8>(~ConsecutiveBlocks);
+            if (previousBlock == kBlockChainTerminator)
+            {
+                this->entry.startingBlockNum = currentBlock;
+            }
+            else
+            {
+                if (currentBlock != previousBlock + 1)
+                    this->entry.flags &= static_cast<u8>(~ConsecutiveBlocks);
 
-            this->package->SetNextBlock(previousBlock, currentBlock);
+                this->package->SetNextBlock(previousBlock, currentBlock);
+            }
+
             this->entry.blockChain.push_back(currentBlock);
             previousBlock = currentBlock;
         }
@@ -267,5 +282,9 @@ void StfsIO::Resize(u64 size)
         this->package->SetNextBlock(previousBlock, kBlockChainTerminator);
     }
 
+    this->entry.fileSize = static_cast<u32>(size);
+    this->entry.blocksForFile = newBlockCount;
+    blocksAllocated = newBlockCount;
+    didChangeSize = true;
     Flush();
 }

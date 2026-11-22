@@ -1205,6 +1205,142 @@ namespace
               "pre-1970 milliseconds are not negative");
     }
 
+    void testStfsReplaceFreesBlocks()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_replace.bin";
+        const fs::path src = fs::temp_directory_path() / "xbi_smoke_stfs_replace_src.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        bool completed = false;
+        try
+        {
+            StfsPackage package(path.string(), StfsPackageCreate);
+            std::vector<u8> big(0x3000, 0x11);
+            std::vector<u8> filler(0x1000, 0x22);
+            package.InjectData(big.data(), static_cast<u32>(big.size()), "a.bin");
+            package.InjectData(filler.data(), static_cast<u32>(filler.size()), "filler.bin");
+
+            const u32 freeBefore = package.metaData->stfsVolumeDescriptor.unallocatedBlockCount;
+            const u32 allocatedBefore = package.metaData->stfsVolumeDescriptor.allocatedBlockCount;
+
+            std::vector<u8> smaller(0x1000, 0x33);
+            {
+                std::ofstream out(src, std::ios::binary | std::ios::trunc);
+                out.write(reinterpret_cast<const char *>(smaller.data()),
+                        static_cast<std::streamsize>(smaller.size()));
+            }
+
+            StfsFileEntry a = package.GetFileEntry("a.bin");
+            package.ReplaceFile(src.string(), &a, "a.bin");
+            check(package.metaData->stfsVolumeDescriptor.unallocatedBlockCount == freeBefore + 2,
+                  "ReplaceFile frees the blocks it stops using");
+            check(package.metaData->stfsVolumeDescriptor.allocatedBlockCount == allocatedBefore,
+                  "ReplaceFile keeps the allocated total");
+
+            std::unique_ptr<StfsIO> fillerIo(package.GetStfsIO("filler.bin"));
+            std::vector<u8> fillerBack(0x1000);
+            fillerIo->ReadBytes(fillerBack.data(), 0x1000);
+            check(fillerBack == filler, "ReplaceFile leaves the neighbour intact");
+            fillerIo.reset();
+
+            std::unique_ptr<StfsIO> aIo(package.GetStfsIO("a.bin"));
+            std::vector<u8> aBack(0x1000);
+            aIo->ReadBytes(aBack.data(), 0x1000);
+            check(aBack == smaller, "the smaller replacement reads back");
+            aIo.reset();
+
+            // Replacing with an empty file frees the last block and resets the start.
+            {
+                std::ofstream out(src, std::ios::binary | std::ios::trunc);
+            }
+            a = package.GetFileEntry("a.bin");
+            package.ReplaceFile(src.string(), &a, "a.bin");
+            StfsFileEntry empty = package.GetFileEntry("a.bin");
+            check(empty.fileSize == 0 && empty.blocksForFile == 0,
+                  "an empty replacement has no blocks");
+            check(empty.startingBlockNum == kBlockChainTerminator,
+                  "an empty replacement starts at the terminator");
+            check(package.metaData->stfsVolumeDescriptor.unallocatedBlockCount == freeBefore + 3,
+                  "the empty replacement frees its last block");
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS replace test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS replace test threw: %s)\n", e.what());
+        }
+
+        check(completed, "STFS replace test completes");
+        fs::remove(path, ignored);
+        fs::remove(src, ignored);
+    }
+
+    void testStfsZeroBlockResize()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_zero.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        bool completed = false;
+        try
+        {
+            StfsPackage package(path.string(), StfsPackageCreate);
+            std::vector<u8> data(0x2000, 0x66);
+            package.InjectData(data.data(), static_cast<u32>(data.size()), "a.bin");
+
+            const u32 freeBefore = package.metaData->stfsVolumeDescriptor.unallocatedBlockCount;
+
+            std::unique_ptr<StfsIO> io(package.GetStfsIO("a.bin"));
+            io->Resize(0);
+            check(io->Length() == 0, "Resize(0) clears the file size");
+
+            StfsFileEntry emptied = package.GetFileEntry("a.bin");
+            check(emptied.blocksForFile == 0, "Resize(0) clears the block count");
+            check(emptied.startingBlockNum == kBlockChainTerminator,
+                  "Resize(0) resets the start block");
+            check(package.metaData->stfsVolumeDescriptor.unallocatedBlockCount == freeBefore + 2,
+                  "Resize(0) frees both blocks");
+
+            // Writing to the emptied file must allocate a new first block.
+            std::vector<u8> regrown(0x1234, 0x77);
+            io->SetPosition(0);
+            io->WriteBytes(regrown.data(), static_cast<u32>(regrown.size()));
+            check(io->Length() == 0x1234, "writing to an empty file grows it");
+            io->SetPosition(0);
+            std::vector<u8> back(0x1234);
+            io->ReadBytes(back.data(), static_cast<u32>(back.size()));
+            check(back == regrown, "the regrown file reads back");
+            io.reset();
+
+            StfsPackage reopened(path.string());
+            StfsFileEntry grown = reopened.GetFileEntry("a.bin");
+            check(grown.fileSize == 0x1234, "reopen sees the regrown size");
+            check(grown.blocksForFile == 2, "reopen sees both blocks");
+            check(grown.startingBlockNum != kBlockChainTerminator,
+                  "reopen sees the new start block");
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS zero resize test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS zero resize test threw: %s)\n", e.what());
+        }
+
+        check(completed, "STFS zero resize test completes");
+        fs::remove(path, ignored);
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1579,6 +1715,8 @@ int main()
     testStfsCountersAndResize();
     testStfsCorruptChain();
     testStfsCachedListing();
+    testStfsReplaceFreesBlocks();
+    testStfsZeroBlockResize();
     testFileTimeConversion();
     testGarbageImages();
 
