@@ -1265,8 +1265,10 @@ QString DeviceViewer::ResolveTitleName(FatxFileEntry *entry)
                         continue;
 
                     drive->GetChildFileEntries(dir);
-                    for (FatxFileEntry &package : dir->cachedFiles)
+                    for (size_t cachedIndex = 0; cachedIndex < dir->cachedFiles.size();
+                            ++cachedIndex)
                     {
+                        FatxFileEntry &package = dir->cachedFiles.at(cachedIndex);
                         if (package.fileAttributes & FatxDirectory)
                             continue;
 

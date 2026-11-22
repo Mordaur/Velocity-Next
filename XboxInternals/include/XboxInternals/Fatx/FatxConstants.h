@@ -10,6 +10,7 @@
 #include <XboxInternals/Stfs/XContentHeader.h>
 
 #include <deque>
+#include <memory>
 #include <vector>
 #include <iostream>
 
@@ -82,6 +83,39 @@ struct FileExtent
     u64 length = 0;
 };
 
+struct FatxFileEntry;
+
+// Stable-address list of child entries. A plain std::deque<FatxFileEntry>
+// member of FatxFileEntry is rejected by libc++ (incomplete value type), so
+// the deque lives behind a pointer. The pointer is never invalidated by
+// push_back and the container is deep-copied when the entry is copied.
+class FatxFileEntryList
+{
+public:
+    FatxFileEntryList();
+    FatxFileEntryList(const FatxFileEntryList &other);
+    FatxFileEntryList &operator=(const FatxFileEntryList &other);
+    FatxFileEntryList(FatxFileEntryList &&other) noexcept;
+    FatxFileEntryList &operator=(FatxFileEntryList &&other) noexcept;
+    ~FatxFileEntryList();
+
+    size_t size() const;
+    bool empty() const;
+    void clear();
+
+    void push_back(const FatxFileEntry &entry);
+    void push_back(FatxFileEntry &&entry);
+
+    FatxFileEntry &operator[](size_t index);
+    const FatxFileEntry &operator[](size_t index) const;
+    FatxFileEntry &at(size_t index);
+    const FatxFileEntry &at(size_t index) const;
+
+private:
+    std::unique_ptr<std::deque<FatxFileEntry>> entries;
+    void ensure();
+};
+
 struct FatxFileEntry
 {
     Partition *partition = nullptr;
@@ -106,10 +140,90 @@ struct FatxFileEntry
     // FatxFileEntry* for children. push_back on a deque never invalidates
     // references to existing elements, while a vector reallocation freed every
     // sibling pointer handed out earlier.
-    std::deque<FatxFileEntry> cachedFiles;
+    FatxFileEntryList cachedFiles;
     std::vector<u32> clusterChain;
     std::string path;
 };
+
+inline FatxFileEntryList::FatxFileEntryList() = default;
+inline FatxFileEntryList::~FatxFileEntryList() = default;
+inline FatxFileEntryList::FatxFileEntryList(FatxFileEntryList &&other) noexcept = default;
+inline FatxFileEntryList &FatxFileEntryList::operator=(FatxFileEntryList &&other) noexcept = default;
+
+inline FatxFileEntryList::FatxFileEntryList(const FatxFileEntryList &other)
+{
+    if (other.entries)
+        entries = std::make_unique<std::deque<FatxFileEntry>>(*other.entries);
+}
+
+inline FatxFileEntryList &FatxFileEntryList::operator=(const FatxFileEntryList &other)
+{
+    if (this == &other)
+        return *this;
+
+    if (other.entries)
+        entries = std::make_unique<std::deque<FatxFileEntry>>(*other.entries);
+    else
+        entries.reset();
+
+    return *this;
+}
+
+inline size_t FatxFileEntryList::size() const
+{
+    return entries ? entries->size() : 0;
+}
+
+inline bool FatxFileEntryList::empty() const
+{
+    return !entries || entries->empty();
+}
+
+inline void FatxFileEntryList::clear()
+{
+    if (entries)
+        entries->clear();
+}
+
+inline void FatxFileEntryList::ensure()
+{
+    if (!entries)
+        entries = std::make_unique<std::deque<FatxFileEntry>>();
+}
+
+inline void FatxFileEntryList::push_back(const FatxFileEntry &entry)
+{
+    ensure();
+    entries->push_back(entry);
+}
+
+inline void FatxFileEntryList::push_back(FatxFileEntry &&entry)
+{
+    ensure();
+    entries->push_back(std::move(entry));
+}
+
+inline FatxFileEntry &FatxFileEntryList::operator[](size_t index)
+{
+    ensure();
+    return (*entries)[index];
+}
+
+inline const FatxFileEntry &FatxFileEntryList::operator[](size_t index) const
+{
+    return (*entries)[index];
+}
+
+inline FatxFileEntry &FatxFileEntryList::at(size_t index)
+{
+    ensure();
+    return entries->at(index);
+}
+
+inline const FatxFileEntry &FatxFileEntryList::at(size_t index) const
+{
+    return entries->at(index);
+}
 
 struct Partition
 {
