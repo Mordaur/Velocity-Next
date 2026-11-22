@@ -511,7 +511,7 @@ void DeviceViewer::LoadDrives()
             FatxFileEntry *nameEntry = drive->GetFileEntry("Drive:\\Content\\name.txt");
             QString name = (drive->GetFatxDriveType() == FatxHarddrive) ? "Hard Drive" :
                     "Flash Drive";
-            if (nameEntry)
+            if (nameEntry && nameEntry->fileSize >= 4)
             {
                 FatxIO nameFile = drive->GetFatxIO(nameEntry);
                 nameFile.SetPosition(0);
@@ -1365,7 +1365,7 @@ void DeviceViewer::on_btnRestore_clicked()
     // reload the drive name
     FatxFileEntry *nameEntry = currentDrive->GetFileEntry("Drive:\\Content\\name.txt");
     QString name = (currentDrive->GetFatxDriveType() == FatxHarddrive) ? "Hard Drive" : "Flash Drive";
-    if (nameEntry)
+    if (nameEntry && nameEntry->fileSize >= 4)
     {
         FatxIO nameFile = currentDrive->GetFatxIO(nameEntry);
         nameFile.SetPosition(0);

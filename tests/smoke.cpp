@@ -10,6 +10,7 @@
 #include <XboxInternals/Disc/ISO.h>
 #include <XboxInternals/Disc/Svod.h>
 #include <XboxInternals/Disc/SvodLayout.h>
+#include <XboxInternals/Fatx/FatxDrive.h>
 #include <XboxInternals/Gpd/Xdbf.h>
 #include <XboxInternals/Gpd/XdbfHelpers.h>
 #include <XboxInternals/IO/FileIO.h>
@@ -1559,6 +1560,16 @@ namespace
         fs::remove(path, ignored);
     }
 
+    void testFatxNamesEqual()
+    {
+        check(FatxDrive::NamesEqual("foo.bin", "FOO.BIN"),
+              "FATX names compare case-insensitively");
+        check(FatxDrive::NamesEqual("Name.Txt", "nAME.tXT"),
+              "FATX names fold in both directions");
+        check(!FatxDrive::NamesEqual("foo.bin", "foo.bi"),
+              "FATX names compare length first");
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1937,6 +1948,7 @@ int main()
     testStfsZeroBlockResize();
     testStfsCounterRepair();
     testFatxEraseRanges();
+    testFatxNamesEqual();
     testIndexableMultiFileIO();
     testStfsNameCollisions();
     testFileTimeConversion();

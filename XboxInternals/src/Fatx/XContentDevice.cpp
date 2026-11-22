@@ -259,7 +259,7 @@ std::wstring XContentDevice::GetName()
 {
     FatxFileEntry *nameEntry = drive->GetFileEntry("Drive:\\Content\\name.txt");
     std::wstring name = (GetDeviceType() == FatxHarddrive) ? L"Hard Drive" : L"Flash Drive";
-    if (nameEntry)
+    if (nameEntry && nameEntry->fileSize >= 4)
     {
         FatxIO nameFile = drive->GetFatxIO(nameEntry);
         nameFile.SetPosition(0);

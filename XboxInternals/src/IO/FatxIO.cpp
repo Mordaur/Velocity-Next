@@ -5,7 +5,8 @@
 #include <cstddef>
 #include <vector>
 
-FatxIO::FatxIO(BaseIO *device, FatxFileEntry *entry) : entry(entry), device(device)
+FatxIO::FatxIO(BaseIO *device, FatxFileEntry *entry) :
+    entry(entry), device(device), pos(0), maxReadConsecutive(0)
 {
     // if it's a new file, then don't do any seeking yet
     if (entry->startingCluster != 0)
@@ -23,16 +24,12 @@ void FatxIO::SetPosition(u64 position, std::ios_base::seekdir dir)
     else if (dir == std::ios_base::end)
         position = (Length() + position);
 
-    // if they seek beyond the end of the stream, then we need to allocate memory
-    if (position > entry->fileSize && !(entry->fileAttributes & FatxDirectory))
-    {
-        // calculate how far beyond the stream the caller is seeking
-        AllocateMemory(position - entry->fileSize);
-    }
-
     pos = position;
 
-    if (pos == entry->fileSize && !(entry->fileAttributes & FatxDirectory))
+    // Seeking never allocates: WriteBytes() grows and re-maps, ReadBytes()
+    // rejects the read. A directory's size is its record count, so its writes
+    // legitimately land at and past it.
+    if (pos >= entry->fileSize && !(entry->fileAttributes & FatxDirectory))
         return;
 
     // A zero cluster size indicates a corrupt partition header.
@@ -145,6 +142,10 @@ FatxFileEntry* FatxIO::GetFatxFileEntry()
 
 void FatxIO::ReadBytes(u8 *outBuffer, u32 len)
 {
+    if (!(entry->fileAttributes & FatxDirectory) &&
+            (pos > entry->fileSize || len > entry->fileSize - pos))
+        throw std::string("FATX: Cannot read past the end of the file.\n");
+
     // get the length
     u32 origLen = len;
 
@@ -174,6 +175,13 @@ void FatxIO::ReadBytes(u8 *outBuffer, u32 len)
 
 void FatxIO::WriteBytes(u8 *buffer, u32 len)
 {
+    if (!(entry->fileAttributes & FatxDirectory) && pos + len > entry->fileSize)
+    {
+        // Grow by the gap as well: a seek past EOF no longer allocates.
+        AllocateMemory(static_cast<u32>(pos + len - entry->fileSize));
+        SetPosition(pos);
+    }
+
     // get the length
     u32 origLen = len;
 

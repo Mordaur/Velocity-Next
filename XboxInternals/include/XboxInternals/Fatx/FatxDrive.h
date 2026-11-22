@@ -117,7 +117,10 @@ public:
     static i64 ClusterToOffset(Partition *part, u32 cluster);
 
     // check to see whether or not a file name is valid
-    static bool ValidFileName(std::string fileName);    
+    static bool ValidFileName(std::string fileName);
+
+    // Description: kernel FATX name equality (length, then case-insensitive)
+    static bool NamesEqual(const std::string &a, const std::string &b);    
 
     // format recovery version, found by Eaton (only on dev kit drives)
     Version lastFormatRecoveryVersion;

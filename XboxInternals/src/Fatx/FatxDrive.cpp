@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cctype>
 #include <unordered_set>
 #include <vector>
 
@@ -248,7 +249,7 @@ FatxFileEntry* FatxDrive::createFileEntry(FatxFileEntry *parent, FatxFileEntry *
     GetChildFileEntries(parent);
 
     for (size_t i = 0; i < parent->cachedFiles.size(); i++)
-        if (parent->cachedFiles.at(i).name == newEntry->name)
+        if (NamesEqual(parent->cachedFiles.at(i).name, newEntry->name))
         {
             // if it's deleted, it's okay!
             if (parent->cachedFiles.at(i).nameLen != FATX_ENTRY_DELETED)
@@ -292,7 +293,10 @@ FatxFileEntry* FatxDrive::createFileEntry(FatxFileEntry *parent, FatxFileEntry *
     newEntry->fileSize = 0;
 
     FatxIO childIO(io.get(), newEntry);
-    childIO.AllocateMemory(fileSize);
+    // A zero-byte file owns no clusters (free60: null starting cluster).
+    // AllocateMemory(0) would allocate and link one while leaving the size 0.
+    if (fileSize != 0 || (newEntry->fileAttributes & FatxDirectory))
+        childIO.AllocateMemory(fileSize);
     childIO.WriteEntryToDisk();
 
     parent->cachedFiles.push_back(*newEntry);
@@ -352,16 +356,24 @@ void FatxDrive::RemoveFile(FatxFileEntry *entry, void(*progress)(void*), void *a
     for (size_t i = 0; i < entry->cachedFiles.size(); i++)
         RemoveFile(&entry->cachedFiles.at(i), progress, arg);
 
-    // set all the clusters to available
-    entry->clusterChain.push_back(entry->startingCluster);
+    // set all the clusters to available; drop the duplicate start cluster and
+    // sort so GetConsecutive sees a canonical list.
+    if (entry->startingCluster != 0)
+        entry->clusterChain.push_back(entry->startingCluster);
+
+    std::sort(entry->clusterChain.begin(), entry->clusterChain.end());
+    entry->clusterChain.erase(
+            std::unique(entry->clusterChain.begin(), entry->clusterChain.end()),
+            entry->clusterChain.end());
+
     FatxIO::SetAllClusters(io.get(), entry->partition, entry->clusterChain, FAT_CLUSTER_AVAILABLE);
 
     // generate cluster ranges for fast insertion into the cluster chain
     std::vector<Range> clusterRanges;
     FatxIO::GetConsecutive(entry->clusterChain, clusterRanges, true);
 
-    // inject all of the ranges back into the cluster chain
-    for (u32 i = 1; i < clusterRanges.size(); i++)
+    // inject every range back into the cluster chain
+    for (u32 i = 0; i < clusterRanges.size(); i++)
     {
         clusterRanges.at(i).start = entry->clusterChain.at(clusterRanges.at(i).start);
         injectRange(entry->partition->freeClusters, clusterRanges.at(i));
@@ -413,7 +425,9 @@ void FatxDrive::InjectFile(FatxFileEntry *parent, std::string name, std::string 
     // set other stuff
     entry.fileAttributes = 0;
     inFile.SetPosition(0);
-    entry.magic = inFile.ReadDword();
+    // A file shorter than the magic has none; GetFileEntryMagic() treats 0 the
+    // same way and re-reads it once the file has data.
+    entry.magic = (fileSize >= 4) ? inFile.ReadDword() : 0;
     inFile.Close();
 
     // create the entry
@@ -1159,6 +1173,21 @@ void FatxDrive::ReloadDrive()
     loadFatxDrive();
 }
 
+bool FatxDrive::NamesEqual(const std::string &a, const std::string &b)
+{
+    // Kernel FATX lookup compares length first, then folds a-z to A-Z
+    // (xboxkrnlct 16547, 0x800D38B0 -> 0x800AB4A8 -> 0x800AB308).
+    if (a.size() != b.size())
+        return false;
+
+    for (size_t i = 0; i < a.size(); ++i)
+        if (std::toupper(static_cast<unsigned char>(a[i])) !=
+                std::toupper(static_cast<unsigned char>(b[i])))
+            return false;
+
+    return true;
+}
+
 bool FatxDrive::FileExists(std::string filePath)
 {
     return !!GetFileEntry(filePath);
@@ -1171,7 +1200,7 @@ bool FatxDrive::FileExists(FatxFileEntry *folder, std::string fileName, bool che
     for (size_t i = 0; i < folder->cachedFiles.size(); i++)
     {
         // there's a better way to do this, but...
-        if (folder->cachedFiles.at(i).name == fileName)
+        if (NamesEqual(folder->cachedFiles.at(i).name, fileName))
         {
              if (folder->cachedFiles.at(i).nameLen == FATX_ENTRY_DELETED)
              {
@@ -1235,7 +1264,7 @@ FatxFileEntry* FatxDrive::GetFileEntry(std::string filePath)
         FatxFileEntry *foundEntry = NULL;
         for (u32 i = 0; i < parent->cachedFiles.size(); i++)
         {
-            if (parent->cachedFiles.at(i).name == fileName && parent->cachedFiles.at(i).nameLen != FATX_ENTRY_DELETED)
+            if (NamesEqual(parent->cachedFiles.at(i).name, fileName) && parent->cachedFiles.at(i).nameLen != FATX_ENTRY_DELETED)
             {
                 foundEntry = &parent->cachedFiles.at(i);
                 break;
@@ -1269,6 +1298,11 @@ void FatxDrive::SetDriveName(std::wstring name)
 
     if (count > 0x36)
         throw std::string("FATX: Drive name cannot be larger than 26 characters.\n");
+
+    // A fresh name.txt owns no clusters; allocate before the size is set,
+    // because SetPosition() maps through the cluster chain.
+    if (nameEntry->clusterChain.empty())
+        nameIO.AllocateMemory(static_cast<u32>(count));
 
     nameIO.entry->fileSize = count;
     nameIO.WriteEntryToDisk();
