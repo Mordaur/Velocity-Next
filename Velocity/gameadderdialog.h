@@ -15,6 +15,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QStringList>
+#include <QPointer>
 #include <memory>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -42,6 +43,8 @@ signals:
 public:
     explicit GameAdderDialog(StfsPackage* package, QWidget* parent = nullptr, bool dispose = true, bool* ok = nullptr);
     ~GameAdderDialog();
+
+    void reject() override;
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -90,6 +93,15 @@ private:
         int treeIndex;
     };
     QMap<QNetworkReply*, PendingGpdInjection> pendingInjections;
+
+    void removeStagedFiles(const PendingGpdInjection &pending);
+    void discardStaged();
+    void commitStagedGame(PendingGpdInjection pending);
+    void cancelOperation();
+
+    QList<QPointer<GpdDownloader>> downloaders;
+    QList<PendingGpdInjection> staged;
+    bool cancelled = false;
     
     struct FailedDownload {
         QString gameName;

@@ -47,6 +47,9 @@ void GpdDownloader::Cancel() {
     if (retryTimer && retryTimer->isActive()) {
         retryTimer->stop();
     }
+    // It will not emit, so nobody else will delete what it saved.
+    if (!gameGpd.isEmpty()) QFile::remove(gameGpd);
+    if (!awardGpd.isEmpty()) QFile::remove(awardGpd);
 }
 
 // Internal method to start or retry a download
