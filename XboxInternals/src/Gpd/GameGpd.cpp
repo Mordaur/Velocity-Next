@@ -40,8 +40,11 @@ AchievementEntry GameGpd::readAchievementEntry(XdbfEntry entry)
     toReturn.flags = io->ReadDword();
 
     FileTime timeStamp = { io->ReadDword(), io->ReadDword() };
-    toReturn.unlockTime = XdbfHelpers::FILETIMEtoTimeT(timeStamp);
-    toReturn.unlockTimeMilliseconds = XdbfHelpers::FILETIMEtoMilliseconds(timeStamp);
+    const bool hasTime = timeStamp.highDateTime != 0 || timeStamp.lowDateTime != 0;
+    toReturn.unlockTime = hasTime
+            ? static_cast<unsigned int>(XdbfHelpers::FILETIMEtoTimeT(timeStamp)) : 0;
+    toReturn.unlockTimeMilliseconds = hasTime
+            ? XdbfHelpers::FILETIMEtoMilliseconds(timeStamp) : 0;
 
     toReturn.name = io->ReadWString();
     toReturn.unlockedDescription = io->ReadWString();

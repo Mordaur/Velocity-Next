@@ -11,6 +11,7 @@
 #include <XboxInternals/Disc/Svod.h>
 #include <XboxInternals/Disc/SvodLayout.h>
 #include <XboxInternals/Gpd/Xdbf.h>
+#include <XboxInternals/Gpd/XdbfHelpers.h>
 #include <XboxInternals/IO/FileIO.h>
 #include <XboxInternals/IO/MemoryIO.h>
 #include <XboxInternals/IO/StfsIO.h>
@@ -1170,6 +1171,40 @@ namespace
         fs::remove(path, ignored);
     }
 
+    void testFileTimeConversion()
+    {
+        // A FILETIME is 100 ns ticks since 1601; time_t is seconds since 1970.
+        FileTime zero = {0, 0};
+        check(XdbfHelpers::FILETIMEtoTimeT(zero) == -11644473600LL,
+              "FILETIME 0 decodes to 1601-01-01");
+        check(XdbfHelpers::FILETIMEtoMilliseconds(zero) == 0,
+              "FILETIME 0 has zero milliseconds");
+
+        FileTime tick = {0, 1};
+        check(XdbfHelpers::FILETIMEtoTimeT(tick) == -11644473600LL,
+              "a sub-second pre-1970 time floors");
+        check(XdbfHelpers::FILETIMEtoMilliseconds(tick) == 0,
+              "a sub-second pre-1970 time has no milliseconds");
+
+        FileTime in2009 = {0x01C9C380, 0};
+        check(XdbfHelpers::FILETIMEtoTimeT(in2009) == 1240428288LL,
+              "a 2009 timestamp decodes");
+        check(static_cast<unsigned int>(XdbfHelpers::FILETIMEtoTimeT(zero)) == 1240428288u,
+              "an unset FILETIME truncates to the 2009 value");
+
+        FileTime withMs = XdbfHelpers::TimeTtoFILETIME(1234567890, 123);
+        check(XdbfHelpers::FILETIMEtoTimeT(withMs) == 1234567890LL,
+              "seconds round-trip through FILETIME");
+        check(XdbfHelpers::FILETIMEtoMilliseconds(withMs) == 123,
+              "milliseconds round-trip through FILETIME");
+
+        FileTime pre1970 = XdbfHelpers::TimeTtoFILETIME(-1, 0);
+        check(XdbfHelpers::FILETIMEtoTimeT(pre1970) == -1LL,
+              "pre-1970 seconds round-trip");
+        check(XdbfHelpers::FILETIMEtoMilliseconds(pre1970) == 0,
+              "pre-1970 milliseconds are not negative");
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1544,6 +1579,7 @@ int main()
     testStfsCountersAndResize();
     testStfsCorruptChain();
     testStfsCachedListing();
+    testFileTimeConversion();
     testGarbageImages();
 
     if (g_failures != 0)

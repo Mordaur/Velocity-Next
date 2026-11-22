@@ -4,6 +4,17 @@
 
 using std::stringstream;
 
+namespace
+{
+    constexpr u64 kUnixEpochTicks = 116444736000000000ULL;
+    constexpr u64 kTicksPerSecond = 10000000ULL;
+
+    u64 FileTimeTicks(FileTime time)
+    {
+        return (static_cast<u64>(time.highDateTime) << 32) | time.lowDateTime;
+    }
+}
+
 string XdbfHelpers::EntryTypeToString(EntryType type)
 {
     if (type < 1 || type > 6)
@@ -32,20 +43,19 @@ bool XdbfHelpers::CompareEntries(XdbfEntry a, XdbfEntry b)
 
 time_t XdbfHelpers::FILETIMEtoTimeT(FileTime time)
 {
-    i64 ticks = (((i64)(time.highDateTime)) << 32) + time.lowDateTime;
-    return (time_t)((ticks - 116444736000000000) / 10000000);
+    const u64 ticks = FileTimeTicks(time);
+    if (ticks >= kUnixEpochTicks)
+        return static_cast<time_t>((ticks - kUnixEpochTicks) / kTicksPerSecond);
+
+    // Floor, so a time before 1970 does not round toward zero.
+    return -static_cast<time_t>((kUnixEpochTicks - ticks + kTicksPerSecond - 1) / kTicksPerSecond);
 }
 
 unsigned int XdbfHelpers::FILETIMEtoMilliseconds(FileTime time)
 {
-    /* Effectively the same as FILETIMEtoTimeT, but we're leaving
-      the milliseconds on, and stripping them out with a modulus.
-
-      TODO: Maybe just make this void with two reference parameters
-      to fill a time_t and unsigned int.
-      */
-    i64 ticks = (((i64)(time.highDateTime)) << 32) + time.lowDateTime;
-    return (unsigned int)(((ticks - 116444736000000000) / 10000) % 1000);
+    // The epoch offset is a whole number of seconds, so the remainder is the
+    // sub-second part for dates on both sides of 1970.
+    return static_cast<unsigned int>((FileTimeTicks(time) % kTicksPerSecond) / 10000);
 }
 
 FileTime XdbfHelpers::TimeTtoFILETIME(time_t time)

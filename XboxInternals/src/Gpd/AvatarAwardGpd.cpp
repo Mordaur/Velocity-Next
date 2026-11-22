@@ -53,8 +53,11 @@ AvatarAwardData AvatarAwardGpd::readAvatarAwardEntry(XdbfEntry entry)
 
     // read the unlock time
     FileTime time = { io->ReadDword(), io->ReadDword() };
-    award.unlockTime = XdbfHelpers::FILETIMEtoTimeT(time);
-    award.unlockTimeMilliseconds = XdbfHelpers::FILETIMEtoMilliseconds(time);
+    const bool hasTime = time.highDateTime != 0 || time.lowDateTime != 0;
+    award.unlockTime = hasTime
+            ? static_cast<unsigned int>(XdbfHelpers::FILETIMEtoTimeT(time)) : 0;
+    award.unlockTimeMilliseconds = hasTime
+            ? XdbfHelpers::FILETIMEtoMilliseconds(time) : 0;
 
     // read the rest of the entry
     award.subcategory = io->ReadEnum<AssetSubcategory>(4);
@@ -144,10 +147,17 @@ void AvatarAwardGpd::WriteAvatarAward(AvatarAwardData *award)
     io->Write(award->imageID);
     io->Write(award->flags);
 
-    // Write the unlock time
-    FileTime time = XdbfHelpers::TimeTtoFILETIME(award->unlockTime, award->unlockTimeMilliseconds);
-    io->Write(time.highDateTime);
-    io->Write(time.lowDateTime);
+    // Write the unlock time; zero means "not unlocked".
+    if (award->unlockTime == 0)
+    {
+        io->Write(static_cast<u64>(0));
+    }
+    else
+    {
+        FileTime time = XdbfHelpers::TimeTtoFILETIME(award->unlockTime, award->unlockTimeMilliseconds);
+        io->Write(time.highDateTime);
+        io->Write(time.lowDateTime);
+    }
 
     // Write the rest of the entry
     io->Write((u32)award->subcategory);
