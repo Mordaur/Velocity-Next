@@ -73,6 +73,15 @@ struct FlashDriveConfigurationData
     u16 WriteSpeed;
 };
 
+// One contiguous run of a file on the device. fileOffset is relative to the
+// start of the file, deviceOffset is absolute in the drive.
+struct FileExtent
+{
+    u64 fileOffset = 0;
+    u64 deviceOffset = 0;
+    u64 length = 0;
+};
+
 struct FatxFileEntry
 {
     Partition *partition = nullptr;

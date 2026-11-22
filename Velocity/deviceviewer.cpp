@@ -5,6 +5,7 @@
 #include <QSignalBlocker>
 
 #include <cctype>
+#include <cstring>
 #include <functional>
 
 namespace
@@ -49,6 +50,7 @@ namespace
 #include <XboxInternals/Disc/Asf.h>
 #include <XboxInternals/Stfs/StfsPackage.h>
 
+#include "streambasedevice.h"
 #include "videoplayback.h"
 
 #include "xdbfdialog.h"
@@ -496,6 +498,7 @@ void DeviceViewer::LoadDrives()
     ui->treeWidget->clear();
 
     loadedDrives.clear();
+    helperSources.clear();
     currentDrive = nullptr;
     currentDriveItem = nullptr;
     drivesLoaded = false;
@@ -543,7 +546,11 @@ void DeviceViewer::LoadDrives()
                         auto drive = std::make_unique<FatxDrive>(std::move(device), FatxHarddrive);
 
                         if (!drive->GetPartitions().empty())
+                        {
+                            helperSources.insert(drive.get(),
+                                    HelperDriveSource{client, handle});
                             loadedDrives.push_back(std::move(drive));
+                        }
                     }
                     catch (const std::string &)
                     {
@@ -964,6 +971,36 @@ bool DeviceViewer::OpenEntryAs(QTreeWidgetItem *item, const QString &type)
                                  "PlayReady) and cannot be played.");
             }
 
+            // Prefer streaming straight from the drive when the helper gives
+            // us an independent positional reader.
+            const auto helperSource = helperSources.constFind(drive);
+            if (helperSource != helperSources.constEnd())
+            {
+                std::vector<FileExtent> extents;
+                if (drive->GetFileExtents(entry, extents))
+                {
+                    auto client = helperSource->client;
+                    const u32 handle = helperSource->handle.handle;
+
+                    auto stream = std::make_unique<StreamBaseDevice>(extents, entry->fileSize,
+                            [client, handle](u64 offset, u8 *data, u32 length) {
+                        const QByteArray chunk = client->readAt(handle, offset, length);
+                        if (static_cast<u32>(chunk.size()) != length)
+                            throw string("helper: short read while streaming video");
+                        std::memcpy(data, chunk.constData(), length);
+                    });
+
+                    if (!stream->open(QIODevice::ReadOnly))
+                        throw string("Could not open the video stream.");
+
+                    VideoPlayback::Open(this, std::move(stream),
+                            QString::fromStdString(entry->name),
+                            QString::fromStdString(entry->name));
+                    return true;
+                }
+            }
+
+            // No independent reader (direct drive): fall back to a temp copy.
             auto tempDir = std::make_unique<QTemporaryDir>(tempRoot + "/velocity-video-XXXXXX");
             if (!tempDir->isValid())
                 throw string("Could not create a temporary directory for the video.");

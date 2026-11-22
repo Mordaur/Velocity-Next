@@ -1569,6 +1569,47 @@ namespace
         fs::remove(path, ignored);
     }
 
+    void testFatxFileExtents()
+    {
+        Partition part{};
+        part.clusterSize = 0x4000;
+        part.clusterStartingAddress = 0x100000;
+        part.clusterCount = 64;
+
+        const u32 fileSize = 5 * 0x4000 - 100;
+        std::vector<u32> chain{1, 2, 3, 7, 9};
+        std::vector<FileExtent> extents;
+
+        check(FatxDrive::ComputeFileExtents(&part, fileSize, chain, extents),
+              "contiguous FATX runs are mapped");
+        check(extents.size() == 3, "FATX extents split at cluster gaps");
+        if (extents.size() == 3)
+        {
+            check(extents[0].fileOffset == 0 && extents[0].deviceOffset == 0x100000 &&
+                    extents[0].length == 3 * 0x4000, "first extent covers the run");
+            check(extents[1].fileOffset == 3 * 0x4000 &&
+                    extents[1].deviceOffset == 0x100000 + 6 * 0x4000 &&
+                    extents[1].length == 0x4000, "second extent starts after the gap");
+            check(extents[2].fileOffset == 4 * 0x4000 &&
+                    extents[2].deviceOffset == 0x100000 + 8 * 0x4000 &&
+                    extents[2].length == 0x4000 - 100, "last extent is clamped to fileSize");
+        }
+
+        std::vector<FileExtent> shortExtents;
+        check(!FatxDrive::ComputeFileExtents(&part, fileSize, std::vector<u32>{1, 2}, shortExtents),
+              "a chain shorter than the file is rejected");
+
+        std::vector<FileExtent> badExtents;
+        check(!FatxDrive::ComputeFileExtents(&part, fileSize, std::vector<u32>{0, 1}, badExtents),
+              "cluster 0 is rejected");
+        check(!FatxDrive::ComputeFileExtents(&part, fileSize,
+                      std::vector<u32>{65}, badExtents),
+              "a cluster past clusterCount is rejected");
+
+        check(FatxDrive::ComputeFileExtents(&part, 0, std::vector<u32>{}, extents) &&
+                extents.empty(), "an empty file has no extents");
+    }
+
     void testFatxNamesEqual()
     {
         check(FatxDrive::NamesEqual("foo.bin", "FOO.BIN"),
@@ -1999,6 +2040,7 @@ int main()
     testStfsCounterRepair();
     testFatxEraseRanges();
     testFatxNamesEqual();
+    testFatxFileExtents();
     testIndexableMultiFileIO();
     testStfsNameCollisions();
     testFileTimeConversion();

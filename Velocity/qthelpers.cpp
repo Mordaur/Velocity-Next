@@ -4,6 +4,8 @@
 
 #include <XboxInternals/Stfs/XContentHeader.h>
 
+#include "videoplayback.h"
+
 QString QtHelpers::ByteArrayToString(u8 *buffer, u32 len, bool spacesBetween)
 {
     if (spacesBetween)
@@ -410,6 +412,14 @@ void QtHelpers::GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidge
             item.setData(1, Qt::UserRole, "ZIP");
             break;
         default:
+            // Bink 1: "BIK" plus a revision letter as the fourth byte.
+            if ((magic & 0xFFFFFF00u) == 0x42494B00u)
+            {
+                icon = QIcon(":/Images/DefaultFileIcon.png");
+                item.setData(1, Qt::UserRole, "Video");
+                break;
+            }
+
             int index = fileName.lastIndexOf(".");
             QString extension = "";
             if (index != -1)
@@ -427,9 +437,7 @@ void QtHelpers::GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidge
                 icon = QIcon(":/Images/ImageFileIcon.png");
                 item.setData(1, Qt::UserRole, "Image");
             }
-            else if (extension == ".wmv" || extension == ".asf" || extension == ".avi" ||
-                     extension == ".mp4" || extension == ".m4v" || extension == ".mov" ||
-                     extension == ".mkv" || extension == ".webm")
+            else if (VideoPlayback::IsVideoExtension(fileName))
             {
                 icon = QIcon(":/Images/DefaultFileIcon.png");
                 item.setData(1, Qt::UserRole, "Video");

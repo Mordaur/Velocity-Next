@@ -5,6 +5,7 @@
 #include <memory>
 
 class QWidget;
+class QIODevice;
 class QTemporaryDir;
 
 // Thin wrapper so the viewers never need #ifdefs: videoplayback.cpp is always
@@ -19,4 +20,8 @@ namespace VideoPlayback
     // available or the media backend rejects the format.
     bool Open(QWidget *parent, const QString &filePath, const QString &title,
             std::unique_ptr<QTemporaryDir> tempDir);
+
+    // Streams from a caller-owned device (the dialog keeps it alive).
+    bool Open(QWidget *parent, std::unique_ptr<QIODevice> device,
+            const QString &sourceUrlHint, const QString &title);
 }

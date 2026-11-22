@@ -96,6 +96,24 @@
 
 ### 🎬 Video playback
 
+- Videos on the FATX drive now stream straight from the device instead of
+  being copied to a temporary file, so playback starts immediately and no
+  "Copying video…" progress appears for helper-backed drives. The reader walks
+  the file's contiguous FATX extents and issues offset reads through the
+  helper's existing handle, so it never touches the drive's shared IO position
+  and needs no locking. Drives opened directly (root or `disk` group) and
+  ISO/package videos still use the copy path for now.
+- The player has a mute button (`M`, persisted) and an audio-track selector,
+  shown when a file carries more than one track. Bink FMVs commonly store a
+  music mix plus several localized dialogue tracks and carry no language
+  metadata, so tracks are labelled "Track 1…N"; switching tracks takes effect
+  after the media is loaded.
+- Bink video (`.bik`) is now routed to the player from the device viewer,
+  PackageViewer and the ISO browser, and Bink files are also recognised by
+  their `BIK`/revision magic so a renamed file still detects. The extension
+  list now has a single source (`VideoPlayback::IsVideoExtension`) shared with
+  `GetFileIcon`. `.xmv` stays force-only through Open As until a real sample is
+  verified: FFmpeg demuxes it, but some audio tracks may not decode.
 - Optional video playback through Qt Multimedia (`VELOCITY_VIDEO` = `AUTO`,
   `ON` or `OFF`; release presets use `ON`). A player window provides
   play/pause, stop, seeking, volume (persisted) and fullscreen, and reports

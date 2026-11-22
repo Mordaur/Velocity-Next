@@ -549,6 +549,67 @@ void FatxDrive::GetChildFileEntries(FatxFileEntry *entry, void(*progress)(void*,
     entry->readDirectories = true;
 }
 
+bool FatxDrive::ComputeFileExtents(Partition *partition, u32 fileSize,
+        const std::vector<u32> &clusterChain, std::vector<FileExtent> &extents)
+{
+    extents.clear();
+    if (partition == nullptr)
+        return false;
+    if (fileSize == 0)
+        return true;
+    if (partition->clusterSize == 0)
+        return false;
+
+    u64 remaining = fileSize;
+    size_t index = 0;
+
+    while (index < clusterChain.size() && remaining > 0)
+    {
+        const u32 first = clusterChain[index];
+        if (first == 0 || first > partition->clusterCount)
+            return false;
+
+        // Count the physically contiguous clusters in this run.
+        size_t runClusters = 1;
+        while (index + runClusters < clusterChain.size())
+        {
+            const u32 expected = first + static_cast<u32>(runClusters);
+            if (clusterChain[index + runClusters] != expected)
+                break;
+            ++runClusters;
+        }
+
+        const u64 runBytes = static_cast<u64>(runClusters) * partition->clusterSize;
+        const u64 length = std::min<u64>(runBytes, remaining);
+
+        extents.push_back(FileExtent{
+                fileSize - remaining,
+                partition->clusterStartingAddress +
+                        static_cast<u64>(partition->clusterSize) * (first - 1),
+                length });
+
+        remaining -= length;
+        index += runClusters;
+    }
+
+    return remaining == 0;
+}
+
+bool FatxDrive::GetFileExtents(FatxFileEntry *entry, std::vector<FileExtent> &extents)
+{
+    extents.clear();
+    if (entry == nullptr || entry->partition == nullptr || this != entry->partition->drive)
+        return false;
+
+    if (entry->fileSize == 0)
+        return true;
+
+    if (entry->clusterChain.empty())
+        ReadClusterChain(entry);
+
+    return ComputeFileExtents(entry->partition, entry->fileSize, entry->clusterChain, extents);
+}
+
 void FatxDrive::ReadClusterChain(FatxFileEntry *entry)
 {
     // clear the current chain

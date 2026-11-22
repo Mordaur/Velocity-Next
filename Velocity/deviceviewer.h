@@ -111,6 +111,15 @@ private:
     QHash<QString, QString> gpdTitleCache;
     std::shared_ptr<HelperClient> helperClient;
 
+    // Helper-backed drives: keep the client and handle so a stream reader can
+    // issue offset reads without the drive's shared IO position.
+    struct HelperDriveSource
+    {
+        std::shared_ptr<HelperClient> client;
+        HelperDeviceHandle handle;
+    };
+    QHash<FatxDrive *, HelperDriveSource> helperSources;
+
     // Returns false when the load was skipped (already loading) or failed, so
     // callers do not sync the navigation tree to a folder the list never showed.
     bool LoadFolderAll(FatxFileEntry *folder);

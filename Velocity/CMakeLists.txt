@@ -55,6 +55,7 @@ set(SOURCES
   strbdialog.cpp
   svoddialog.cpp
   svodfileinfodialog.cpp
+  streambasedevice.cpp
   svodtooldialog.cpp
   videoplayback.cpp
   isodialog.cpp

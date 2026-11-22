@@ -6,6 +6,8 @@
 
 class QTemporaryDir;
 class QAudioOutput;
+class QComboBox;
+class QIODevice;
 class QLabel;
 class QMediaPlayer;
 class QPushButton;
@@ -21,6 +23,10 @@ class VideoDialog : public QDialog
     Q_OBJECT
 public:
     VideoDialog(std::unique_ptr<QTemporaryDir> tempDir, const QString &filePath,
+            const QString &title, QWidget *parent = nullptr);
+    // Streams from a caller-owned device. sourceUrlHint supplies the file name
+    // so the backend can pick a demuxer from the extension.
+    VideoDialog(std::unique_ptr<QIODevice> device, const QString &sourceUrlHint,
             const QString &title, QWidget *parent = nullptr);
     ~VideoDialog() override;
 
@@ -41,13 +47,19 @@ private slots:
     void onPlaybackStateChanged();
     void onMediaStatusChanged();
     void onError(const QString &message);
+    void onMuteToggled(bool muted);
+    void rebuildAudioTracks();
+    void syncAudioTrack();
 
 private:
+    void buildUi(const QString &title);
     void seekToSlider();
+    void updateSeekControls();
     void updateTimeLabel(qint64 position, qint64 duration);
     static QString formatTime(qint64 milliseconds);
 
     std::unique_ptr<QTemporaryDir> tempDir;
+    std::unique_ptr<QIODevice> sourceDevice;
     QString filePath;
     QMediaPlayer *player = nullptr;
     QAudioOutput *audio = nullptr;
@@ -55,6 +67,8 @@ private:
     QWidget *controlBar = nullptr;
     QSlider *positionSlider = nullptr;
     QSlider *volumeSlider = nullptr;
+    QComboBox *audioTrackCombo = nullptr;
+    QPushButton *muteButton = nullptr;
     QLabel *timeLabel = nullptr;
     QLabel *errorLabel = nullptr;
     QPushButton *playButton = nullptr;

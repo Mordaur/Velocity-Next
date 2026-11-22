@@ -55,6 +55,14 @@ public:
     // populate entry's clusterChain with its cluster chain
     void ReadClusterChain(FatxFileEntry *entry);
 
+    // Description: map a file to contiguous device runs. Fills the chain when
+    // it has not been read yet and fails when the runs do not cover fileSize.
+    // Used by streaming readers that must not touch the drive's shared IO.
+    bool GetFileExtents(FatxFileEntry *entry, std::vector<FileExtent> &extents);
+    static bool ComputeFileExtents(Partition *partition, u32 fileSize,
+            const std::vector<u32> &clusterChain, std::vector<FileExtent> &extents);
+
+
     // save the security blob to local disk
     void ExtractSecurityBlob(std::string path);
 

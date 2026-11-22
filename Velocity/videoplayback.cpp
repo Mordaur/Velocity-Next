@@ -15,7 +15,7 @@ namespace
     QSet<QString> videoExtensions()
     {
         return {
-            "wmv", "asf", "avi", "mp4", "m4v", "mov", "mkv", "webm"
+            "wmv", "asf", "avi", "mp4", "m4v", "mov", "mkv", "webm", "bik"
         };
     }
 
@@ -51,6 +51,25 @@ bool VideoPlayback::IsAvailable()
 bool VideoPlayback::IsVideoExtension(const QString &fileName)
 {
     return videoExtensions().contains(QFileInfo(fileName).suffix().toLower());
+}
+
+bool VideoPlayback::Open(QWidget *parent, std::unique_ptr<QIODevice> device,
+        const QString &sourceUrlHint, const QString &title)
+{
+#ifndef VELOCITY_HAS_VIDEO
+    Q_UNUSED(sourceUrlHint);
+    Q_UNUSED(title);
+
+    QMessageBox::information(parent, QObject::tr("Video playback"),
+            QObject::tr("This build was compiled without video support because Qt "
+                        "Multimedia was not available."));
+    return false;
+#else
+    auto *dialog = new VideoDialog(std::move(device), sourceUrlHint, title, parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    return true;
+#endif
 }
 
 bool VideoPlayback::Open(QWidget *parent, const QString &filePath, const QString &title,
