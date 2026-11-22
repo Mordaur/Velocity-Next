@@ -1,5 +1,6 @@
 #include <XboxInternals/Stfs/XContentHeader.h>
 #include <XboxInternals/IO/MemoryIO.h>
+#include <cstring>
 #include <iostream>
 #include <sstream>
 
@@ -632,20 +633,26 @@ void XContentHeader::ResignHeader(u8* kvData, size_t length)
     ResignHeader(kvIo);
 }
 
+u32 XContentHeader::KeyvaultOffsetShift(u64 size)
+{
+    // A decrypted console keyvault is 0x4000 bytes; some tools save it as
+    // 0x3FF0 with its leading 0x10-byte digest stripped, which moves every
+    // field 0x10 bytes earlier. Nothing inside those 0x10 bytes is read.
+    if (size == 0x4000)
+        return 0x10;
+    if (size == 0x3FF0)
+        return 0;
+
+    throw string("XContentHeader: Invalid keyvault size (expected 0x4000 or 0x3FF0 bytes).\n");
+}
+
 void XContentHeader::ResignHeader(BaseIO& kvIo)
 {
     kvIo.SetPosition(0, ios_base::end);
 
-    // A console keyvault is 0x4000 bytes (0x4010 with the extra header word).
-    // Reject anything else before reading fields at fixed offsets; otherwise a
+    // Validate the size before reading fields at fixed offsets; otherwise a
     // short/foreign file fails halfway through with an opaque I/O error.
-    const u64 kvSize = kvIo.GetPosition();
-    if (kvSize != 0x4000 && kvSize != 0x4010)
-        throw string("XContentHeader: Invalid keyvault size (expected 0x4000 or 0x4010 bytes).\n");
-
-    u32 adder = 0;
-    if (kvSize == 0x4000)
-        adder = 0x10;
+    const u32 adder = KeyvaultOffsetShift(static_cast<u64>(kvIo.GetPosition()));
 
     u32 headerStart, size, hashLoc, toSignLoc, consoleIDLoc;
 
@@ -715,6 +722,13 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
     kvIo.ReadBytes(pData, 0x40);
     kvIo.ReadBytes(qData, 0x40);
 
+    // The certificate must carry the matching public key; a mismatch means the
+    // keyvault is damaged or these offsets do not match its layout. This runs
+    // before the byte swap because both sides are stored in the same order.
+    if (kvCertificate.publicExponent != 0x10001 ||
+            memcmp(nData, kvCertificate.publicModulus, 0x80) != 0)
+        throw string("XContentHeader: Keyvault private key does not match its certificate.\n");
+
     // 8 byte swap all necessary keys
     XeCrypt::BnQw_SwapDwQwLeBe(nData, 0x80);
     XeCrypt::BnQw_SwapDwQwLeBe(pData, 0x40);
@@ -726,6 +740,11 @@ void XContentHeader::ResignHeader(BaseIO& kvIo)
         Botan::BigInt n(nData, 0x80);
         Botan::BigInt p(pData, 0x40);
         Botan::BigInt q(qData, 0x40);
+
+        // A zeroed or damaged keyvault otherwise reaches Botan, which derives d
+        // from p/q and signs without complaint, producing an invalid package.
+        if (n.is_zero() || p * q != n)
+            throw string("XContentHeader: Keyvault private key is inconsistent (n != p*q).\n");
 
         Botan::AutoSeeded_RNG rng;
         Botan::RSA_PrivateKey pkey(p, q, 0x10001, 0, n);

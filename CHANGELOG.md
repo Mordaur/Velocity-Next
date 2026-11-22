@@ -76,6 +76,14 @@
 
 ### 🔑 KeyVault
 
+- Keyvault handling for CON resigning now accepts the `0x3FF0` form (the
+  `0x4000` keyvault with its leading 0x10-byte digest stripped, so every field
+  moves 0x10 bytes earlier) via `XContentHeader::KeyvaultOffsetShift`, and no
+  longer accepts `0x4010`, which had no defined layout. The resign path now
+  also rejects a keyvault whose private key does not match its certificate
+  (`n`, exponent `0x10001`) or where `n != p*q`, instead of writing an invalid
+  signature. The keyvault pickers in `qthelpers.cpp` and `svoddialog.cpp` use
+  the same rule.
 - A failed resign no longer damages the package. The certificate, header hash
   and signature are built in memory and only written once signing succeeds; a
   wrong or unusable keyvault now throws with the file untouched. Previously the

@@ -3,6 +3,8 @@
 
 #include <QCryptographicHash>
 
+#include <XboxInternals/Stfs/XContentHeader.h>
+
 static QByteArray FileDigest(const QString &path)
 {
     QFile file(path);
@@ -287,20 +289,24 @@ void SvodDialog::on_btnResign_clicked()
 
     // open kv
     u8 consoleID[5] = {};
-    u32 adder = 0;
     try
     {
         FileIO kvIO(kvPath.toStdString());
         kvIO.SetPosition(0, ios_base::end);
 
         const u64 kvSize = kvIO.GetPosition();
-        if (kvSize != 0x4000 && kvSize != 0x4010)
+        u32 adder;
+        try
+        {
+            adder = XContentHeader::KeyvaultOffsetShift(kvSize);
+        }
+        catch (const string &)
+        {
             throw string("The selected file is not a keyvault "
-                         "(expected 0x4000 or 0x4010 bytes).\n");
+                         "(expected 0x4000 or 0x3FF0 bytes).\n");
+        }
 
         // read in the console id of the certificate in the kv
-        if (kvSize == 0x4000)
-            adder = 0x10;
         kvIO.SetPosition(0x9BA + adder);
         kvIO.ReadBytes(consoleID, 5);
         kvIO.Close();

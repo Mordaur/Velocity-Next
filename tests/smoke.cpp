@@ -596,6 +596,14 @@ namespace
         check(throws([&] { metadata->ResignHeader(kv.data(), kv.size()); }),
               "resign with a zero keyvault throws");
 
+        std::vector<u8> kvTrimmed(0x3FF0, 0);
+        check(throws([&] { metadata->ResignHeader(kvTrimmed.data(), kvTrimmed.size()); }),
+              "resign with a zero 0x3FF0 keyvault throws");
+
+        std::vector<u8> kvExtended(0x4010, 0);
+        check(throws([&] { metadata->ResignHeader(kvExtended.data(), kvExtended.size()); }),
+              "resign with an unsupported 0x4010 keyvault throws");
+
         bool unchanged = (package == before);
         if (!unchanged)
         {

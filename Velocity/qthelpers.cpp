@@ -2,6 +2,8 @@
 
 #include <QFileInfo>
 
+#include <XboxInternals/Stfs/XContentHeader.h>
+
 QString QtHelpers::ByteArrayToString(u8 *buffer, u32 len, bool spacesBetween)
 {
     if (spacesBetween)
@@ -92,8 +94,19 @@ std::string QtHelpers::GetKVPath(ConsoleType type, QWidget *parent)
     const auto isKeyvault = [](const QString &path)
     {
         const QFileInfo info(path);
-        return info.isFile() && info.isReadable() &&
-               (info.size() == 0x4000 || info.size() == 0x4010);
+        if (!info.isFile() || !info.isReadable())
+            return false;
+
+        // Single source of truth for the accepted keyvault sizes.
+        try
+        {
+            XContentHeader::KeyvaultOffsetShift(static_cast<u64>(info.size()));
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
     };
 
     const QString bundledKv = QString::fromStdString(kvName);
@@ -105,7 +118,7 @@ std::string QtHelpers::GetKVPath(ConsoleType type, QWidget *parent)
         {
             QMessageBox::warning(parent, QObject::tr("Invalid KeyVault"),
                     QObject::tr("%1 exists but is not a keyvault "
-                                "(expected 0x4000 or 0x4010 bytes).\n\n"
+                                "(expected 0x4000 or 0x3FF0 bytes).\n\n"
                                 "Select a keyvault file instead.").arg(bundledKv));
         }
 
@@ -123,7 +136,7 @@ std::string QtHelpers::GetKVPath(ConsoleType type, QWidget *parent)
         {
             QMessageBox::critical(parent, QObject::tr("Invalid KeyVault"),
                     QObject::tr("%1 is not a keyvault "
-                                "(expected 0x4000 or 0x4010 bytes).").arg(selected));
+                                "(expected 0x4000 or 0x3FF0 bytes).").arg(selected));
             return std::string();
         }
 

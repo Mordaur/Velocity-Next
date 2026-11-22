@@ -80,6 +80,11 @@ public:
     // Description: read in all of the metadata for the package
     XContentHeader(BaseIO *io, u32 flags = 0);
 
+    // Byte shift applied to the legacy keyvault offsets for a decrypted
+    // keyvault of the given size (0x4000 -> 0x10, 0x3FF0 -> 0). Throws for
+    // unsupported sizes.
+    static u32 KeyvaultOffsetShift(u64 size);
+
     // fix the signature in the header
     void ResignHeader(string kvPath);
 
