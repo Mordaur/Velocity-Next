@@ -84,3 +84,13 @@ For detailed change history, see:
 - Git commit history in this repository
 - CHANGELOG.md (if present)
 - GitHub releases and pull requests
+
+THIRD-PARTY COMPONENTS IN RELEASES
+----------------------------------
+- Qt 6 (GPLv3 / LGPLv3): https://www.qt.io/
+- Qt Multimedia's FFmpeg backend ships FFmpeg libraries (LGPL-2.1-or-later) in
+  the Windows and macOS packages: https://ffmpeg.org/
+- Botan (BSD-2-Clause): see LICENSE-Botan.txt
+
+Video playback is optional. Builds without Qt Multimedia omit the player and
+the FFmpeg runtime entirely (see VELOCITY_VIDEO in BUILD.md).

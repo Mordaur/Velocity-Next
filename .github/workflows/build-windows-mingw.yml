@@ -26,7 +26,7 @@ jobs:
           # fix is PR #1000 and is not in a release yet. Drop this pin once aqt
           # ships it.
           python -m pip install "aqtinstall @ git+https://github.com/miurahr/aqtinstall.git@refs/pull/1000/head"
-          python -m aqt install-qt windows desktop 6.12.0 win64_mingw --outputdir C:/Qt --autodesktop -m qtnetworkauth
+          python -m aqt install-qt windows desktop 6.12.0 win64_mingw --outputdir C:/Qt --autodesktop -m qtnetworkauth qtmultimedia
           python -m aqt install-tool windows desktop tools_mingw1310 --outputdir C:/Qt
           "QT_ROOT_DIR=C:/Qt/6.12.0/mingw_64" >> $env:GITHUB_ENV
           "CMAKE_PREFIX_PATH=C:/Qt/6.12.0/mingw_64" >> $env:GITHUB_ENV
@@ -134,6 +134,12 @@ jobs:
           cp out/build/windows-mingw-release/VelocityNext/VelocityNext.exe release-mingw/
           cp out/build/windows-mingw-release/XboxInternals/libXboxInternals.dll release-mingw/
           windeployqt release-mingw/VelocityNext.exe
+
+      - name: Verify multimedia deployment
+        shell: bash
+        run: |
+          test -n "$(find release-mingw -iname 'ffmpegmediaplugin.dll' -print -quit)" || \
+            { echo "Qt multimedia backend missing"; find release-mingw -maxdepth 3 -type d; exit 1; }
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4

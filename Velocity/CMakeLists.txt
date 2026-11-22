@@ -56,6 +56,7 @@ set(SOURCES
   svoddialog.cpp
   svodfileinfodialog.cpp
   svodtooldialog.cpp
+  videoplayback.cpp
   isodialog.cpp
   isosectordialog.cpp
   xexdialog.cpp
@@ -205,6 +206,27 @@ target_link_libraries(VelocityNext
     device_helper_protocol  # Portable helper IPC framing
     velocity_compiler_flags  # Inherit common compile options
 )
+
+# Optional video playback. AUTO enables it when Qt Multimedia is present, ON
+# requires it, OFF builds the stub that reports missing support.
+set(VELOCITY_VIDEO "AUTO" CACHE STRING "Video playback support: AUTO, ON or OFF")
+set_property(CACHE VELOCITY_VIDEO PROPERTY STRINGS AUTO ON OFF)
+if(NOT VELOCITY_VIDEO MATCHES "^(AUTO|ON|OFF)$")
+  message(FATAL_ERROR "VELOCITY_VIDEO must be AUTO, ON or OFF (got '${VELOCITY_VIDEO}')")
+endif()
+if(NOT VELOCITY_VIDEO STREQUAL "OFF")
+  find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS Multimedia MultimediaWidgets)
+endif()
+if(NOT VELOCITY_VIDEO STREQUAL "OFF" AND TARGET Qt6::MultimediaWidgets)
+  target_sources(VelocityNext PRIVATE videodialog.cpp)
+  target_link_libraries(VelocityNext PRIVATE Qt6::Multimedia Qt6::MultimediaWidgets)
+  target_compile_definitions(VelocityNext PRIVATE VELOCITY_HAS_VIDEO)
+  message(STATUS "Video playback: enabled (Qt Multimedia)")
+elseif(VELOCITY_VIDEO STREQUAL "ON")
+  message(FATAL_ERROR "VELOCITY_VIDEO=ON but Qt6 Multimedia/MultimediaWidgets were not found")
+else()
+  message(STATUS "Video playback: disabled")
+endif()
 
 # Define VERSION and platform build name
 target_compile_definitions(VelocityNext 

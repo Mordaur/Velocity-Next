@@ -6,7 +6,9 @@
 #include "isosectordialog.h"
 #include "xexdialog.h"
 #include "qthelpers.h"
+#include "videoplayback.h"
 #include "TextEncoding/EncodingDetector.h"
+#include "XboxInternals/Disc/Asf.h"
 #include "XboxInternals/IO/IsoIO.h"
 #include "XboxInternals/Stfs/StfsPackage.h"
 #include "XboxInternals/Stfs/StfsConstants.h"
@@ -39,6 +41,8 @@
 #include <QProgressDialog>
 #include <QTimer>
 #include <QRegularExpression>
+#include <QStorageInfo>
+#include <QTemporaryDir>
 #include <QApplication>
 
 #include <QtConcurrent/QtConcurrent>
@@ -615,8 +619,104 @@ void IsoDialog::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
     }
 }
 
+bool IsoDialog::playVideoEntry(const XboxInternals::Iso::IsoEntry &entry)
+{
+    if (extractionWatcher_ != nullptr && !extractionWatcher_->isFinished())
+    {
+        QMessageBox::information(this, tr("Video"),
+                tr("Wait for the current extraction to finish."));
+        return false;
+    }
+
+    if (!iso_)
+        return false;
+
+    if (!VideoPlayback::IsAvailable())
+    {
+        // The wrapper shows the "built without video support" message; nothing
+        // is extracted in that case.
+        VideoPlayback::Open(this, QString::fromStdString(entry.name),
+                QString::fromStdString(entry.name), nullptr);
+        return false;
+    }
+
+    if (entry.size > 0x80000000ull)
+    {
+        QMessageBox::warning(this, tr("Video"),
+                tr("The video is larger than 2 GiB and cannot be copied to the "
+                   "temporary directory."));
+        return false;
+    }
+
+    const QStorageInfo storage(QDir::tempPath());
+    if (storage.isValid() && entry.size > 0 &&
+            static_cast<quint64>(storage.bytesAvailable()) < entry.size + (64ull << 20))
+    {
+        QMessageBox::warning(this, tr("Video"),
+                tr("There is not enough free space in the temporary directory for this video."));
+        return false;
+    }
+
+    try
+    {
+        // Probe the image before extracting: DRM-protected files can only fail
+        // inside the media backend with an opaque format error.
+        GdfxFileEntry *gdfx = iso_->GetFileEntry(entry.path);
+        if (gdfx != nullptr)
+        {
+            std::unique_ptr<IsoIO> io(iso_->GetIO(gdfx));
+            if (io && XboxInternals::Asf::IsDrmProtected(io.get()))
+            {
+                QMessageBox::warning(this, tr("Video"),
+                        tr("This video is DRM-protected (Windows Media DRM / PlayReady) "
+                           "and cannot be played."));
+                return false;
+            }
+        }
+    }
+    catch (const std::string &error)
+    {
+        QMessageBox::warning(this, tr("Video"), QString::fromStdString(error));
+        return false;
+    }
+    catch (const std::exception &error)
+    {
+        QMessageBox::warning(this, tr("Video"), QString(error.what()));
+        return false;
+    }
+
+    auto tempDir = std::make_unique<QTemporaryDir>(QDir::tempPath() + "/velocity-video-XXXXXX");
+    if (!tempDir->isValid())
+    {
+        QMessageBox::warning(this, tr("Video"),
+                tr("Could not create a temporary directory for the video."));
+        return false;
+    }
+
+    if (!iso_->extractFile(entry, tempDir->path().toStdString()))
+    {
+        QMessageBox::warning(this, tr("Video"), tr("Failed to extract the video from the image."));
+        return false;
+    }
+
+    const QString tempFile = tempDir->filePath(QString::fromStdString(entry.path));
+    if (!QFile::exists(tempFile))
+    {
+        QMessageBox::warning(this, tr("Video"), tr("The extracted video file was not found."));
+        return false;
+    }
+
+    return VideoPlayback::Open(this, tempFile, QString::fromStdString(entry.name),
+            std::move(tempDir));
+}
+
 void IsoDialog::openFileInViewer(const XboxInternals::Iso::IsoEntry& entry) {
     QString fileName = QString::fromStdString(entry.name).toLower();
+
+    if (VideoPlayback::IsVideoExtension(QString::fromStdString(entry.name))) {
+        playVideoEntry(entry);
+        return;
+    }
     
     // Extract to temp location
     QString tempDir = QDir::temp().filePath("velocity_iso_preview");
@@ -850,13 +950,26 @@ void IsoDialog::showContextMenu(const QPoint& point) {
     if (tree_->selectedItems().size() == 1) {
         bool isDirectory = item->data(0, static_cast<int>(Qt::UserRole) + IsoTreeWidgetItemIsDirectory).toBool();
         if (!isDirectory) {
+            const QString pathInISO = item->data(0, static_cast<int>(Qt::UserRole) + IsoTreeWidgetItemDataPathInISO).toString();
+            QAction* playAction = nullptr;
+            if (VideoPlayback::IsVideoExtension(pathInISO))
+                playAction = contextMenu.addAction(tr("Play"));
+
             QAction* extractAction = contextMenu.addAction(QIcon(":/Images/extract.png"), tr("Extract"));
-            
+
             // Show menu and handle result
             QPoint globalPos = tree_->mapToGlobal(point);
             QAction* selectedAction = contextMenu.exec(globalPos);
-            
-            if (selectedAction == extractAction) {
+
+            if (selectedAction == playAction) {
+                for (const auto& entry : iso_->listEntries()) {
+                    if (QString::fromStdString(entry.path) == pathInISO &&
+                            entry.type == XboxInternals::Iso::IsoEntryType::File) {
+                        playVideoEntry(entry);
+                        break;
+                    }
+                }
+            } else if (selectedAction == extractAction) {
                 // Extract single file
                 QString pathInISO = item->data(0, static_cast<int>(Qt::UserRole) + IsoTreeWidgetItemDataPathInISO).toString();
                 

@@ -27,6 +27,7 @@
 #include <XboxInternals/Cryptography/XeKeys.h>
 
 // Disc module
+#include <XboxInternals/Disc/Asf.h>
 #include <XboxInternals/Disc/Gdfx.h>
 #include <XboxInternals/Disc/Svod.h>
 

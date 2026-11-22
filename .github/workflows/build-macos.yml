@@ -25,7 +25,7 @@ jobs:
           version: '6.12.0'
           host: 'mac'
           target: 'desktop'
-          modules: 'qtnetworkauth'
+          modules: 'qtnetworkauth qtmultimedia'
           cache: true
       
       - name: Configure CMake
@@ -42,6 +42,11 @@ jobs:
           chmod +x deploy_mac.sh
           ./deploy_mac.sh out/build/macos-release
       
+      - name: Verify multimedia deployment
+        run: |
+          test -n "$(find out/build/macos-release/VelocityNext/VelocityNext.app -iname 'libffmpegmediaplugin.dylib' -print -quit)" || \
+            { echo "Qt multimedia backend missing from the bundle"; find out/build/macos-release/VelocityNext/VelocityNext.app -maxdepth 4 -type d; exit 1; }
+
       - name: Create DMG
         run: |
           mkdir dmg-contents

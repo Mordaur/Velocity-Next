@@ -75,6 +75,7 @@ private:
     void buildTreeItem(QTreeWidget* tree, QTreeWidgetItem* parent, 
                       const GdfxFileEntry& entry);
     void openFileInViewer(const XboxInternals::Iso::IsoEntry& entry);
+    bool playVideoEntry(const XboxInternals::Iso::IsoEntry& entry);
     QTreeWidgetItem* findOrCreateFolder(const QString& path);
     void onExtractionFinished();
     // Enables/disables the widgets that must not touch `iso_` while the

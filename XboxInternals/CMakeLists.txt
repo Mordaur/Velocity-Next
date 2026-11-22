@@ -20,6 +20,7 @@ add_library(XboxInternals ${_lib_type}
   src/AvatarAsset/Ytgr.cpp
   src/Cryptography/XeCrypt.cpp
   src/Cryptography/XeKeys.cpp
+  src/Disc/Asf.cpp
   src/Disc/Gdfx.cpp
   src/Disc/ISO.cpp
   src/Disc/Svod.cpp

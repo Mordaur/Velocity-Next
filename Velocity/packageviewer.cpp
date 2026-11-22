@@ -3,7 +3,13 @@
 #include "xexdialog.h"
 #include "multiprogressdialog.h"
 
+#include <XboxInternals/Disc/Asf.h>
 #include <XboxInternals/IO/StfsIO.h>
+
+#include "videoplayback.h"
+
+#include <QStorageInfo>
+#include <QTemporaryDir>
 
 #include <memory>
 #include <stdexcept>
@@ -471,6 +477,10 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
 
         if (!isFolder)
         {
+            if (amount == 1 &&
+                    ui->treeWidget->selectedItems()[0]->data(1, Qt::UserRole).toString() == "Video")
+                contextMenu.addAction("Play");
+
             contextMenu.addAction(QPixmap(":/Images/extract.png"), "Extract Selected");
             contextMenu.addAction(QPixmap(":/Images/delete.png"), "Remove Selected");
         }
@@ -500,7 +510,13 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
     QList <QTreeWidgetItem*> items = ui->treeWidget->selectedItems();
     int totalCount = items.count(), successCount = 0;
 
-    if (selectedItem->text() == "Extract Selected")
+    if (selectedItem->text() == "Play")
+    {
+        QString packagePath;
+        GetPackagePath(items.at(0), &packagePath);
+        PlayVideo(packagePath);
+    }
+    else if (selectedItem->text() == "Extract Selected")
     {
         bool multiple = totalCount > 1;
 
@@ -748,6 +764,76 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
     }
 }
 
+bool PackageViewer::PlayVideo(const QString &pathInPackage)
+{
+    if (!VideoPlayback::IsAvailable())
+    {
+        VideoPlayback::Open(this, pathInPackage, pathInPackage, nullptr);
+        return false;
+    }
+
+    const StfsFileEntry entry = package->GetFileEntry(pathInPackage.toStdString());
+    if (entry.nameLen == 0)
+    {
+        QMessageBox::warning(this, "Video", "The file could not be found in the package.");
+        return false;
+    }
+
+    if (entry.fileSize > 0x80000000ull)
+    {
+        QMessageBox::warning(this, "Video",
+                "The video is larger than 2 GiB and cannot be copied to the temporary directory.");
+        return false;
+    }
+
+    const QStorageInfo storage(QDir::tempPath());
+    if (storage.isValid() && entry.fileSize > 0 &&
+            static_cast<quint64>(storage.bytesAvailable()) < entry.fileSize + (64ull << 20))
+    {
+        QMessageBox::warning(this, "Video",
+                "There is not enough free space in the temporary directory for this video.");
+        return false;
+    }
+
+    try
+    {
+        // Probe the package stream before extracting: DRM-protected files can
+        // only fail inside the media backend with an opaque format error.
+        std::unique_ptr<StfsIO> io(package->GetStfsIO(pathInPackage.toStdString()));
+        if (io && XboxInternals::Asf::IsDrmProtected(io.get()))
+        {
+            QMessageBox::warning(this, "Video",
+                    "This video is DRM-protected (Windows Media DRM / PlayReady) and "
+                    "cannot be played.");
+            return false;
+        }
+    }
+    catch (const std::string &error)
+    {
+        QMessageBox::warning(this, "Video", QString::fromStdString(error));
+        return false;
+    }
+    catch (const std::exception &error)
+    {
+        QMessageBox::warning(this, "Video", QString(error.what()));
+        return false;
+    }
+
+    auto tempDir = std::make_unique<QTemporaryDir>(QDir::tempPath() + "/velocity-video-XXXXXX");
+    if (!tempDir->isValid())
+    {
+        QMessageBox::warning(this, "Video",
+                "Could not create a temporary directory for the video.");
+        return false;
+    }
+
+    const QString fileName = QFileInfo(pathInPackage).fileName();
+    const QString destination = tempDir->filePath(fileName);
+    package->ExtractFile(pathInPackage.toStdString(), destination.toStdString());
+
+    return VideoPlayback::Open(this, destination, fileName, std::move(tempDir));
+}
+
 void PackageViewer::on_treeWidget_itemDoubleClicked(QTreeWidgetItem *item, int /*column*/)
 {
     // make sure that the item clicked isn't a folder
@@ -760,7 +846,13 @@ void PackageViewer::on_treeWidget_itemDoubleClicked(QTreeWidgetItem *item, int /
     if (index != -1)
         extension = item->text(0).mid(index).toLower();
 
-    if (item->data(1, Qt::UserRole).toString() == "Xdbf")
+    if (item->data(1, Qt::UserRole).toString() == "Video")
+    {
+        QString packagePath;
+        GetPackagePath(item, &packagePath);
+        PlayVideo(packagePath);
+    }
+    else if (item->data(1, Qt::UserRole).toString() == "Xdbf")
     {
         try
         {

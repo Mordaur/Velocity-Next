@@ -39,11 +39,17 @@ namespace
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QProgressDialog>
+#include <QStorageInfo>
+#include <QTemporaryDir>
 
 #include "contentnames.h"
 #include "titlenameservice.h"
 
+#include <XboxInternals/Disc/Asf.h>
 #include <XboxInternals/Stfs/StfsPackage.h>
+
+#include "videoplayback.h"
 
 #include "xdbfdialog.h"
 #include "strbdialog.h"
@@ -228,6 +234,7 @@ void DeviceViewer::showContextMenu(QPoint point)
             addType("ZIP archive", "ZIP");
             addType("Text", "Text");
             addType("XML", "XML");
+            addType("Video (Qt Multimedia)", "Video");
             openAs->addSeparator();
             addType("ISO image", "ISO");
         }
@@ -705,7 +712,7 @@ bool DeviceViewer::IsOpenableType(const QString &type)
 {
     static const QSet<QString> types = {
         "STFS", "SVOD", "PEC", "XEX", "XUIZ", "Xdbf", "STRB", "YTGR",
-        "Image", "Text", "XML", "ZIP", "ISO"
+        "Image", "Text", "XML", "ZIP", "ISO", "Video"
     };
     return types.contains(type);
 }
@@ -929,6 +936,87 @@ bool DeviceViewer::OpenEntryAs(QTreeWidgetItem *item, const QString &type)
                     reinterpret_cast<const char *>(buffer.data()), static_cast<int>(buffer.size()));
             XmlDialog dialog(xml, item->text(0), this);
             dialog.exec();
+            return true;
+        }
+
+        if (type == "Video")
+        {
+            if (entry->fileSize > 0x80000000ull)
+                throw string("The video is larger than 2 GiB and cannot be copied "
+                             "to the temporary directory.");
+
+            const QString tempRoot = QDir::tempPath();
+            const QStorageInfo storage(tempRoot);
+            if (storage.isValid() &&
+                    static_cast<quint64>(storage.bytesAvailable()) < entry->fileSize + (64ull << 20))
+                throw string("There is not enough free space in the temporary "
+                             "directory for this video.");
+
+            {
+                // ASF/PlayReady files would only fail inside the media backend
+                // with an opaque format error.
+                FatxIO probe = drive->GetFatxIO(entry);
+                const bool drm = XboxInternals::Asf::IsDrmProtected(&probe);
+                probe.Close();
+
+                if (drm)
+                    throw string("This video is DRM-protected (Windows Media DRM / "
+                                 "PlayReady) and cannot be played.");
+            }
+
+            auto tempDir = std::make_unique<QTemporaryDir>(tempRoot + "/velocity-video-XXXXXX");
+            if (!tempDir->isValid())
+                throw string("Could not create a temporary directory for the video.");
+
+            const QString fileName = QFileInfo(QString::fromStdString(entry->name)).fileName();
+            const QString destination = tempDir->filePath(fileName);
+
+            FatxIO io = drive->GetFatxIO(entry);
+            QProgressDialog progress(tr("Copying video..."), tr("Cancel"), 0, 100, this);
+            progress.setWindowModality(Qt::WindowModal);
+            progress.setMinimumDuration(0);
+
+            struct CopyContext
+            {
+                QProgressDialog *dialog;
+                bool cancelled;
+            } context{&progress, false};
+
+            auto copyProgress = [](void *arg, u32 current, u32 total)
+            {
+                auto *ctx = static_cast<CopyContext *>(arg);
+                if (ctx->dialog->wasCanceled())
+                {
+                    ctx->cancelled = true;
+                    throw string("Video copy cancelled.");
+                }
+
+                if (total > 0)
+                    ctx->dialog->setMaximum(static_cast<int>(total));
+                ctx->dialog->setValue(static_cast<int>(current));
+                QApplication::processEvents();
+            };
+
+            try
+            {
+                io.SaveFile(destination.toStdString(), copyProgress, &context);
+            }
+            catch (const std::string &error)
+            {
+                if (context.cancelled)
+                {
+                    statusBar->showMessage(tr("Video copy cancelled"), 3000);
+                    return true;
+                }
+
+                throw;
+            }
+
+            io.Close();
+            progress.close();
+
+            VideoPlayback::Open(this, destination, QString::fromStdString(entry->name),
+                    std::move(tempDir));
             return true;
         }
 
@@ -1431,6 +1519,7 @@ bool DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
         parentEntry = folder;
 
         ui->txtPath->setText(QString::fromStdString(folder->path + folder->name + "\\"));
+        shownPath = ui->txtPath->text();
         return true;
     }
     catch (std::string error)
@@ -1493,6 +1582,10 @@ void DeviceViewer::LoadFolderTree(QTreeWidgetItem *item)
     {
         QMessageBox::warning(this, "Problem Loading",
                 "The folder failed to load.\n\n" + QString::fromStdString(error));
+    }
+    catch (const std::exception &error)
+    {
+        QtHelpers::ShowUnexpectedError(this, error);
     }
 }
 
@@ -1657,6 +1750,7 @@ void DeviceViewer::LoadPartitions()
     ui->treeWidget->clear();
 
     ui->txtPath->setText("Drive:\\");
+    shownPath = ui->txtPath->text();
 
     // load partitions
     std::vector<Partition*> parts = currentDrive->GetPartitions();
@@ -1809,12 +1903,99 @@ void DeviceViewer::onDragLeft([[maybe_unused]] QDragLeaveEvent *event)
 
 void DeviceViewer::on_txtPath_returnPressed()
 {
-    FatxFileEntry *parent = currentDrive->GetFileEntry(ui->txtPath->text().toStdString());
-    if (parent == nullptr || !(parent->fileAttributes & FatxDirectory))
+    // LoadFolderAll pumps the event loop; a second lookup would read the drive
+    // while the outer listing still holds pointers into its cached entries.
+    if (loadingFolder)
+        return;
+
+    const auto restorePath = [this]() { ui->txtPath->setText(shownPath); };
+
+    if (currentDrive == nullptr)
+    {
+        QMessageBox::critical(this, "Error", "No device is selected.");
+        restorePath();
+        return;
+    }
+
+    QString text = ui->txtPath->text().trimmed();
+    text.replace('/', '\\');
+
+    if (text.compare("Drive:", Qt::CaseInsensitive) == 0 ||
+            text.compare("Drive:\\", Qt::CaseInsensitive) == 0)
+    {
+        LoadPartitions();
+        return;
+    }
+
+    if (!text.startsWith("Drive:\\", Qt::CaseInsensitive))
+    {
         QMessageBox::critical(this, "Error",
-                "Velocity can't find " + ui->txtPath->text() + ". Check the spelling and try again.");
-    else
+                "Velocity needs a FATX path such as Drive:\\Content\\...");
+        restorePath();
+        return;
+    }
+
+    // FatxDrive compares the "Drive:\" prefix exactly and the partition name
+    // with ==; normalise both to the names the drive actually reports.
+    const QString rest = text.mid(7);
+    const int separator = rest.indexOf('\\');
+    const QString typedPartition = (separator < 0) ? rest : rest.left(separator);
+
+    QString normalised;
+    for (Partition *partition : currentDrive->GetPartitions())
+    {
+        if (FatxDrive::NamesEqual(partition->name, typedPartition.toStdString()))
+        {
+            normalised = "Drive:\\" + QString::fromStdString(partition->name);
+            if (separator >= 0)
+                normalised += rest.mid(separator);
+            break;
+        }
+    }
+
+    if (normalised.isEmpty())
+    {
+        QMessageBox::critical(this, "Error",
+                "Velocity can't find " + text + ". Check the spelling and try again.");
+        restorePath();
+        return;
+    }
+
+    try
+    {
+        FatxFileEntry *parent = currentDrive->GetFileEntry(normalised.toStdString());
+        if (parent == nullptr)
+        {
+            QMessageBox::critical(this, "Error",
+                    "Velocity can't find " + text + ". Check the spelling and try again.");
+            restorePath();
+            return;
+        }
+
+        if ((parent->fileAttributes & FatxDirectory) == 0)
+        {
+            QMessageBox::critical(this, "Error", text + " is not a folder.");
+            restorePath();
+            return;
+        }
+
         NavigateToFolder(parent);
+
+        // A failed load leaves parentEntry untouched; put the old path back.
+        if (parentEntry != parent)
+            restorePath();
+    }
+    catch (const std::string &error)
+    {
+        QMessageBox::warning(this, "Problem Loading",
+                "The folder failed to load.\n\n" + QString::fromStdString(error));
+        restorePath();
+    }
+    catch (const std::exception &error)
+    {
+        QtHelpers::ShowUnexpectedError(this, error);
+        restorePath();
+    }
 }
 
 void updateUI([[maybe_unused]] void *arg, [[maybe_unused]] bool finished)

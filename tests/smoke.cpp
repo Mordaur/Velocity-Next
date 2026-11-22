@@ -16,6 +16,7 @@
 #include <XboxInternals/IO/FileIO.h>
 #include <XboxInternals/IO/FatxIO.h>
 #include <XboxInternals/IO/LocalIndexableMultiFileIO.h>
+#include <XboxInternals/Disc/Asf.h>
 #include <XboxInternals/IO/MemoryIO.h>
 #include <XboxInternals/IO/StfsIO.h>
 #include <XboxInternals/Stfs/StfsDefinitions.h>
@@ -1578,6 +1579,47 @@ namespace
               "FATX names compare length first");
     }
 
+    void testAsfProbe()
+    {
+        const u8 headerGuid[16] = {
+            0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
+            0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C
+        };
+        const u8 encryptionGuid[16] = {
+            0xFB, 0xB3, 0x11, 0x22, 0x23, 0xBD, 0xD2, 0x11,
+            0xB4, 0xB7, 0x00, 0xA0, 0xC9, 0x55, 0xFC, 0x6E
+        };
+
+        auto makeHeader = [&](bool encrypted) {
+            std::vector<u8> data(0x100, 0);
+            std::memcpy(data.data(), headerGuid, sizeof(headerGuid));
+            const u64 size = data.size();
+            for (int i = 0; i < 8; ++i)
+                data[0x10 + i] = static_cast<u8>((size >> (8 * i)) & 0xFF);
+            data[0x18] = 1;    // one header object
+            if (encrypted)
+                std::memcpy(data.data() + 0x30, encryptionGuid, sizeof(encryptionGuid));
+            return data;
+        };
+
+        std::vector<u8> clean = makeHeader(false);
+        MemoryIO cleanIo(clean.data(), clean.size());
+        check(XboxInternals::Asf::IsAsf(&cleanIo), "ASF header is recognised");
+        check(!XboxInternals::Asf::IsDrmProtected(&cleanIo), "clean ASF is not DRM protected");
+        check(cleanIo.GetPosition() == 0, "ASF probe restores the position");
+
+        std::vector<u8> encrypted = makeHeader(true);
+        MemoryIO encryptedIo(encrypted.data(), encrypted.size());
+        check(XboxInternals::Asf::IsDrmProtected(&encryptedIo),
+              "ASF content encryption is detected");
+        check(encryptedIo.GetPosition() == 0, "ASF DRM probe restores the position");
+
+        std::vector<u8> notAsf(0x100, 0xAA);
+        MemoryIO otherIo(notAsf.data(), notAsf.size());
+        check(!XboxInternals::Asf::IsAsf(&otherIo), "non-ASF data is rejected");
+        check(!XboxInternals::Asf::IsDrmProtected(&otherIo), "non-ASF data is not DRM protected");
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1960,6 +2002,7 @@ int main()
     testIndexableMultiFileIO();
     testStfsNameCollisions();
     testFileTimeConversion();
+    testAsfProbe();
     testGarbageImages();
 
     if (g_failures != 0)

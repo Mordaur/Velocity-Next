@@ -30,7 +30,7 @@ jobs:
           version: '6.12.0'
           host: 'linux'
           target: 'desktop'
-          modules: 'qtnetworkauth'
+          modules: 'qtnetworkauth qtmultimedia'
           cache: true
       
       - name: Configure CMake

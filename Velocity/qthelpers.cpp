@@ -386,6 +386,11 @@ void QtHelpers::GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidge
             icon = QIcon(":/Images/XEXFileIcon.png");
             item.setData(1, Qt::UserRole, "XEX");
             break;
+        case 0x3026B275:    // ASF (WMV/WMA)
+        case 0x1A45DFA3:    // EBML (Matroska/WebM)
+            icon = QIcon(":/Images/DefaultFileIcon.png");
+            item.setData(1, Qt::UserRole, "Video");
+            break;
         case 0x5855495A:    // XUIZ
             icon = QIcon(":/Images/DefaultFileIcon.png");
             item.setData(1, Qt::UserRole, "XUIZ");
@@ -421,6 +426,13 @@ void QtHelpers::GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidge
             {
                 icon = QIcon(":/Images/ImageFileIcon.png");
                 item.setData(1, Qt::UserRole, "Image");
+            }
+            else if (extension == ".wmv" || extension == ".asf" || extension == ".avi" ||
+                     extension == ".mp4" || extension == ".m4v" || extension == ".mov" ||
+                     extension == ".mkv" || extension == ".webm")
+            {
+                icon = QIcon(":/Images/DefaultFileIcon.png");
+                item.setData(1, Qt::UserRole, "Video");
             }
             else if (extension == ".iso")
             {

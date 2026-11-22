@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-- **Qt 6.12.0 or higher** (Components: Core, Xml, Widgets, Network)
+- **Qt 6.12.0 or higher** (Components: Core, Xml, Widgets, Network;
+  optionally Multimedia and MultimediaWidgets for video playback)
   - The package browser uses `qzipreader_p.h`. Qt 6.10 stopped exporting the
     private include directories from `Qt6::Core`, so CMake requests
     `CorePrivate` when the installation provides it (Qt 6.10+) and falls back
@@ -75,6 +76,29 @@ The cryptography library is automatically handled:
 - **No Submodule Required**: No git submodules to initialize
 - **Custom Modules**: Uses minimal module set defined in botan_modules.cmake
 - **Amalgamation**: Built as single-file amalgamation for better performance
+
+## Video playback
+
+Video playback uses Qt Multimedia when it is available and is controlled by
+`VELOCITY_VIDEO`:
+
+- `AUTO` (default): enabled when Qt Multimedia and MultimediaWidgets are found,
+  otherwise the app builds without a player and reports that when a video is
+  opened.
+- `ON`: fail the configure when the modules are missing. Release presets use
+  this so packages never silently lose video support.
+- `OFF`: always build the stub.
+
+Changing `VELOCITY_VIDEO` in an existing build tree requires a fresh AUTOMOC
+output (`VelocityNext_autogen`) or a clean build directory, because the source
+list changes when the option changes.
+
+The player needs a working Qt Multimedia backend at runtime: Media Foundation on
+Windows, GStreamer (with `gst-libav` for WMV/VC-1) or the Qt FFmpeg backend on
+Linux, and the Qt FFmpeg backend on macOS. The Linux tarball does not bundle Qt,
+so `libQt6Multimedia` and a backend plugin must be installed on the target
+system. Marketplace video content is DRM-protected (PlayReady) and cannot be
+played.
 
 ## Qt Configuration
 

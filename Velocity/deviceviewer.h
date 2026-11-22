@@ -91,6 +91,8 @@ private:
     QProgressBar *progressBar;
     QTreeWidgetItem *currentDriveItem;
     QString previousName;
+    // Last path the path box showed; restored when a typed path is rejected.
+    QString shownPath;
     bool drivesLoaded;
     bool friendlyNames;
     // Guards against re-entering a folder load from the event loop that

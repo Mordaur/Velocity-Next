@@ -21,7 +21,8 @@
             "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/windows-mingw-release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "VELOCITY_VIDEO": "ON"
             }
         },
         {
@@ -39,7 +40,8 @@
             "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/macos-release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "VELOCITY_VIDEO": "ON"
             }
         },
         {
@@ -67,7 +69,8 @@
             "inherits": "base",
             "binaryDir": "${sourceDir}/out/build/linux-release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "VELOCITY_VIDEO": "ON"
             }
         },
         {

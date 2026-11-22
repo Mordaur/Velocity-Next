@@ -81,6 +81,7 @@ private:
     void GetPackagePath(QTreeWidgetItem *item, QString *out, bool folderOnly = false);
     void SetIcon(string name, StfsFileEntry *entry, QTreeWidgetItem *item);
     void GetSubFilesStfs(StfsFileListing *parent, QList<void *> &entries, QString currentPath = "");
+    bool PlayVideo(const QString &pathInPackage);
 
     StfsPackage *package;
     bool disposePackage;

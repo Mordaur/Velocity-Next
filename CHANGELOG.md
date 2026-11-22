@@ -94,8 +94,36 @@
   "No KeyVault ... the package was not resigned" instead of announcing a
   successful rehash.
 
+### 🎬 Video playback
+
+- Optional video playback through Qt Multimedia (`VELOCITY_VIDEO` = `AUTO`,
+  `ON` or `OFF`; release presets use `ON`). A player window provides
+  play/pause, stop, seeking, volume (persisted) and fullscreen, and reports
+  decoder failures inline.
+- Disc clips such as `ESRB_720.wmv` can be played from the ISO browser through
+  a new Play action or by opening the file; video files on FATX drives are
+  detected by ASF/EBML magic or by extension and opened from the device viewer
+  (Open or Open As → Video). Each open extracts into its own temporary
+  directory, which the player removes after releasing the file.
+- DRM-protected ASF (Windows Media DRM / PlayReady) is detected in the backend
+  by the new `XboxInternals::Asf` probe before anything is extracted, instead of
+  failing with an opaque codec error. Files larger than 2 GiB or without
+  enough temp space are refused up front, and the copy can be cancelled.
+- CI installs the `qtmultimedia` module and verifies the multimedia backend is
+  present in the Windows and macOS packages; `NOTICE` documents the FFmpeg
+  runtime, and `BUILD.md` documents the option and the Linux runtime
+  requirement.
+
 ### 🗂️ Device Viewer
 
+- Typing an invalid path into the device viewer's path box no longer crashes
+  the app. A host path, a path without the `Drive:\` prefix, an unknown
+  partition or a file path is rejected with a message, and the box is restored
+  to the folder it last showed. Paths are normalised for `/` separators and for
+  the partition name's case, `Drive:\` returns to the partition list, and Enter
+  is ignored while a folder is still loading. `LoadFolderTree` now also catches
+  `std::exception`, so a failure in its expand handler cannot escape the event
+  loop either.
 - Ctrl+clicking a column header in the file list now toggles Friendly Folder
   Names again. The event filter was installed on the header widget, but Qt
   delivers header mouse events through its viewport, so the shortcut never
