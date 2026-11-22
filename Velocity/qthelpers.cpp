@@ -381,9 +381,18 @@ void QtHelpers::GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidge
             icon = QIcon(":/Images/StrbFileIcon.png");
             item.setData(1, Qt::UserRole, "STRB");
             break;
+        case 0x58455831:    // XEX1
         case 0x58455832:    // XEX2
             icon = QIcon(":/Images/XEXFileIcon.png");
             item.setData(1, Qt::UserRole, "XEX");
+            break;
+        case 0x5855495A:    // XUIZ
+            icon = QIcon(":/Images/DefaultFileIcon.png");
+            item.setData(1, Qt::UserRole, "XUIZ");
+            break;
+        case 0x59544752:    // YTGR
+            icon = QIcon(":/Images/DefaultFileIcon.png");
+            item.setData(1, Qt::UserRole, "YTGR");
             break;
         case 0x89504E47:    // PNG
             icon = QIcon(":/Images/ImageFileIcon.png");
@@ -412,6 +421,11 @@ void QtHelpers::GetFileIcon(u32 magic, QString fileName, QIcon &icon, QTreeWidge
             {
                 icon = QIcon(":/Images/ImageFileIcon.png");
                 item.setData(1, Qt::UserRole, "Image");
+            }
+            else if (extension == ".iso")
+            {
+                icon = QIcon(":/Images/DefaultFileIcon.png");
+                item.setData(1, Qt::UserRole, "ISO");
             }
             else if (extension == ".xml")
             {

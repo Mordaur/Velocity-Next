@@ -14,6 +14,7 @@
 #include <QInputDialog>
 #include <QProgressBar>
 #include <QPixmap>
+#include <QHash>
 #include <QAction>
 #include "qthelpers.h"
 
@@ -96,6 +97,13 @@ private:
     // GetChildFileEntries pumps: a nested load would clear the tree the outer
     // loop is still iterating and interleave reads on the same drive.
     bool loadingFolder;
+    // Set while a device file is open in a modal viewer. Title-name callbacks
+    // can fire during exec() and would read the same FATX drive as the viewer.
+    bool openingDeviceFile;
+    bool refreshTreePending;
+    QList<QPair<QString, QPixmap>> pendingTitleIcons;
+    // GPD title cache, kept here so an edited GPD can drop its stale entry.
+    QHash<QString, QString> gpdTitleCache;
     std::shared_ptr<HelperClient> helperClient;
 
     // Returns false when the load was skipped (already loading) or failed, so
@@ -125,6 +133,13 @@ private:
     void GetSubFilesFATX(FatxFileEntry *parent, QList<void*> &entries);
     void GetSubFilesLocal(QString parent, QList<void *> &files);
     FatxFileEntry* GetFatxFileEntry(QTreeWidgetItem *item);
+    // Opens a row with the viewer for its detected type. Returns false for
+    // directories and unknown types.
+    bool OpenFileEntry(QTreeWidgetItem *item);
+    // Opens a row with a specific viewer. Returns true when a viewer was
+    // attempted (even if it failed), so callers do not fall through.
+    bool OpenEntryAs(QTreeWidgetItem *item, const QString &type);
+    static bool IsOpenableType(const QString &type);
     void DrawMemoryGraph();
     void InjectFiles(QList<void *> files, QString rootPath);
     void DrawHeader(QString driveName);

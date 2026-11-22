@@ -19,6 +19,9 @@ public:
     ~IsoImage();
 
     bool open(const std::string& path);
+    // Open an image through an existing IO. The image takes ownership; the
+    // caller must keep whatever backs the IO alive for the image's lifetime.
+    bool open(std::unique_ptr<BaseIO> io);
     void close();
 
     const IsoInfo& info() const noexcept { return info_; }

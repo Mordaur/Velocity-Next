@@ -96,6 +96,27 @@
 
 ### 🗂️ Device Viewer
 
+- Every format the app can render can now be opened from the file list:
+  STFS packages (including PEC awards), SVOD/GOD, XEX, XUIZ, XDBF/GPD, STRB,
+  YTGR, images, ZIP, text, XML and ISO. The context menu offers Open (the
+  default action) for any detected type and an Open As submenu that forces a
+  viewer, so a misdetected file can still be opened as text or an image.
+- ISO images are read in place through `FatxIO` instead of being copied to a
+  temporary file: `IsoImage::open(std::unique_ptr<BaseIO>)` and the matching
+  `IsoDialog::loadIsoContents` overload take ownership of the IO. The dialog is
+  modal here so the drive outlives it. Images of 4 GiB or more cannot exist on
+  FATX (32-bit file size) and fail with an explicit message.
+- GPD edits made in the viewer are written back with `FatxIO::ReplaceFile`
+  instead of being discarded, and the row size and cached GPD title are
+  refreshed. ZIP, XDBF, STRB and YTGR use a per-open temporary copy that is
+  removed after the dialog is destroyed.
+- Detection now also recognises XEX1, XUIZ, YTGR and `.iso`.
+- Title-name and icon callbacks are deferred while a device file is open in a
+  modal viewer, so they cannot read the same FATX drive concurrently with an
+  ISO's Extract All worker.
+- Right-clicking a package, SVOD/GOD or XEX row now offers Open (also the
+  menu's default action), matching what double-click does. Both gestures go
+  through `OpenFileEntry`, so the two cannot drift apart again.
 - Opening a folder from the right-hand list now reveals it in the left
   navigation tree: the ancestors are expanded and the folder is selected. The
   same happens after the Back button and after typing a path into the path box,

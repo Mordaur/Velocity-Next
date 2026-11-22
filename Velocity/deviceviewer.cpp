@@ -12,16 +12,48 @@ namespace
     // Local covers discovered while resolving names, keyed by title ID or file path.
     QHash<QString, QByteArray> g_titleThumbnails;
     QHash<QString, QByteArray> g_dataThumbnails;
+
+    // Largest in-memory read allowed for the image/text/XML viewers. FATX
+    // sizes are 32-bit and ReadBytes takes a u32 length.
+    constexpr u32 kMaxMemoryViewerSize = 64u * 1024u * 1024u;
+
+    QString MakeTempFile(const QString &suffix)
+    {
+        return QDir::tempPath() + "/velocity-" +
+                QUuid::createUuid().toString(QUuid::WithoutBraces) + suffix;
+    }
+
+    struct TempFileRemoval
+    {
+        QString path;
+        ~TempFileRemoval()
+        {
+            if (!path.isEmpty())
+                QFile::remove(path);
+        }
+    };
 }
 #include <QRegularExpression>
 #include <QSettings>
 #include <QUuid>
 #include <QFile>
+#include <QFileInfo>
+#include <QImage>
 
 #include "contentnames.h"
 #include "titlenameservice.h"
 
 #include <XboxInternals/Stfs/StfsPackage.h>
+
+#include "xdbfdialog.h"
+#include "strbdialog.h"
+#include "ytgrdialog.h"
+#include "xuizdialog.h"
+#include "imagedialog.h"
+#include "textdialog.h"
+#include "xmldialog.h"
+#include "zipviewer.h"
+#include "isodialog.h"
 
 
 
@@ -30,7 +62,7 @@ DeviceViewer::DeviceViewer(QStatusBar *statusBar, QList<QAction *> gpdActions,
     QDialog(parent), ui(new Ui::DeviceViewer), currentDrive(nullptr), parentEntry(nullptr),
     gpdActions(gpdActions), gameActions(gameActions), statusBar(statusBar), drivesLoaded(false),
     friendlyNames(QSettings("Exetelek", "Velocity").value("FriendlyNames", false).toBool()),
-    loadingFolder(false)
+    loadingFolder(false), openingDeviceFile(false), refreshTreePending(false)
 {
     ui->setupUi(this);
 
@@ -152,8 +184,56 @@ void DeviceViewer::showContextMenu(QPoint point)
     if (parentEntry == nullptr || parentEntry->name == "Drive Root")
         return;
 
+    QAction *open = nullptr;
     if (items.size() >= 1)
     {
+        QString detected;
+        FatxFileEntry *firstEntry = GetFatxFileEntry(items.at(0));
+        const bool singleFile = items.size() == 1 && firstEntry != nullptr &&
+                (firstEntry->fileAttributes & FatxDirectory) == 0;
+
+        if (singleFile)
+            detected = items.at(0)->data(1, Qt::UserRole).toString();
+
+        if (singleFile && IsOpenableType(detected))
+        {
+            open = contextMenu.addAction(items.at(0)->icon(0), "Open");
+            contextMenu.setDefaultAction(open);
+        }
+
+        if (singleFile)
+        {
+            QMenu *openAs = contextMenu.addMenu("Open As");
+            const auto addType = [&openAs, &detected](const char *label, const char *type)
+            {
+                QAction *action = openAs->addAction(QString::fromLatin1(label));
+                action->setData(QString::fromLatin1(type));
+                action->setCheckable(true);
+                action->setChecked(QString::fromLatin1(type) == detected);
+            };
+
+            addType("Package (STFS)", "STFS");
+            addType("GOD / SVOD", "SVOD");
+            addType("PEC award", "PEC");
+            openAs->addSeparator();
+            addType("XEX executable", "XEX");
+            addType("XUIZ resource", "XUIZ");
+            openAs->addSeparator();
+            addType("XDBF / GPD", "Xdbf");
+            addType("Avatar asset (STRB)", "STRB");
+            addType("Avatar texture (YTGR)", "YTGR");
+            openAs->addSeparator();
+            addType("Image", "Image");
+            addType("ZIP archive", "ZIP");
+            addType("Text", "Text");
+            addType("XML", "XML");
+            openAs->addSeparator();
+            addType("ISO image", "ISO");
+        }
+
+        if (open != nullptr || singleFile)
+            contextMenu.addSeparator();
+
         contextMenu.addAction(QPixmap(":/Images/extract.png"), "Copy Selected to Local Disk");
         contextMenu.addAction(QPixmap(":/Images/add.png"), "Copy File(s) Here");
         contextMenu.addAction(QPixmap(":/Images/NewFolder.png"), "Copy Folder Here");
@@ -196,7 +276,15 @@ void DeviceViewer::showContextMenu(QPoint point)
 
     try
     {
-        if (selectedItem->text() == "Copy Selected to Local Disk")
+        if (open != nullptr && selectedItem == open)
+        {
+            OpenFileEntry(items.at(0));
+        }
+        else if (!selectedItem->data().toString().isEmpty())
+        {
+            OpenEntryAs(items.at(0), selectedItem->data().toString());
+        }
+        else if (selectedItem->text() == "Copy Selected to Local Disk")
         {
             QList<void*> filesToExtract;
 
@@ -577,35 +665,8 @@ void DeviceViewer::on_treeWidget_doubleClicked(const QModelIndex &index)
         // set the current parent
         FatxFileEntry *currentParent = GetFatxFileEntry(item);
 
-        if (item->data(1, Qt::UserRole).toString() == "STFS")
-        {
-            FatxIO io = currentDrive->GetFatxIO(currentParent);
-            StfsPackage package(&io);
-
-            PackageViewer viewer(statusBar, &package, gpdActions, gameActions, this, false);
-            viewer.exec();
-
-            package.Close();
-            io.Close();
-        }
-        else if (item->data(1, Qt::UserRole).toString() == "SVOD")
-        {
-            const std::string rootFilePath = currentParent->path + currentParent->name;
-            SVOD *svod = new SVOD(rootFilePath, currentDrive);
-
-            // the dialog takes ownership of the SVOD
-            SvodDialog dialog(svod, statusBar, this);
-            dialog.exec();
-        }
-        else if (item->data(1, Qt::UserRole).toString() == "XEX")
-        {
-            // the dialog owns the Xex, the stack FatxIO stays alive for exec()
-            FatxIO io = currentDrive->GetFatxIO(currentParent);
-            Xex *xex = new Xex(&io);
-
-            XexDialog dialog(xex, this);
-            dialog.exec();
-        }
+        if (OpenFileEntry(item))
+            return;
 
         if ((currentParent->fileAttributes & FatxDirectory) == 0)
             return;
@@ -639,6 +700,262 @@ FatxFileEntry* DeviceViewer::GetFatxFileEntry(QTreeWidgetItem *item)
     return currentParent;
 }
 
+bool DeviceViewer::IsOpenableType(const QString &type)
+{
+    static const QSet<QString> types = {
+        "STFS", "SVOD", "PEC", "XEX", "XUIZ", "Xdbf", "STRB", "YTGR",
+        "Image", "Text", "XML", "ZIP", "ISO"
+    };
+    return types.contains(type);
+}
+
+bool DeviceViewer::OpenFileEntry(QTreeWidgetItem *item)
+{
+    if (item == nullptr)
+        return false;
+
+    FatxFileEntry *entry = GetFatxFileEntry(item);
+    if (entry == nullptr || (entry->fileAttributes & FatxDirectory))
+        return false;
+
+    const QString type = item->data(1, Qt::UserRole).toString();
+    if (!IsOpenableType(type))
+        return false;
+
+    return OpenEntryAs(item, type);
+}
+
+bool DeviceViewer::OpenEntryAs(QTreeWidgetItem *item, const QString &type)
+{
+    if (item == nullptr)
+        return false;
+
+    FatxFileEntry *entry = GetFatxFileEntry(item);
+    if (entry == nullptr || (entry->fileAttributes & FatxDirectory))
+        return false;
+
+    FatxDrive *drive = (entry->partition != nullptr) ? entry->partition->drive : currentDrive;
+    if (drive == nullptr)
+        return false;
+
+    openingDeviceFile = true;
+    struct ResetOpening
+    {
+        DeviceViewer *viewer;
+        ~ResetOpening()
+        {
+            viewer->openingDeviceFile = false;
+
+            const auto icons = viewer->pendingTitleIcons;
+            viewer->pendingTitleIcons.clear();
+            for (const auto &icon : icons)
+                viewer->ApplyTitleIcon(icon.first, icon.second);
+
+            if (viewer->refreshTreePending)
+            {
+                viewer->refreshTreePending = false;
+                viewer->RefreshTreeNames();
+            }
+        }
+    } resetOpening{this};
+
+    try
+    {
+        if (type == "STFS" || type == "PEC")
+        {
+            FatxIO io = drive->GetFatxIO(entry);
+            StfsPackage package(&io, (type == "PEC") ? StfsPackagePEC : 0);
+
+            PackageViewer viewer(statusBar, &package, gpdActions, gameActions, this, false);
+            viewer.exec();
+
+            package.Close();
+            io.Close();
+            return true;
+        }
+
+        if (type == "SVOD")
+        {
+            const std::string rootFilePath = entry->path + entry->name;
+            SVOD *svod = new SVOD(rootFilePath, drive);
+
+            // the dialog takes ownership of the SVOD
+            SvodDialog dialog(svod, statusBar, this);
+            dialog.exec();
+            return true;
+        }
+
+        if (type == "XEX")
+        {
+            // the dialog owns the Xex, the stack FatxIO stays alive for exec()
+            FatxIO io = drive->GetFatxIO(entry);
+            Xex *xex = new Xex(&io);
+
+            XexDialog dialog(xex, this);
+            dialog.exec();
+            return true;
+        }
+
+        if (type == "XUIZ")
+        {
+            // the dialog owns the Xuiz; the stack FatxIO must outlive it
+            FatxIO io = drive->GetFatxIO(entry);
+            Xuiz *xuiz = new Xuiz(&io);
+
+            XuizDialog dialog(statusBar, xuiz, this);
+            dialog.exec();
+            return true;
+        }
+
+        if (type == "Xdbf")
+        {
+            const QString tempPath = MakeTempFile(".gpd");
+            TempFileRemoval remover{tempPath};
+
+            FatxIO io = drive->GetFatxIO(entry);
+            io.SaveFile(tempPath.toStdString());
+            io.Close();
+
+            auto gpd = std::make_unique<GpdBase>(tempPath.toStdString());
+            bool changed = false;
+            {
+                XdbfDialog dialog(statusBar, std::move(gpd), &changed, this);
+                dialog.exec();
+            }
+
+            if (changed)
+            {
+                FatxIO replaceIo = drive->GetFatxIO(entry);
+                replaceIo.ReplaceFile(tempPath.toStdString());
+                replaceIo.Close();
+
+                entry->fileSize = static_cast<u32>(QFileInfo(tempPath).size());
+                item->setText(1, QString::fromStdString(ByteSizeToString(entry->fileSize)));
+                gpdTitleCache.remove(QString::fromStdString(entry->path + entry->name).toUpper());
+                RefreshTreeNames();
+            }
+            return true;
+        }
+
+        if (type == "STRB")
+        {
+            const QString tempPath = MakeTempFile(".strb");
+            TempFileRemoval remover{tempPath};
+
+            FatxIO io = drive->GetFatxIO(entry);
+            io.SaveFile(tempPath.toStdString());
+            io.Close();
+
+            // the dialog owns the asset and the file it keeps open
+            AvatarAsset *asset = new AvatarAsset(tempPath.toStdString());
+            StrbDialog dialog(asset, this);
+            dialog.exec();
+            return true;
+        }
+
+        if (type == "YTGR")
+        {
+            const QString tempPath = MakeTempFile(".ytgr");
+            TempFileRemoval remover{tempPath};
+
+            FatxIO io = drive->GetFatxIO(entry);
+            io.SaveFile(tempPath.toStdString());
+            io.Close();
+
+            Ytgr *ytgr = new Ytgr(tempPath.toStdString());
+            YtgrDialog dialog(ytgr, statusBar, this);
+            dialog.exec();
+            return true;
+        }
+
+        if (type == "Image" || type == "Text" || type == "XML" || type == "ZIP")
+        {
+            if (type != "ZIP")
+            {
+                if (entry->fileSize == 0)
+                    throw string("The file is empty.");
+                if (entry->fileSize > kMaxMemoryViewerSize)
+                    throw string("The file is too large to open in memory (limit 64 MiB).");
+            }
+
+            if (type == "ZIP")
+            {
+                const QString tempPath = MakeTempFile(".zip");
+                TempFileRemoval remover{tempPath};
+
+                FatxIO io = drive->GetFatxIO(entry);
+                io.SaveFile(tempPath.toStdString());
+                io.Close();
+
+                // ZipViewer keeps no handle open, but delete the temp copy when
+                // the non-modal viewer closes.
+                ZipViewer *dialog = new ZipViewer(tempPath, item->text(0), this);
+                dialog->setAttribute(Qt::WA_DeleteOnClose);
+                QObject::connect(dialog, &QObject::destroyed, dialog,
+                        [tempPath]() { QFile::remove(tempPath); });
+                remover.path.clear();
+                dialog->show();
+                return true;
+            }
+
+            std::vector<u8> buffer(entry->fileSize);
+            FatxIO io = drive->GetFatxIO(entry);
+            io.SetPosition(0);
+            io.ReadBytes(buffer.data(), static_cast<u32>(buffer.size()));
+            io.Close();
+
+            if (type == "Image")
+            {
+                QImage image;
+                if (!image.loadFromData(buffer.data(), static_cast<int>(buffer.size())))
+                    throw string("The file is not a supported image.");
+
+                ImageDialog dialog(image, item->text(0), this);
+                dialog.exec();
+                return true;
+            }
+
+            if (type == "Text")
+            {
+                const QByteArray text(reinterpret_cast<const char *>(buffer.data()),
+                        static_cast<int>(buffer.size()));
+                TextDialog dialog(text, item->text(0), this);
+                dialog.exec();
+                return true;
+            }
+
+            const QString xml = QString::fromUtf8(
+                    reinterpret_cast<const char *>(buffer.data()), static_cast<int>(buffer.size()));
+            XmlDialog dialog(xml, item->text(0), this);
+            dialog.exec();
+            return true;
+        }
+
+        if (type == "ISO")
+        {
+            // The dialog takes ownership of the IO; the drive stays alive
+            // because exec() blocks until the viewer is closed.
+            auto imageIo = std::make_unique<FatxIO>(drive->GetFatxIO(entry));
+            IsoDialog dialog(statusBar, this);
+            if (dialog.loadIsoContents(std::move(imageIo), QString::fromStdString(entry->name)))
+                dialog.exec();
+            return true;
+        }
+    }
+    catch (const std::string &error)
+    {
+        QMessageBox::warning(this, "Problem Opening",
+                "The file could not be opened.\n\n" + QString::fromStdString(error));
+    }
+    catch (const std::exception &error)
+    {
+        QtHelpers::ShowUnexpectedError(this, error);
+    }
+
+    // The type is routable, so never fall through to folder navigation.
+    return true;
+}
+
 void DeviceViewer::ApplyLocalIcon(QTreeWidgetItem *item, FatxFileEntry *entry)
 {
     if (!friendlyNames || item == nullptr || entry == nullptr)
@@ -670,6 +987,12 @@ void DeviceViewer::ApplyLocalIcon(QTreeWidgetItem *item, FatxFileEntry *entry)
 
 void DeviceViewer::RefreshTreeNames()
 {
+    if (openingDeviceFile)
+    {
+        refreshTreePending = true;
+        return;
+    }
+
     std::function<void(QTreeWidgetItem *)> visit = [&](QTreeWidgetItem *item) {
         for (int i = 0; i < item->childCount(); ++i)
             visit(item->child(i));
@@ -688,6 +1011,11 @@ void DeviceViewer::RefreshTreeNames()
 
 void DeviceViewer::ApplyTitleIcon(const QString &titleId, const QPixmap &icon)
 {
+    if (openingDeviceFile)
+    {
+        pendingTitleIcons.append(qMakePair(titleId, icon));
+        return;
+    }
     std::function<void(QTreeWidgetItem *)> visit = [&](QTreeWidgetItem *item) {
         for (int i = 0; i < item->childCount(); ++i)
             visit(item->child(i));
@@ -889,11 +1217,9 @@ QString DeviceViewer::ResolveDataFileName(FatxFileEntry *entry)
 QString DeviceViewer::ResolveGpdTitle(FatxFileEntry *entry)
 {
     // GODspeed uses the first string in a <TitleID>.gpd as the game name.
-    static QHash<QString, QString> cache;
-
     const QString key = QString::fromStdString(entry->path + entry->name).toUpper();
-    if (cache.contains(key))
-        return cache.value(key);
+    if (gpdTitleCache.contains(key))
+        return gpdTitleCache.value(key);
 
     QString resolved;
     FatxDrive *drive = entry->partition != nullptr ? entry->partition->drive : nullptr;
@@ -945,7 +1271,7 @@ QString DeviceViewer::ResolveGpdTitle(FatxFileEntry *entry)
     }
 
     if (!resolved.isEmpty())
-        cache.insert(key, resolved);
+        gpdTitleCache.insert(key, resolved);
 
     return resolved;
 }

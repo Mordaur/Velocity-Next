@@ -408,12 +408,15 @@ u32 IsoImage::GetTotalCopyIterations(const std::vector<GdfxFileEntry> *entryList
 }
 
 bool IsoImage::open(const std::string& path) {
+    return open(std::make_unique<FileIO>(path, false));
+}
+
+bool IsoImage::open(std::unique_ptr<BaseIO> io) {
     close();
-    impl_->path = path;
-    
+
     try {
-        impl_->io = std::make_unique<FileIO>(path, false);
-        
+        impl_->io = std::move(io);
+
         info_.imageSize = impl_->io->Length();
         info_.sectorSize = ISO_SECTOR_SIZE;
         

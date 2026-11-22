@@ -149,6 +149,73 @@ IsoDialog::~IsoDialog()
         cancelExtraction_ = true;
         extractionWatcher_->waitForFinished();
     }
+
+    // Child viewers hold IsoIO objects that point into iso_ (the image IO plus
+    // GdfxFileEntry entries). Destroy them before the image is released.
+    const QList<XexDialog *> xexDialogs = findChildren<XexDialog *>();
+    for (XexDialog *dialog : xexDialogs)
+        delete dialog;
+
+    const QList<PackageViewer *> packageViewers = findChildren<PackageViewer *>();
+    for (PackageViewer *viewer : packageViewers)
+        delete viewer;
+}
+
+void IsoDialog::prepareForNewImage()
+{
+    // Non-modal child viewers hold IsoIO objects that point into the current
+    // IsoImage (the image IO plus GdfxFileEntry into `root`). Opening another
+    // image calls IsoImage::close(), which frees both while those viewers are
+    // still alive. Destroy them first so no IsoIO outlives the image it reads.
+    const QList<XexDialog *> xexDialogs = findChildren<XexDialog *>();
+    for (XexDialog *dialog : xexDialogs)
+        delete dialog;
+
+    const QList<PackageViewer *> packageViewers = findChildren<PackageViewer *>();
+    for (PackageViewer *viewer : packageViewers)
+        delete viewer;
+
+    tree_->clear();
+    folderItems_.clear();
+
+    if (!iso_) iso_.reset(new XboxInternals::Iso::IsoImage());
+}
+
+void IsoDialog::finishLoading(const QString &displayName)
+{
+    populateTree();
+
+    extractSelectedButton_->setEnabled(true);
+    extractAllButton_->setEnabled(true);
+    expandAllButton_->setEnabled(true);
+    collapseAllButton_->setEnabled(true);
+    sectorToolButton_->setEnabled(true);
+
+    const auto& info = iso_->info();
+    const QString fileName = QFileInfo(displayName).fileName();
+    QString xgdVersion = QString::fromStdString(iso_->GetXGDVersion());
+
+    // XGD2/XGD3 are verified on retail images; XGD1 and 2352-byte dumps have
+    // only synthetic coverage so far.
+    if (xgdVersion == "XGD1" || info.sectorStride == 2352)
+        xgdVersion += " (experimental)";
+    const QString sizeStr = formatSize(info.imageSize);
+    const QString titleName = QString::fromStdWString(iso_->GetTitleName());
+
+    if (titleName.isEmpty())
+    {
+        setWindowTitle(tr("Xbox 360 ISO Browser - %1 (%2) - %3")
+                       .arg(fileName, xgdVersion, sizeStr));
+    }
+    else
+    {
+        setWindowTitle(tr("Xbox 360 ISO Browser - %1 [%2] (%3) - %4")
+                       .arg(fileName, titleName, xgdVersion, sizeStr));
+    }
+
+    if (statusBar_) {
+        statusBar_->showMessage(tr("ISO parsed successfully"), 5000);
+    }
 }
 
 void IsoDialog::setExtractionBusy(bool busy)
@@ -177,68 +244,41 @@ void IsoDialog::dropEvent(QDropEvent* event) {
     }
 }
 
-void IsoDialog::loadIsoContents(const QString& path) {
-    // Non-modal child viewers hold IsoIO objects that point into the current
-    // IsoImage (raw FileIO plus GdfxFileEntry into `root`). Opening another ISO
-    // calls IsoImage::close(), which frees both while those viewers are still
-    // alive. Destroy them first so no IsoIO outlives the image it reads from.
-    const QList<XexDialog *> xexDialogs = findChildren<XexDialog *>();
-    for (XexDialog *dialog : xexDialogs)
-        delete dialog;
-
-    const QList<PackageViewer *> packageViewers = findChildren<PackageViewer *>();
-    for (PackageViewer *viewer : packageViewers)
-        delete viewer;
-
-    tree_->clear();
-    folderItems_.clear();
+bool IsoDialog::loadIsoContents(const QString& path) {
+    prepareForNewImage();
     currentIsoPath_ = path;
 
-    if (!iso_) iso_.reset(new XboxInternals::Iso::IsoImage());
-    
     if (!iso_->open(path.toStdString())) {
-        QMessageBox::warning(this, tr("Error"), 
+        QMessageBox::warning(this, tr("Error"),
             tr("Failed to open ISO file:\n%1\n\nThis could be due to:\n"
                "- File is not a valid Xbox 360 ISO\n"
                "- Magic string not found at expected offsets\n"
                "- File access permissions\n"
-               "- Corrupted file").arg(path));
-        return;
+               "- Corrupted file\n"
+               "- The image is 4 GiB or larger and cannot be stored on FATX").arg(path));
+        return false;
     }
 
-    populateTree();
+    finishLoading(path);
+    return true;
+}
 
-    extractSelectedButton_->setEnabled(true);
-    extractAllButton_->setEnabled(true);
-    expandAllButton_->setEnabled(true);
-    collapseAllButton_->setEnabled(true);
-    sectorToolButton_->setEnabled(true);
+bool IsoDialog::loadIsoContents(std::unique_ptr<BaseIO> io, const QString &displayName) {
+    prepareForNewImage();
+    currentIsoPath_ = displayName;
 
-    const auto& info = iso_->info();
-    const QString fileName = QFileInfo(path).fileName();
-    QString xgdVersion = QString::fromStdString(iso_->GetXGDVersion());
-
-    // XGD2/XGD3 are verified on retail images; XGD1 and 2352-byte dumps have
-    // only synthetic coverage so far.
-    if (xgdVersion == "XGD1" || info.sectorStride == 2352)
-        xgdVersion += " (experimental)";
-    const QString sizeStr = formatSize(info.imageSize);
-    const QString titleName = QString::fromStdWString(iso_->GetTitleName());
-
-    if (titleName.isEmpty())
-    {
-        setWindowTitle(tr("Xbox 360 ISO Browser - %1 (%2) - %3")
-                       .arg(fileName, xgdVersion, sizeStr));
+    if (!iso_->open(std::move(io))) {
+        QMessageBox::warning(this, tr("Error"),
+            tr("Failed to open ISO image:\n%1\n\nThis could be due to:\n"
+               "- File is not a valid Xbox 360 ISO\n"
+               "- Magic string not found at expected offsets\n"
+               "- Corrupted file\n"
+               "- The image is 4 GiB or larger and cannot be stored on FATX").arg(displayName));
+        return false;
     }
-    else
-    {
-        setWindowTitle(tr("Xbox 360 ISO Browser - %1 [%2] (%3) - %4")
-                       .arg(fileName, titleName, xgdVersion, sizeStr));
-    }
-    
-    if (statusBar_) {
-        statusBar_->showMessage(tr("ISO parsed successfully"), 5000);
-    }
+
+    finishLoading(displayName);
+    return true;
 }
 
 QTreeWidgetItem* IsoDialog::findOrCreateFolder(const QString& path) {

@@ -37,8 +37,11 @@ public:
     explicit IsoDialog(QStatusBar* statusBar, QWidget* parent = nullptr);
     ~IsoDialog() override;
 
-    // Load an ISO or GOD file
-    void loadIsoContents(const QString& path);
+    // Load an ISO or GOD file. Returns false when the image could not be opened.
+    bool loadIsoContents(const QString& path);
+    // Load an image through an existing IO, which the image takes ownership of.
+    // The caller must keep the backing device alive for the dialog's lifetime.
+    bool loadIsoContents(std::unique_ptr<BaseIO> io, const QString &displayName);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -66,6 +69,8 @@ private:
         QString outputPath;
     };
 
+    void prepareForNewImage();
+    void finishLoading(const QString &displayName);
     void populateTree();
     void buildTreeItem(QTreeWidget* tree, QTreeWidgetItem* parent, 
                       const GdfxFileEntry& entry);
