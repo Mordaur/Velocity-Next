@@ -13,6 +13,7 @@
 #include <XboxInternals/Gpd/Xdbf.h>
 #include <XboxInternals/Gpd/XdbfHelpers.h>
 #include <XboxInternals/IO/FileIO.h>
+#include <XboxInternals/IO/FatxIO.h>
 #include <XboxInternals/IO/MemoryIO.h>
 #include <XboxInternals/IO/StfsIO.h>
 #include <XboxInternals/Stfs/StfsDefinitions.h>
@@ -1422,6 +1423,26 @@ namespace
         fs::remove(path, ignored);
     }
 
+    void testFatxEraseRanges()
+    {
+        std::vector<u32> list = {1, 2, 3, 5, 7};
+        FatxIO::EraseIndexRanges(list, std::vector<Range>{{0, 3}, {3, 2}});
+        check(list.empty(), "FATX erases used ranges in descending order");
+
+        list = {1, 2, 3, 5, 7};
+        FatxIO::EraseIndexRanges(list, std::vector<Range>{{3, 2}, {0, 3}});
+        check(list.empty(), "FATX erases ranges in any input order");
+
+        list = {1, 2, 3, 5, 7, 9};
+        FatxIO::EraseIndexRanges(list, std::vector<Range>{{1, 2}, {4, 2}});
+        check(list == std::vector<u32>{1, 5}, "FATX keeps the clusters that were not used");
+
+        list = {1, 2};
+        check(throws([&] {
+            FatxIO::EraseIndexRanges(list, std::vector<Range>{{1, 5}});
+        }), "FATX rejects an out-of-bounds erase range");
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1799,6 +1820,7 @@ int main()
     testStfsReplaceFreesBlocks();
     testStfsZeroBlockResize();
     testStfsCounterRepair();
+    testFatxEraseRanges();
     testFileTimeConversion();
     testGarbageImages();
 

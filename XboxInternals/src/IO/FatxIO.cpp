@@ -1,6 +1,8 @@
 #include <XboxInternals/IO/FatxIO.h>
 #include <XboxInternals/Fatx/FatxHelpers.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <vector>
 
 FatxIO::FatxIO(BaseIO *device, FatxFileEntry *entry) : entry(entry), device(device)
@@ -196,6 +198,22 @@ void FatxIO::WriteBytes(u8 *buffer, u32 len)
         device->WriteBytes(buffer + (origLen - len), len);
 }
 
+void FatxIO::EraseIndexRanges(std::vector<u32> &list, std::vector<Range> ranges)
+{
+    // Erase from the highest index down: an erase shifts every later index, so
+    // the original indices are only valid in descending order.
+    std::sort(ranges.begin(), ranges.end(),
+            [](const Range &a, const Range &b) { return a.start > b.start; });
+
+    for (const Range &r : ranges)
+    {
+        if (r.start + r.len > list.size())
+            throw std::string("FATX: Cluster range out of bounds.\n");
+        list.erase(list.begin() + static_cast<std::ptrdiff_t>(r.start),
+                list.begin() + static_cast<std::ptrdiff_t>(r.start + r.len));
+    }
+}
+
 std::vector<u32> FatxIO::getFreeClusters(Partition *part, u32 count)
 {
     std::vector<u32> freeClusters(count);
@@ -241,9 +259,7 @@ std::vector<u32> FatxIO::getFreeClusters(Partition *part, u32 count)
     }
 
     // remove all of the used clusters
-    for (u32 i = 0; i < usedRanges.size(); i++)
-        part->freeClusters.erase(part->freeClusters.begin() + usedRanges.at(i).start,
-                part->freeClusters.begin() + usedRanges.at(i).start + usedRanges.at(i).len);
+    EraseIndexRanges(part->freeClusters, usedRanges);
 
     // if we still need more clusters, then we'll just copy over non-consecutive ones that are left
     std::copy(part->freeClusters.begin(), part->freeClusters.begin() + count,

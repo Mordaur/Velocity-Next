@@ -76,6 +76,9 @@ public:
     static void GetConsecutive(std::vector<u32> &list, std::vector<Range> &outRanges,
             bool includeNonConsec = false);
 
+    // erase index ranges from a list, highest start first so indices stay valid
+    static void EraseIndexRanges(std::vector<u32> &list, std::vector<Range> ranges);
+
 private:
     // find count amount of free custers
     std::vector<u32> getFreeClusters(Partition *part, u32 count);

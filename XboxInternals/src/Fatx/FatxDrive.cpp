@@ -1074,7 +1074,12 @@ void FatxDrive::loadFatxDrive()
 u64 FatxDrive::GetFreeMemory(Partition *part, void(*progress)(void*, bool), void *arg, bool finish)
 {
     if (part->freeMemory != 0)
-        return (u64)part->freeClusters.size() * (u64)part->clusterSize;
+    {
+        // The field doubles as the "already scanned" flag; keep it live so a
+        // session that injected or removed files reports the right free space.
+        part->freeMemory = (u64)part->freeClusters.size() * (u64)part->clusterSize;
+        return part->freeMemory;
+    }
 
     // allocate memory for a buffer to minimize the amount of reads
     std::vector<u8> buffer(0x50000);
