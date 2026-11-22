@@ -9,37 +9,46 @@ IndexableMultiFileIO::~IndexableMultiFileIO() = default;
 
 void IndexableMultiFileIO::SetPosition(u32 newAddressInFile, int desiredFileIndex)
 {
-    if (currentIO == nullptr && files.empty()) {
-        throw std::string("MultiFileIO: No files are loaded.");
-    }
+    if (files.empty())
+        throw std::string("MultiFileIO: No files are loaded.\n");
 
-    if (desiredFileIndex == -1 || static_cast<u32>(desiredFileIndex) == fileIndex) {
-        if (newAddressInFile >= CurrentFileLength()) {
-            throw std::string("MultiFileIO: Cannot seek beyond the end of the file\n");
-        }
+    if (desiredFileIndex == -1)
+        desiredFileIndex = static_cast<int>(fileIndex);
 
-        currentIO->SetPosition(newAddressInFile);
-        addressInFile = newAddressInFile;
-        return;
-    }
-
-    if (desiredFileIndex < 0 || static_cast<size_t>(desiredFileIndex) >= files.size()) {
+    if (desiredFileIndex < 0 || static_cast<size_t>(desiredFileIndex) >= files.size())
         throw std::string("MultiFileIO: Specified file index is out of range\n");
+
+    if (currentIO == nullptr || static_cast<u32>(desiredFileIndex) != fileIndex)
+    {
+        // Open first so a failure leaves the current part intact.
+        std::unique_ptr<BaseIO> next = openFile(files.at(static_cast<size_t>(desiredFileIndex)));
+        if (currentIO)
+            currentIO->Close();
+        currentIO = std::move(next);
+        fileIndex = static_cast<u32>(desiredFileIndex);
+        addressInFile = 0;
     }
 
-    if (currentIO != nullptr) {
-        currentIO->Close();
-        currentIO.reset();
-    }
-
-    currentIO = openFile(files.at(static_cast<size_t>(desiredFileIndex)));
-    if (newAddressInFile >= CurrentFileLength()) {
+    // The end of a part is a valid position; past it is not.
+    if (newAddressInFile > CurrentFileLength())
         throw std::string("MultiFileIO: Cannot seek beyond the end of the file\n");
+
+    currentIO->SetPosition(newAddressInFile);
+    addressInFile = newAddressInFile;
+}
+
+void IndexableMultiFileIO::ensureAvailable(u32 len)
+{
+    u64 available = CurrentFileLength() - addressInFile;
+    for (u32 i = fileIndex + 1; available < len && i < FileCount(); ++i)
+    {
+        std::unique_ptr<BaseIO> part = openFile(files.at(i));
+        available += part->Length();
+        part->Close();
     }
 
-    addressInFile = newAddressInFile;
-    fileIndex = static_cast<u32>(desiredFileIndex);
-    currentIO->SetPosition(addressInFile);
+    if (available < len)
+        throw std::string("MultiFileIO: Cannot access beyond the end of the last file\n");
 }
 
 void IndexableMultiFileIO::GetPosition(u32 *addressOut, u32 *fileIndexOut)
@@ -66,39 +75,42 @@ u32 IndexableMultiFileIO::CurrentFileLength()
 
 void IndexableMultiFileIO::ReadBytes(u8 *outBuffer, u32 len)
 {
-    while (len > 0) {
-        u32 bytesLeft = CurrentFileLength() - addressInFile;
-        u32 amountToRead = (bytesLeft > len) ? len : bytesLeft;
-
-        currentIO->ReadBytes(outBuffer, amountToRead);
-
-        if (len >= bytesLeft && (fileIndex + 1) < FileCount()) {
+    ensureAvailable(len);
+    while (len > 0)
+    {
+        const u32 bytesLeft = CurrentFileLength() - addressInFile;
+        if (bytesLeft == 0)
+        {
+            // ensureAvailable() guarantees a following part.
             SetPosition(static_cast<u32>(0), static_cast<int>(fileIndex + 1));
-        } else if (len < bytesLeft) {
-            SetPosition(addressInFile + len);
+            continue;
         }
 
-        len -= amountToRead;
-        outBuffer += amountToRead;
+        const u32 chunk = std::min(len, bytesLeft);
+        currentIO->ReadBytes(outBuffer, chunk);
+        addressInFile += chunk;
+        outBuffer += chunk;
+        len -= chunk;
     }
 }
 
 void IndexableMultiFileIO::WriteBytes(u8 *buffer, u32 len)
 {
-    while (len > 0) {
-        u32 bytesLeft = CurrentFileLength() - addressInFile;
-        u32 amountToWrite = (bytesLeft > len) ? len : bytesLeft;
-
-        currentIO->Write(buffer, amountToWrite);
-
-        if (len >= bytesLeft) {
+    ensureAvailable(len);
+    while (len > 0)
+    {
+        const u32 bytesLeft = CurrentFileLength() - addressInFile;
+        if (bytesLeft == 0)
+        {
             SetPosition(static_cast<u32>(0), static_cast<int>(fileIndex + 1));
-        } else {
-            SetPosition(addressInFile + len);
+            continue;
         }
 
-        len -= amountToWrite;
-        buffer += amountToWrite;
+        const u32 chunk = std::min(len, bytesLeft);
+        currentIO->WriteBytes(buffer, chunk);
+        addressInFile += chunk;
+        buffer += chunk;
+        len -= chunk;
     }
 }
 

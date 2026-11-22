@@ -14,6 +14,7 @@
 #include <XboxInternals/Gpd/XdbfHelpers.h>
 #include <XboxInternals/IO/FileIO.h>
 #include <XboxInternals/IO/FatxIO.h>
+#include <XboxInternals/IO/LocalIndexableMultiFileIO.h>
 #include <XboxInternals/IO/MemoryIO.h>
 #include <XboxInternals/IO/StfsIO.h>
 #include <XboxInternals/Stfs/StfsDefinitions.h>
@@ -1443,6 +1444,64 @@ namespace
         }), "FATX rejects an out-of-bounds erase range");
     }
 
+    void testIndexableMultiFileIO()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path dir = fs::temp_directory_path() / "xbi_smoke_indexable";
+        std::error_code ignored;
+        fs::remove_all(dir, ignored);
+        fs::create_directories(dir, ignored);
+
+        {
+            std::ofstream f1(dir / "01.bin", std::ios::binary | std::ios::trunc);
+            f1.write("abcdefgh", 8);
+            std::ofstream f2(dir / "02.bin", std::ios::binary | std::ios::trunc);
+            f2.write("ijklmnop", 8);
+        }
+
+        {
+            LocalIndexableMultiFileIO io(dir.string());
+
+            // Writing 12 bytes from position 4 ends exactly at the last part.
+            std::vector<u8> payload(12, 'Z');
+            io.SetPosition(4, 0);
+            check(!throws([&] { io.WriteBytes(payload.data(), 12); }),
+                  "MultiFileIO writes to the end of the last part");
+
+            u32 addr = 0, index = 0;
+            io.GetPosition(&addr, &index);
+            check(addr == 8 && index == 1,
+                  "MultiFileIO position after a boundary write");
+
+            std::vector<u8> back(12);
+            io.SetPosition(4, 0);
+            io.ReadBytes(back.data(), static_cast<u32>(back.size()));
+            check(back == payload, "MultiFileIO reads across a part boundary");
+
+            io.GetPosition(&addr, &index);
+            check(addr == 8 && index == 1,
+                  "MultiFileIO position after a boundary read");
+
+            // Past the end must throw before any byte is read.
+            io.SetPosition(4, 0);
+            check(throws([&] {
+                std::vector<u8> over(13);
+                io.ReadBytes(over.data(), static_cast<u32>(over.size()));
+            }), "MultiFileIO rejects a read past the last part");
+        }
+
+        const auto readAll = [](const fs::path &p) {
+            std::ifstream in(p, std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(in),
+                    std::istreambuf_iterator<char>());
+        };
+        check(readAll(dir / "01.bin") == "abcdZZZZ", "MultiFileIO wrote the first part");
+        check(readAll(dir / "02.bin") == "ZZZZZZZZ", "MultiFileIO wrote the second part");
+
+        fs::remove_all(dir, ignored);
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1821,6 +1880,7 @@ int main()
     testStfsZeroBlockResize();
     testStfsCounterRepair();
     testFatxEraseRanges();
+    testIndexableMultiFileIO();
     testFileTimeConversion();
     testGarbageImages();
 

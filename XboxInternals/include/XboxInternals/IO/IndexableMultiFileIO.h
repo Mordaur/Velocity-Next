@@ -44,6 +44,9 @@ protected:
     std::unique_ptr<BaseIO> currentIO;
     std::vector<std::string> files;
 
+    // Throws unless len bytes are available from the current position to the end.
+    void ensureAvailable(u32 len);
+
     virtual void loadDirectories(std::string path) = 0;
     virtual std::unique_ptr<BaseIO> openFile(std::string path) = 0;
 };
