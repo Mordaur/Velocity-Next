@@ -6,6 +6,7 @@
 #include <memory>
 #include <cctype>
 #include <algorithm>
+#include <utility>
 #include <iostream>
 #include <iomanip>
 #include <unordered_set>
@@ -2163,126 +2164,61 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
 
     FileIO fileIn(path);
 
-    fileIn.SetPosition(0, ios_base::end);
-    u32 fileSize = fileIn.GetPosition();
-    fileIn.SetPosition(0);
+    if (fileIn.Length() > UINT32_MAX)
+        throw string("STFS: File size exceeds the 32-bit on-disk limit.\n");
+    const u32 fileSize = static_cast<u32>(fileIn.Length());
 
-    // A zero-byte entry owns no blocks; its start is the terminator (or 0 in
-    // older packages), which must not be written through.
-    const bool ownsBlocks = entry->blocksForFile != 0;
-
-    // set up the entry
-    entry->fileSize = fileSize;
-    entry->blocksForFile = ((fileSize + 0xFFF) & 0xFFFFFFF000) >> 0xC;
-
-    u32 block = kBlockChainTerminator;
-    if (ownsBlocks)
-        block = entry->startingBlockNum;
-    else if (fileSize != 0)
+    // The blocks the old entry owns, in chain order. GenerateBlockChain stops on
+    // cycles; the cap keeps a chain that runs into another file from being
+    // reused or freed.
+    std::vector<u32> owned;
+    if (entry->blocksForFile != 0)
     {
-        block = AllocateBlock();
-        entry->startingBlockNum = block;
+        StfsFileEntry old = *entry;
+        GenerateBlockChain(&old, true);
+        old.blockChain.resize(std::min<size_t>(old.blockChain.size(), old.blocksForFile));
+        owned = std::move(old.blockChain);
     }
 
-    if (block != kBlockChainTerminator)
-        io->SetPosition(BlockToAddress(block));
+    entry->fileSize = fileSize;
+    entry->blocksForFile = static_cast<u32>((static_cast<u64>(fileSize) + 0xFFF) / 0x1000);
 
-    u32 fullReads = fileSize / 0x1000;
-    bool first = true;
-    bool alwaysAllocate = !ownsBlocks && fileSize != 0;
-
-    // Write the folders to the listing
-    for (u32 i = 0; i < fullReads; i++)
+    u8 buffer[0x1000];
+    u32 previous = kBlockChainTerminator;
+    for (u32 i = 0; i < entry->blocksForFile; i++)
     {
-        if (!first)
-        {
-            // check if we need to allocate a new block
-            u32 nextBlock;
-            if (alwaysAllocate)
-            {
-                nextBlock = AllocateBlock();
+        // Reuse the old blocks in order (already linked), then append.
+        const u32 block = (i < owned.size()) ? owned[i] : AllocateBlock();
+        if (i == 0)
+            entry->startingBlockNum = block;
+        else if (i >= owned.size())
+            SetNextBlock(previous, block);
 
-                // if so, set the current block pointing to the next one
-                SetNextBlock(block, nextBlock);
-            }
-            else
-            {
-                // see if a block was already allocated with the previous table
-                nextBlock = GetBlockHashEntry(block).nextBlock;
+        const u32 length = (i + 1 == entry->blocksForFile && fileSize % 0x1000 != 0)
+                ? fileSize % 0x1000 : 0x1000;
+        fileIn.ReadBytes(buffer, length);
+        io->SetPosition(BlockToAddress(block));
+        io->Write(buffer, length);
+        previous = block;
 
-                // if not, allocate one and make it so it always allocates
-                if (nextBlock == kBlockChainTerminator)
-                {
-                    nextBlock = AllocateBlock();
-                    SetNextBlock(block, nextBlock);
-                    alwaysAllocate = true;
-                }
-            }
-
-            // go to the next block position
-            block = nextBlock;
-            io->SetPosition(BlockToAddress(block));
-        }
-        else
-            first = false;
-
-        // read in the data
-        u8 toWrite[0x1000];
-        fileIn.ReadBytes(toWrite, 0x1000);
-
-        // Write the data
-        io->Write(toWrite, 0x1000);
-
-        // update the progress if needed
         if (replaceProgress != NULL)
             replaceProgress(arg, i, entry->blocksForFile);
     }
 
-    u32 remainder = fileSize % 0x1000;
-    if (remainder != 0)
-    {
-        u32 nextBlock;
-        if (!first)
-        {
-            // check if we need to allocate a new block
-            if (alwaysAllocate)
-            {
-                nextBlock = AllocateBlock();
-
-                // if so, set the current block pointing to the next one
-                SetNextBlock(block, nextBlock);
-            }
-            else
-            {
-                // see if a block was already allocated with the previous table
-                nextBlock = GetBlockHashEntry(block).nextBlock;
-
-                // if not, allocate one and make it so it always allocates
-                if (nextBlock == kBlockChainTerminator)
-                {
-                    nextBlock = AllocateBlock();
-                    SetNextBlock(block, nextBlock);
-                    alwaysAllocate = true;
-                }
-            }
-
-            block = nextBlock;
-        }
-        // go to the next block position
-        io->SetPosition(BlockToAddress(block));
-
-        std::vector<u8> toWrite(remainder);
-        fileIn.ReadBytes(toWrite.data(), remainder);
-
-        io->Write(toWrite.data(), remainder);
-    }
-
-    // update the progress if needed
     if (replaceProgress != NULL)
         replaceProgress(arg, entry->blocksForFile, entry->blocksForFile);
 
-    if (block != kBlockChainTerminator)
-        SetNextBlock(block, kBlockChainTerminator);
+    if (previous != kBlockChainTerminator)
+        SetNextBlock(previous, kBlockChainTerminator);
+    else
+        entry->startingBlockNum = kBlockChainTerminator;
+
+    if (owned.size() > entry->blocksForFile)
+    {
+        for (size_t i = entry->blocksForFile; i < owned.size(); i++)
+            FreeBlock(owned[i]);
+        metaData->WriteVolumeDescriptor();
+    }
 
     entry->flags &= 0x2;
 
