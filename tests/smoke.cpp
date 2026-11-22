@@ -807,6 +807,253 @@ namespace
         fs::remove(path, ignored);
     }
 
+    // The chunk size used to be computed once from the starting offset, so any
+    // read or write that started mid-block crossed into the next physical block
+    // after the first chunk.
+    void testStfsUnalignedIo()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_unaligned.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        // 0xB0 blocks crosses the 0xAA-block hash table; a 0x300 offset makes
+        // the old fixed chunk (0xD00) straddle physical blocks.
+        const std::size_t blockCount = 0xB0;
+        std::vector<u8> data(blockCount * 0x1000);
+        for (std::size_t i = 0; i < data.size(); ++i)
+            data[i] = static_cast<u8>(i * 7 + 3);
+
+        bool completed = false;
+        try
+        {
+            StfsPackage package(path.string(), StfsPackageCreate);
+            package.InjectData(data.data(), static_cast<u32>(data.size()), "big.bin");
+
+            std::vector<u8> neighbour(0x1000, 0xC7);
+            package.InjectData(neighbour.data(), static_cast<u32>(neighbour.size()), "neighbour.bin");
+
+            const std::size_t offset = 0x300;
+            std::unique_ptr<StfsIO> io(package.GetStfsIO("big.bin"));
+
+            std::vector<u8> read(data.size() - offset);
+            io->SetPosition(offset);
+            io->ReadBytes(read.data(), static_cast<u32>(read.size()));
+            check(std::equal(read.begin(), read.end(),
+                             data.begin() + static_cast<std::vector<u8>::difference_type>(offset)),
+                  "StfsIO unaligned read across a hash table");
+
+            // A pure seek past EOF must not allocate or grow the file.
+            io->SetPosition(static_cast<u64>(data.size()) + 0x10000);
+            check(io->Length() == data.size(), "StfsIO seek past EOF does not grow");
+            check(throws([&] {
+                u8 one = 0;
+                io->ReadBytes(&one, 1);
+            }), "StfsIO read past EOF throws");
+
+            // A write after a seek past EOF still grows and lands where asked.
+            const std::size_t gap = 4;
+            io->SetPosition(static_cast<u64>(data.size()) + gap);
+            u8 appended = 0x5C;
+            io->WriteBytes(&appended, 1);
+            check(io->Length() == data.size() + gap + 1,
+                  "StfsIO write after a seek past EOF grows");
+
+            std::vector<u8> fill(data.size() - offset, 0xEE);
+            io->SetPosition(offset);
+            io->WriteBytes(fill.data(), static_cast<u32>(fill.size()));
+            check(io->GetPosition() == data.size(), "StfsIO unaligned write ends in place");
+            io.reset();
+
+            std::unique_ptr<StfsIO> checkIo(package.GetStfsIO("big.bin"));
+            std::vector<u8> back(fill.size());
+            checkIo->SetPosition(offset);
+            checkIo->ReadBytes(back.data(), static_cast<u32>(back.size()));
+            check(back == fill, "StfsIO unaligned write across a hash table");
+
+            std::vector<u8> head(offset);
+            checkIo->SetPosition(0);
+            checkIo->ReadBytes(head.data(), static_cast<u32>(head.size()));
+            check(std::equal(head.begin(), head.end(), data.begin()),
+                  "StfsIO unaligned write preserves the prefix");
+
+            std::unique_ptr<StfsIO> neighbourIo(package.GetStfsIO("neighbour.bin"));
+            std::vector<u8> neighbourBack(0x1000);
+            neighbourIo->ReadBytes(neighbourBack.data(), 0x1000);
+            check(neighbourBack == neighbour, "StfsIO write does not corrupt a neighbour");
+
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS unaligned test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS unaligned test threw: %s)\n", e.what());
+        }
+
+        check(completed, "STFS unaligned test completes");
+        fs::remove(path, ignored);
+    }
+
+    void testStfsCountersAndResize()
+    {
+        namespace fs = std::filesystem;
+        std::error_code ignored;
+
+        const fs::path growPath = fs::temp_directory_path() / "xbi_smoke_stfs_grow.bin";
+        fs::remove(growPath, ignored);
+
+        bool completed = false;
+        try
+        {
+            // Appending grows the total; it never consumes a free block.
+            StfsPackage package(growPath.string(), StfsPackageCreate);
+            std::vector<u8> first(0x1000, 0x11);
+            package.InjectData(first.data(), static_cast<u32>(first.size()), "grow.bin");
+
+            const u32 allocatedBefore = package.metaData->stfsVolumeDescriptor.allocatedBlockCount;
+            const u32 freeBefore = package.metaData->stfsVolumeDescriptor.unallocatedBlockCount;
+
+            std::vector<u8> tail(0x1000, 0x33);
+            std::unique_ptr<StfsIO> io(package.GetStfsIO("grow.bin"));
+            io->SetPosition(0x1000);
+            io->WriteBytes(tail.data(), static_cast<u32>(tail.size()));
+            check(package.metaData->stfsVolumeDescriptor.allocatedBlockCount == allocatedBefore + 1,
+                  "STFS append adds one allocated block");
+            check(package.metaData->stfsVolumeDescriptor.unallocatedBlockCount == freeBefore,
+                  "STFS append leaves the free count unchanged");
+
+            // Reads must survive a Flush and another package operation moving
+            // the shared IO handle.
+            std::vector<u8> expected(first);
+            expected.insert(expected.end(), tail.begin(), tail.end());
+            std::vector<u8> got(expected.size());
+
+            io->Flush();
+            io->SetPosition(0);
+            io->ReadBytes(got.data(), static_cast<u32>(got.size()));
+            check(got == expected, "StfsIO reads after Flush");
+
+            package.InjectData(first.data(), static_cast<u32>(first.size()), "filler.bin");
+            io->SetPosition(0);
+            io->ReadBytes(got.data(), static_cast<u32>(got.size()));
+            check(got == expected, "StfsIO reads after another package operation");
+            io.reset();
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS counter test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS counter test threw: %s)\n", e.what());
+        }
+        check(completed, "STFS counter test completes");
+
+        const fs::path shrinkPath = fs::temp_directory_path() / "xbi_smoke_stfs_shrink.bin";
+        fs::remove(shrinkPath, ignored);
+        completed = false;
+        try
+        {
+            StfsPackage package(shrinkPath.string(), StfsPackageCreate);
+            std::vector<u8> a(0x2000, 0x5A);
+            std::vector<u8> filler(0x1000, 0xC3);
+            package.InjectData(a.data(), static_cast<u32>(a.size()), "a.bin");
+            package.InjectData(filler.data(), static_cast<u32>(filler.size()), "filler.bin");
+
+            const u32 allocatedBefore = package.metaData->stfsVolumeDescriptor.allocatedBlockCount;
+            const u32 freeBefore = package.metaData->stfsVolumeDescriptor.unallocatedBlockCount;
+
+            std::unique_ptr<StfsIO> aio(package.GetStfsIO("a.bin"));
+            aio->Resize(0x1000);
+
+            check(package.metaData->stfsVolumeDescriptor.allocatedBlockCount == allocatedBefore,
+                  "STFS shrink keeps the allocated total");
+            check(package.metaData->stfsVolumeDescriptor.unallocatedBlockCount == freeBefore + 1,
+                  "STFS shrink frees one block");
+
+            std::vector<u8> firstBlock(0x1000);
+            aio->SetPosition(0);
+            aio->ReadBytes(firstBlock.data(), 0x1000);
+            check(std::equal(firstBlock.begin(), firstBlock.end(), a.begin()),
+                  "StfsIO reads after Resize");
+            aio.reset();
+
+            // The next allocation must not land on a block that still belongs
+            // to filler.bin.
+            std::vector<u8> later(0x1000, 0x77);
+            package.InjectData(later.data(), static_cast<u32>(later.size()), "later.bin");
+
+            std::unique_ptr<StfsIO> fillerIo(package.GetStfsIO("filler.bin"));
+            std::vector<u8> fillerBack(0x1000);
+            fillerIo->ReadBytes(fillerBack.data(), 0x1000);
+            check(fillerBack == filler, "STFS shrink does not recycle a live block");
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS shrink test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS shrink test threw: %s)\n", e.what());
+        }
+        check(completed, "STFS shrink test completes");
+
+        fs::remove(growPath, ignored);
+        fs::remove(shrinkPath, ignored);
+    }
+
+    void testStfsCorruptChain()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_corruptchain.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        bool completed = false;
+        try
+        {
+            StfsPackage package(path.string(), StfsPackageCreate);
+            std::vector<u8> data(0x1000, 0x99);
+            package.InjectData(data.data(), static_cast<u32>(data.size()), "ok.bin");
+
+            StfsFileEntry corrupt = package.GetFileEntry("ok.bin");
+            corrupt.fileSize = 0x1000;
+            corrupt.blocksForFile = 1;
+            corrupt.startingBlockNum = kBlockChainTerminator;
+            corrupt.blockChain.clear();
+
+            std::unique_ptr<StfsIO> io(package.GetStfsIO(corrupt));
+            check(throws([&] {
+                u8 one = 0;
+                io->ReadBytes(&one, 1);
+            }), "StfsIO rejects a chain shorter than the file size");
+            check(throws([&] {
+                u8 one = 0;
+                io->WriteBytes(&one, 1);
+            }), "StfsIO refuses to grow a file with no blocks");
+            io.reset();
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS corrupt chain test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS corrupt chain test threw: %s)\n", e.what());
+        }
+
+        check(completed, "STFS corrupt chain test completes");
+        fs::remove(path, ignored);
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1177,6 +1424,9 @@ int main()
     testResignFailureLeavesPackageIntact();
     testCorruptXdbf();
     testStfsBlockChainTerminator();
+    testStfsUnalignedIo();
+    testStfsCountersAndResize();
+    testStfsCorruptChain();
     testGarbageImages();
 
     if (g_failures != 0)

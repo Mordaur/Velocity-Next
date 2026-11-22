@@ -1,5 +1,6 @@
 #include <XboxInternals/IO/StfsIO.h>
 
+#include <algorithm>
 #include <cstdint>
 
 #include <XboxInternals/Stfs/StfsPackage.h>
@@ -29,14 +30,11 @@ void StfsIO::SetPosition(u64 position, std::ios_base::seekdir dir)
     else if (dir == std::ios_base::end)
         position = (Length() + position);
 
-    bool resizeNecessary = (position > Length());
-    if (resizeNecessary)
-        Resize(position);
-
     this->entryPosition = position;
 
-    // An empty file has no blocks; position 0 is its end, with nothing to seek to.
-    if (entry.blockChain.empty())
+    // Seeking past the end does not grow the file: WriteBytes grows it and
+    // re-seeks, while ReadBytes rejects the read. An empty file has no blocks.
+    if (position > Length() || entry.blockChain.empty())
         return;
 
     u32 blockNum;
@@ -70,25 +68,33 @@ u64 StfsIO::Length()
 
 void StfsIO::ReadBytes(u8 *outBuffer, u32 len)
 {
-    u32 maxRead = 0x1000 - (this->entryPosition % 0x1000);
-    u64 endingPosition = this->entryPosition + len;
+    if (this->entryPosition > Length() || len > Length() - this->entryPosition)
+        throw string("STFS: Cannot read past the end of the file.\n");
+    if (len != 0 && (static_cast<u64>(this->entry.blockChain.size()) << 12) <
+            this->entryPosition + len)
+        throw string("STFS: The file's block chain is shorter than its size.\n");
 
-    while (len >= maxRead)
+    u32 remaining = len;
+    while (remaining != 0)
     {
-        io->ReadBytes(outBuffer, maxRead);
-        len -= maxRead;
-        outBuffer += maxRead;
-        SetPosition(maxRead, std::ios_base::cur);
+        // The shared package IO may have moved (Flush, Resize, other package
+        // calls), and a block's logical successor is not its physical
+        // neighbour: map every chunk from the logical position.
+        SetPosition(this->entryPosition);
+        const u32 chunk = std::min<u32>(remaining,
+                static_cast<u32>(0x1000 - (this->entryPosition % 0x1000)));
+        io->ReadBytes(outBuffer, chunk);
+        outBuffer += chunk;
+        remaining -= chunk;
+        this->entryPosition += chunk;
     }
-
-    if (len != 0)
-        io->ReadBytes(outBuffer, len);
-
-    SetPosition(endingPosition);
 }
 
 void StfsIO::WriteBytes(u8 *buffer, u32 len)
 {
+    if (len == 0)
+        return;
+
     const u64 startPosition = GetPosition();
     const u64 endingPosition = startPosition + len;
     if (endingPosition > UINT32_MAX)
@@ -106,9 +112,8 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
                 throw string("STFS: Cannot grow a file that has no blocks.\n");
 
             u32 amountOfBlocksToAllocate = static_cast<u32>(newBlockCount - originalBlockCount);
-            // AllocateBlock() increments allocatedBlockCount itself.
-            this->package->metaData->stfsVolumeDescriptor.unallocatedBlockCount -= amountOfBlocksToAllocate;
-
+            // AllocateBlock() appends new blocks; it never consumes a block that
+            // was already free inside the package, so the free count is unchanged.
             u32 previousBlock = this->entry.blockChain.back();
             while (amountOfBlocksToAllocate-- > 0)
             {
@@ -126,25 +131,25 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
         }
 
         entry.fileSize = static_cast<u32>(endingPosition);
-
-        // Growth may have appended blocks. Re-seek from the saved position so
-        // the first write lands at the new logical offset, not the old block.
-        SetPosition(startPosition);
     }
 
-    const u16 maxWrite = static_cast<u16>(0x1000 - (this->entryPosition % 0x1000));
-    while (len >= maxWrite)
+    if ((static_cast<u64>(this->entry.blockChain.size()) << 12) < endingPosition)
+        throw string("STFS: The file's block chain is shorter than its size.\n");
+
+    u32 remaining = len;
+    while (remaining != 0)
     {
-        io->WriteBytes(buffer, maxWrite);
-        len -= maxWrite;
-        buffer += maxWrite;
-        SetPosition(maxWrite, std::ios_base::cur);
+        // The shared package IO may have moved (Flush, Resize, other package
+        // calls), and a block's logical successor is not its physical
+        // neighbour: map every chunk from the logical position.
+        SetPosition(this->entryPosition);
+        const u32 chunk = std::min<u32>(remaining,
+                static_cast<u32>(0x1000 - (this->entryPosition % 0x1000)));
+        io->WriteBytes(buffer, chunk);
+        buffer += chunk;
+        remaining -= chunk;
+        this->entryPosition += chunk;
     }
-
-    if (len != 0)
-        io->WriteBytes(buffer, len);
-
-    SetPosition(endingPosition);
 }
 
 void StfsIO::Flush()
@@ -199,21 +204,18 @@ void StfsIO::Resize(u64 size)
             u32 currentBlock = this->entry.blockChain.back();
             this->entry.blockChain.pop_back();
 
-            // The status byte is +0x14; +0x15 is the 24-bit next-block field.
-            io->SetPosition(this->package->GetHashAddressOfBlock(currentBlock) + 0x14);
-            io->Write(static_cast<u8>(PreviouslyAllocated));
+            // Freed blocks stay inside the package and stay addressable, so the
+            // allocated count is unchanged; only the free count grows.
+            this->package->SetBlockStatus(currentBlock, PreviouslyAllocated);
         }
 
         this->package->SetNextBlock(this->entry.blockChain.back(), kBlockChainTerminator);
-        this->package->metaData->stfsVolumeDescriptor.allocatedBlockCount -= amountOfBlocksToDeallocate;
         this->package->metaData->stfsVolumeDescriptor.unallocatedBlockCount += amountOfBlocksToDeallocate;
         this->package->metaData->WriteVolumeDescriptor();
     }
     else if (originalBlockCount < newBlockCount)
     {
         u32 amountOfBlocksToAllocate = newBlockCount - originalBlockCount;
-        // AllocateBlock() increments allocatedBlockCount itself.
-        this->package->metaData->stfsVolumeDescriptor.unallocatedBlockCount -= amountOfBlocksToAllocate;
         u32 previousBlock = this->entry.blockChain.back();
         for (u32 i = 0; i < amountOfBlocksToAllocate; i++)
         {
