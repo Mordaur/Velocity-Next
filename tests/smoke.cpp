@@ -792,6 +792,38 @@ namespace
             check(empty.blockChain.empty(), "empty STFS file has no blocks");
             check(!throws([&] { std::unique_ptr<StfsIO> emptyIO(package.GetStfsIO("empty.bin")); }),
                   "StfsIO opens an empty file");
+
+            // A zero-byte entry has no start block to validate.
+            const fs::path emptyOut = fs::temp_directory_path() / "xbi_smoke_empty.out";
+            package.ExtractFile("empty.bin", emptyOut.string());
+            check(fs::exists(emptyOut) && fs::file_size(emptyOut) == 0,
+                  "STFS extracts a zero-byte file");
+            fs::remove(emptyOut, ignored);
+
+            const fs::path replPath = fs::temp_directory_path() / "xbi_smoke_repl.bin";
+            {
+                std::ofstream src(replPath, std::ios::binary | std::ios::trunc);
+                std::vector<u8> payload(0x1234, 0x5A);
+                src.write(reinterpret_cast<const char *>(payload.data()),
+                        static_cast<std::streamsize>(payload.size()));
+            }
+            StfsFileEntry repl = package.GetFileEntry("empty.bin");
+            package.ReplaceFile(replPath.string(), &repl, "empty.bin");
+            check(package.GetFileEntry("empty.bin").fileSize == 0x1234,
+                  "STFS replaces a zero-byte file");
+            fs::remove(replPath, ignored);
+
+            // Removing an empty file must not walk a chain it does not own.
+            package.RemoveFile(package.GetFileEntry("empty.bin"));
+            check(!package.FileExists("empty.bin"), "STFS removes a zero-byte file");
+
+            // Older packages use 0x7FFFFF as the start block of an empty file.
+            package.InjectData(data.data(), 0, "empty2.bin");
+            StfsFileEntry oldEmpty = package.GetFileEntry("empty2.bin");
+            oldEmpty.startingBlockNum = 0x7FFFFF;
+            package.RemoveFile(oldEmpty);
+            check(!package.FileExists("empty2.bin"),
+                  "STFS removes an empty file with an old start block");
             completed = true;
         }
         catch (const std::string &e)
@@ -882,6 +914,16 @@ namespace
             std::vector<u8> neighbourBack(0x1000);
             neighbourIo->ReadBytes(neighbourBack.data(), 0x1000);
             check(neighbourBack == neighbour, "StfsIO write does not corrupt a neighbour");
+
+            // A seek before zero wraps the position; the following write must
+            // be rejected instead of landing at a stale offset.
+            checkIo->SetPosition(0);
+            check(throws([&] {
+                checkIo->SetPosition(static_cast<u64>(-4), std::ios_base::cur);
+                u8 one = 0xAB;
+                checkIo->WriteBytes(&one, 1);
+            }), "StfsIO rejects a write after a negative seek");
+            checkIo->SetPosition(0);
 
             completed = true;
         }
@@ -1039,6 +1081,15 @@ namespace
                 io->WriteBytes(&one, 1);
             }), "StfsIO refuses to grow a file with no blocks");
             io.reset();
+
+            // A chain shorter than the size must not be resized: the shrink
+            // loop would pop the chain empty and call back().
+            StfsFileEntry shortEntry = package.GetFileEntry("ok.bin");
+            shortEntry.fileSize = 0x2000; // claims two blocks, owns one
+            std::unique_ptr<StfsIO> shortIo(package.GetStfsIO(shortEntry));
+            check(throws([&] { shortIo->Resize(0x3000); }),
+                  "StfsIO refuses to resize a chain that does not match its size");
+            shortIo.reset();
             completed = true;
         }
         catch (const std::string &e)

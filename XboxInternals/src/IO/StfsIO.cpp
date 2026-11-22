@@ -9,7 +9,14 @@ StfsIO::StfsIO(BaseIO *io, StfsPackage *package, StfsFileEntry entry) :
     io(io), package(package), entry(entry), didChangeSize(false)
 {
     package->GenerateBlockChain(&this->entry);
-    blocksAllocated = this->entry.blocksForFile;
+
+    // An empty or short entry must not adopt blocks that belong to another
+    // file (older packages start empty files at block 0).
+    const size_t needed = (static_cast<size_t>(this->entry.fileSize) + 0xFFF) / 0x1000;
+    if (this->entry.blockChain.size() > needed)
+        this->entry.blockChain.resize(needed);
+
+    blocksAllocated = static_cast<u32>(this->entry.blockChain.size());
     SetPosition(0);
 }
 
@@ -96,14 +103,18 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
         return;
 
     const u64 startPosition = GetPosition();
-    const u64 endingPosition = startPosition + len;
-    if (endingPosition > UINT32_MAX)
+    // A seek before 0 wraps GetPosition(); start + len can then wrap back below
+    // Length() and write at a stale offset.
+    if (startPosition > UINT32_MAX || len > UINT32_MAX - startPosition)
         throw string("STFS: File size exceeds the 32-bit on-disk limit.\n");
+    const u64 endingPosition = startPosition + len;
+
+    // A corrupt chain that is shorter than the size must not be extended.
+    if (this->entry.blockChain.size() < (Length() + 0xFFF) / 0x1000)
+        throw string("STFS: The file's block chain is shorter than its size.\n");
 
     if (endingPosition > Length())
     {
-        didChangeSize = true;
-
         const u64 originalBlockCount = (Length() + 0xFFF) / 0x1000;
         const u64 newBlockCount = (endingPosition + 0xFFF) / 0x1000;
         if (newBlockCount > originalBlockCount)
@@ -133,6 +144,7 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
             this->package->metaData->WriteVolumeDescriptor();
         }
 
+        didChangeSize = true;
         entry.fileSize = static_cast<u32>(endingPosition);
     }
 
@@ -205,6 +217,9 @@ void StfsIO::Resize(u64 size)
     // starting block rewritten, which Flush() does not do.
     if (this->entry.blockChain.empty() || (size + 0xFFF) / 0x1000 == 0)
         throw string("STFS: Cannot resize a file to or from zero blocks.\n");
+
+    if (this->entry.blockChain.size() != (static_cast<u64>(this->entry.fileSize) + 0xFFF) / 0x1000)
+        throw string("STFS: The file's block chain does not match its size.\n");
 
     u32 originalSize = this->entry.fileSize;
     this->entry.fileSize = (u32)size;

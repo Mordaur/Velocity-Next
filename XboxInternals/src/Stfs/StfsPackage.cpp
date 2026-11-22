@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <memory>
 #include <cctype>
+#include <algorithm>
 #include <iostream>
 #include <iomanip>
 #include <unordered_set>
@@ -518,16 +519,6 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
         throw except.str();
     }
 
-    // Verify starting block is valid before proceeding
-    try
-    {
-        GetBlockHashEntry(entry->startingBlockNum);
-    }
-    catch (...)
-    {
-        throw;
-    }
-
     if (entry->fileSize != 0 && entry->blocksForFile == 0)
     {
         except.str(std::string());
@@ -547,6 +538,11 @@ void StfsPackage::ExtractFile(StfsFileEntry* entry, string outPath, void (*extra
                << "' is larger than its allocated blocks.\n";
         throw except.str();
     }
+
+    // A zero-byte file has no start block (0xFFFFFF here, 0x7FFFFF in older
+    // packages); extracting it must not go through the block table.
+    if (entry->fileSize != 0)
+        GetBlockHashEntry(entry->startingBlockNum);
 
     // create/truncate our out file
     FileIO outFile(outPath, true);
@@ -1414,12 +1410,14 @@ void StfsPackage::RemoveFile(StfsFileEntry entry)
     if (!found)
         throw string("STFS: File could not be deleted because it doesn't exist in the package.\n");
 
-    // set the status of every allocated block to unallocated
-    u32 blockToDeallocate = entry.startingBlockNum;
-    while (blockToDeallocate != kBlockChainTerminator)
+    // Free only the blocks the entry owns: a zero-block entry's start is the
+    // terminator, 0x7FFFFF (older Velocity) or 0 (another file's block).
+    if (entry.blocksForFile != 0)
     {
-        SetBlockStatus(blockToDeallocate, Unallocated);
-        blockToDeallocate = GetBlockHashEntry(blockToDeallocate).nextBlock;
+        GenerateBlockChain(&entry, true);
+        const size_t owned = std::min<size_t>(entry.blockChain.size(), entry.blocksForFile);
+        for (size_t i = 0; i < owned; ++i)
+            SetBlockStatus(entry.blockChain[i], Unallocated);
     }
 
     // update the file listing
@@ -2113,15 +2111,29 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
     u32 fileSize = fileIn.GetPosition();
     fileIn.SetPosition(0);
 
+    // A zero-byte entry owns no blocks; its start is the terminator (or 0 in
+    // older packages), which must not be written through.
+    const bool ownsBlocks = entry->blocksForFile != 0;
+
     // set up the entry
     entry->fileSize = fileSize;
     entry->blocksForFile = ((fileSize + 0xFFF) & 0xFFFFFFF000) >> 0xC;
 
-    u32 block = entry->startingBlockNum;
-    io->SetPosition(BlockToAddress(block));
+    u32 block = kBlockChainTerminator;
+    if (ownsBlocks)
+        block = entry->startingBlockNum;
+    else if (fileSize != 0)
+    {
+        block = AllocateBlock();
+        entry->startingBlockNum = block;
+    }
+
+    if (block != kBlockChainTerminator)
+        io->SetPosition(BlockToAddress(block));
 
     u32 fullReads = fileSize / 0x1000;
-    bool first = true, alwaysAllocate = false;
+    bool first = true;
+    bool alwaysAllocate = !ownsBlocks && fileSize != 0;
 
     // Write the folders to the listing
     for (u32 i = 0; i < fullReads; i++)
@@ -2213,7 +2225,8 @@ void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPa
     if (replaceProgress != NULL)
         replaceProgress(arg, entry->blocksForFile, entry->blocksForFile);
 
-    SetNextBlock(block, kBlockChainTerminator);
+    if (block != kBlockChainTerminator)
+        SetNextBlock(block, kBlockChainTerminator);
 
     entry->flags &= 0x2;
 
