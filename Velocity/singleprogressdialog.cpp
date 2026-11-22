@@ -8,6 +8,11 @@
 
 #include <XboxInternals/Fatx/XContentDevice.h>
 
+static void SvodRehashProgress(u32 cur, u32 total, void *arg)
+{
+    UpdateProgress(arg, cur, total);
+}
+
 SingleProgressDialog::SingleProgressDialog(FileSystem system, void *device, Operation op,
         QString internalPath, QString externalPath, void *outEntry, QWidget *parent) :
     QDialog(parent), ui(new Ui::SingleProgressDialog), op(op), system(system), device(device),
@@ -85,6 +90,9 @@ void SingleProgressDialog::start()
                     SvodIO io = svod->GetSvodIO(internalPath.toStdString());
 
                     io.OverWriteFile(externalPath.toStdString(), UpdateProgress, this);
+
+                    // The new data invalidates the level-0, master and root hashes.
+                    svod->Rehash(SvodRehashProgress, this);
                 }
                 break;
             }

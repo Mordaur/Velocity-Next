@@ -539,6 +539,10 @@ void SVOD::HashBlock(u8 *block, u8 *outHash)
 
 void SVOD::WriteFileEntry(GdfxFileEntry *entry)
 {
+    if (metaData->magic != CON)
+        throw std::string("SVOD: Only console-signed (CON) packages can be modified; "
+                "a LIVE/PIRS signature cannot be recomputed after the hashes change.\n");
+
     io->SetPosition(entry->address, static_cast<int>(entry->fileIndex));
     GdfxWriteFileEntry(io.get(), entry);
 }

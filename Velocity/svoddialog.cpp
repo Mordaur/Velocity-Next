@@ -1,6 +1,18 @@
 #include "svoddialog.h"
 #include "ui_svoddialog.h"
 
+#include <QCryptographicHash>
+
+static QByteArray FileDigest(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    hash.addData(&file);
+    return hash.result();
+}
+
 SvodDialog::SvodDialog(SVOD *svod, QStatusBar *statusBar, QWidget *parent, bool disposeSvod) :
     QDialog(parent), ui(new Ui::SvodDialog), svod(svod), disposeSvod(disposeSvod),
     statusBar(statusBar)
@@ -101,7 +113,8 @@ void SvodDialog::showFileContextMenu(QPoint pos)
     contextMenu.addAction(QIcon(":/Images/extract.png"), "Extract");
     if (ui->treeWidget->selectedItems().count() == 1)
     {
-        contextMenu.addAction(QIcon(":/Images/replace.png"), "Replace");
+        QAction *replace = contextMenu.addAction(QIcon(":/Images/replace.png"), "Replace");
+        replace->setEnabled(svod->metadata->magic == CON);
         contextMenu.addAction(QIcon(":/Images/properties.png"), "View Properties");
     }
 
@@ -225,22 +238,40 @@ void SvodDialog::on_treeWidget_itemDoubleClicked(QTreeWidgetItem *item, [[maybe_
     {
         SvodIO io = svod->GetSvodIO(*entry);
         io.SaveFile(tempName.toStdString());
+        const QByteArray before = FileDigest(tempName);
 
         try
         {
-            StfsPackage package(tempName.toStdString());
+            {
+                StfsPackage package(tempName.toStdString());
 
-            PackageViewer viewer(statusBar, &package, QList<QAction*>(), QList<QAction*>(), this, false);
-            viewer.exec();
+                PackageViewer viewer(statusBar, &package, QList<QAction*>(), QList<QAction*>(), this, false);
+                viewer.exec();
 
-            package.Close();
+                package.Close();
+            }
 
-            io.OverWriteFile(tempName.toStdString());
+            if (FileDigest(tempName) != before)
+            {
+                if (svod->metadata->magic != CON)
+                {
+                    QMessageBox::warning(this, "Changes not saved",
+                            "This package is LIVE/PIRS signed. Velocity cannot recompute that "
+                            "signature, so the changes were not written back.");
+                }
+                else
+                {
+                    io.OverWriteFile(tempName.toStdString());
+                    svod->Rehash(UpdateProgress, this);
+                    statusBar->showMessage("Saved and rehashed. Resign the package before using it "
+                            "on a retail console.", 5000);
+                }
+            }
         }
         catch (string error)
         {
             QMessageBox::critical(this, "Error",
-                    "An error occurred while loading the STFS package.\n\n" + QString::fromStdString(error));
+                    "An error occurred while editing the STFS package.\n\n" + QString::fromStdString(error));
         }
 
         QFile::remove(tempName);

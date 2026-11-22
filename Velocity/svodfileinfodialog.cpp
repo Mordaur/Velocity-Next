@@ -1,6 +1,8 @@
 #include "svodfileinfodialog.h"
 #include "ui_svodfileinfodialog.h"
 
+#include <QMessageBox>
+
 SvodFileInfoDialog::SvodFileInfoDialog(SVOD *svod, GdfxFileEntry *entry, QString type,
         QWidget *parent) :
     QDialog(parent), ui(new Ui::SvodFileInfoDialog), entry(entry), svod(svod), type(type)
@@ -102,7 +104,18 @@ void SvodFileInfoDialog::on_pushButton_3_clicked()
     entry->attributes |= static_cast<u8>(ui->chDevice->isChecked()) << 6;
     entry->attributes |= static_cast<u8>(ui->chNormal->isChecked()) << 7;
 
-    svod->WriteFileEntry(entry);
+    try
+    {
+        svod->WriteFileEntry(entry);
+        svod->Rehash();
+    }
+    catch (const std::string &error)
+    {
+        QMessageBox::critical(this, "Error", "Failed to save the entry.\n\n" +
+                QString::fromStdString(error));
+        return;
+    }
+
     close();
 }
 

@@ -105,6 +105,13 @@ void SvodIO::ReadBytes(u8 *outBuffer, u32 len)
 
 void SvodIO::WriteBytes(u8 *buffer, u32 len)
 {
+    // A data write changes the level-0, master and root hashes. Only a CON
+    // package can be rehashed afterwards; a LIVE/PIRS signature cannot be
+    // recomputed, so refuse instead of leaving a package that fails Verify().
+    if (metadata->magic != CON)
+        throw std::string("SVOD: Only console-signed (CON) packages can be modified; "
+                "a LIVE/PIRS signature cannot be recomputed after the hashes change.\n");
+
     if (pos + len > Length())
         throw std::string("SvodIO: Cannot write beyond end of file.\n");
 
