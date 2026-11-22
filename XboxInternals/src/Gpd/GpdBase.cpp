@@ -142,16 +142,17 @@ SettingEntry GpdBase::readSettingEntry(XdbfEntry entry)
 void GpdBase::DeleteSettingEntry(SettingEntry setting)
 {
     // remove the entry from the list
-    u32 i;
-    for (i = 0; i < settings.size(); i++)
+    bool found = false;
+    for (u32 i = 0; i < settings.size(); i++)
     {
         if (settings.at(i).entry.id == setting.entry.id)
         {
             settings.erase(settings.begin() + i);
+            found = true;
             break;
         }
     }
-    if (i == settings.size())
+    if (!found)
         throw string("Gpd: Error deleting setting entry. Setting doesn't exist.\n");
 
     // delete the entry from the file
@@ -161,16 +162,17 @@ void GpdBase::DeleteSettingEntry(SettingEntry setting)
 void GpdBase::DeleteImageEntry(ImageEntry image)
 {
     // remove the entry from the list
-    u32 i;
-    for (i = 0 ; i < images.size(); i++)
+    bool found = false;
+    for (u32 i = 0 ; i < images.size(); i++)
     {
         if (images.at(i).entry.id == image.entry.id)
         {
             images.erase(images.begin() + i);
+            found = true;
             break;
         }
     }
-    if (i == images.size())
+    if (!found)
         throw string("Gpd: Error deleting image entry. Image doesn't exist.\n");
 
     // delete the entry from the file

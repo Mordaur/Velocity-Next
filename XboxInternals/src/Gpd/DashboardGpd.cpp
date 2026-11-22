@@ -212,21 +212,26 @@ void DashboardGpd::WriteTitleEntry(TitleEntry *entry)
 
 void DashboardGpd::DeleteTitleEntry(TitleEntry *entry)
 {
-    // remove the entry from the list
-    u32 i;
-    for (i = 0 ; i < gamesPlayed.size(); i++)
+    // Copy first: the caller may pass a pointer into gamesPlayed, which the
+    // erase below invalidates.
+    const XdbfEntry toDelete = entry->entry;
+
+    bool found = false;
+    for (u32 i = 0; i < gamesPlayed.size(); i++)
     {
-        if (gamesPlayed.at(i).entry.id == entry->entry.id)
+        if (gamesPlayed.at(i).entry.id == toDelete.id)
         {
             gamesPlayed.erase(gamesPlayed.begin() + i);
+            found = true;
             break;
         }
     }
-    if (i > gamesPlayed.size())
+
+    if (!found)
         throw string("Gpd: Error deleting title entry. Title doesn't exist.\n");
 
     // delete the entry from the file
-    xdbf->DeleteEntry(entry->entry);
+    xdbf->DeleteEntry(toDelete);
 }
 
 void DashboardGpd::CreateTitleEntry(TitleEntry *entry)

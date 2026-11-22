@@ -15,7 +15,6 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QStringList>
-#include <QMutex>
 #include <memory>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -65,7 +64,7 @@ private slots:
     void on_btnRemoveFromQueue_clicked();
 
 private:
-    void initializePecPackage();
+    bool initializePecPackage();
     void finalizeInjection();
     void showAllItems();
     void getListing();
@@ -79,6 +78,10 @@ private:
 
     QString dashGpdTempPath;
     QString pecTempPath;
+
+    std::string kvPath;
+    QStringList injectionErrors;
+    bool finalizing = false;
     
     struct PendingGpdInjection {
         QString gpdPath;
@@ -95,14 +98,12 @@ private:
     QList<FailedDownload> failedDownloads;
 
     StfsPackage* package;
-    bool existed = false;
     bool allowInjection = false;
     bool dispose = true;
 
     int totalDownloadCount = 0;
     int downloadedCount = 0;
     TitleEntry entry;
-    QMutex m;
 };
 
 #endif // GAMEADDERDIALOG_H
