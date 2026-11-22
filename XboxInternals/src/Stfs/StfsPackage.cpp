@@ -1716,15 +1716,17 @@ u32 StfsPackage::AllocateBlock()
             tablesPerLevel[i] = recalcTablesPerLevel[i];
 
             // update top level hash table if needed
-            if ((i + 1) == topLevel)
+            if ((i + 1) == topLevel && topTable.entryCount < 0xAA)
             {
                 topTable.entryCount++;
                 topTable.entries[topTable.entryCount - 1].status = 0;
                 topTable.entries[topTable.entryCount - 1].nextBlock = 0;
 
-                // Write it to the file
-                io->SetPosition(topTable.addressInFile + ((tablesPerLevel[i] - 1) * 0x18) + 0x15);
-                io->WriteInt24(kBlockChainTerminator);
+                // Write it to the file; a level entry's next-block field holds
+                // free/pending counts, not a chain terminator.
+                io->SetPosition(topTable.addressInFile + ((tablesPerLevel[i] - 1) * 0x18) + 0x14);
+                io->Write(static_cast<u8>(0));
+                io->WriteInt24(0);
             }
         }
     }
@@ -1737,6 +1739,11 @@ u32 StfsPackage::AllocateBlock()
     Level newTop = CalcualateTopLevel();
     if (topLevel != newTop)
     {
+        // Level-Zero free blocks are counted only in the descriptor; the new
+        // entry[0] must carry them or the free count at the new level is short.
+        const u32 carriedFree = std::min<u32>(
+                metaData->stfsVolumeDescriptor.unallocatedBlockCount, CountFreeBlocks());
+
         topLevel = newTop;
         topTable.level = topLevel;
 
@@ -1750,8 +1757,10 @@ u32 StfsPackage::AllocateBlock()
         memset(topTable.entries, 0, sizeof(HashEntry) * 0xAA);
 
         topTable.entries[0].status = blockOffset << 5;
+        topTable.entries[0].nextBlock = carriedFree & 0x7FFF;
         io->SetPosition(topTable.addressInFile + 0x14);
         io->Write((u8)topTable.entries[0].status);
+        io->WriteInt24(topTable.entries[0].nextBlock);
 
         // clear the top hash offset
         metaData->stfsVolumeDescriptor.blockSeparation &= 0xFD;
