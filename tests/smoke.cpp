@@ -165,6 +165,19 @@ namespace
             io.ReadBytes(buf, 8);
             check(std::memcmp(buf, "1234WXYZ", 8) == 0,
                   "FileIO interleaved read/write keeps one position");
+
+            check(io.Length() == 8, "FileIO Length follows appends");
+
+            // A failed read must not poison the stream for later operations.
+            check(throws([&] {
+                io.SetPosition(0x100);
+                u8 one = 0;
+                io.ReadBytes(&one, 1);
+            }), "FileIO read past EOF throws");
+            io.SetPosition(0);
+            u8 first = 0;
+            io.ReadBytes(&first, 1);
+            check(first == '1', "FileIO reads again after a failed read");
         }
 
         fs::remove(path, ignored);

@@ -128,7 +128,13 @@ void FileIO::ReadBytes(u8 *outBuffer, u32 len)
 
     fstr->read((fstream::char_type*)outBuffer, len);
     if (fstr->fail())
+    {
+        // A partial transfer has moved the position and left failbit set; clear
+        // it so the stream is usable. The caller must seek again.
+        fstr->clear();
+        writeNeedsSync = true;
         throw string("FileIO: Error reading from file.\n");
+    }
 
     writeNeedsSync = true;
 }
@@ -147,7 +153,17 @@ void FileIO::WriteBytes(u8 *buffer, u32 len)
 
     fstr->write((fstream::char_type*)buffer, len);
     if (fstr->fail())
+    {
+        // A partial transfer has moved the position and left failbit set; clear
+        // it so the stream is usable. The caller must seek again.
+        fstr->clear();
+        readNeedsSync = true;
         throw string("FileIO: Error writing to file.\n");
+    }
+
+    const u64 end = static_cast<u64>(fstr->tellp());
+    if (end > length)
+        length = end;
 
     readNeedsSync = true;
 }

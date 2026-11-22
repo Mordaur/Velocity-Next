@@ -40,7 +40,7 @@ public:
     void CreateImageEntry(ImageEntry *image, u64 entryID);
 
     // Description: Write the setting entry to the file
-    void WriteSettingEntry(SettingEntry setting);
+    void WriteSettingEntry(SettingEntry &setting);
 
     // Description: Write the image entry to the file
     void WriteImageEntry(ImageEntry image);

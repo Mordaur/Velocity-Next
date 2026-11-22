@@ -151,7 +151,7 @@ void GpdBase::DeleteSettingEntry(SettingEntry setting)
             break;
         }
     }
-    if (i > settings.size())
+    if (i == settings.size())
         throw string("Gpd: Error deleting setting entry. Setting doesn't exist.\n");
 
     // delete the entry from the file
@@ -170,7 +170,7 @@ void GpdBase::DeleteImageEntry(ImageEntry image)
             break;
         }
     }
-    if (i > images.size())
+    if (i == images.size())
         throw string("Gpd: Error deleting image entry. Image doesn't exist.\n");
 
     // delete the entry from the file
@@ -196,7 +196,7 @@ void GpdBase::CreateSettingEntry(SettingEntry *setting, u64 entryID)
             entryLen = 0x18 + ((setting->str.size() + 1) * 2);
             break;
         case Binary:
-            entryLen = 0x18 + (static_cast<u32>(setting->binaryData.size()) * 2);
+            entryLen = 0x18 + static_cast<u32>(setting->binaryData.size());
             break;
         default:
             throw string("Gpd: Error creating setting entry. Invalid setting entry type.\n");
@@ -208,8 +208,9 @@ void GpdBase::CreateSettingEntry(SettingEntry *setting, u64 entryID)
     // add the new setting entry to the list
     settings.push_back(*setting);
 
-    // Write the setting
-    WriteSettingEntry(*setting);
+    // Write the setting; the write may reallocate the entry
+    WriteSettingEntry(settings.back());
+    *setting = settings.back();
 }
 
 void GpdBase::CreateImageEntry(ImageEntry *image, u64 entryID)
@@ -226,7 +227,7 @@ void GpdBase::CreateImageEntry(ImageEntry *image, u64 entryID)
     WriteImageEntry(*image);
 }
 
-void GpdBase::WriteSettingEntry(SettingEntry setting)
+void GpdBase::WriteSettingEntry(SettingEntry &setting)
 {
     // get the address of the entry in the file
     u32 entryAddr = xdbf->GetRealAddress(setting.entry.addressSpecifier);
@@ -331,6 +332,12 @@ void GpdBase::WriteSettingEntry(SettingEntry setting)
             setting.entry.id != GamercardTitleCredEarned && setting.entry.id != GamercardCred &&
             setting.entry.id != GamercardAchievementsEarned)
         xdbf->UpdateEntry(&setting.entry);
+
+    // Callers may pass a copy; keep the stored entry in step when the write
+    // reallocated it, so a later delete does not free the old region twice.
+    for (SettingEntry &stored : settings)
+        if (&stored != &setting && stored.entry.id == setting.entry.id)
+            stored = setting;
 
     io->Flush();
 }
