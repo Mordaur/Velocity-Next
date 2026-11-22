@@ -2,7 +2,9 @@
 #include "ui_deviceviewer.h"
 
 #include <QDir>
+#include <QSignalBlocker>
 
+#include <cctype>
 #include <functional>
 
 namespace
@@ -610,7 +612,7 @@ void DeviceViewer::on_treeWidget_doubleClicked(const QModelIndex &index)
 
         parentEntry = currentParent;
 
-        LoadFolderAll(currentParent);
+        NavigateToFolder(currentParent);
     }
     catch (std::string error)
     {
@@ -987,10 +989,10 @@ QString DeviceViewer::DisplayName(FatxFileEntry *entry)
     return ContentNames::Display(entry->name, isDirectory, friendlyNames);
 }
 
-void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
+bool DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
 {
     if (loadingFolder)
-        return;
+        return false;
 
     loadingFolder = true;
     struct ResetLoading
@@ -1013,11 +1015,16 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
         FatxDrive *prevDrive = currentDrive;
         currentDrive = folder->partition->drive;
 
-        // reload the header if the drive changed
+        // Reload the header if the drive changed. Look the drive item up
+        // directly: the left selection may be a drive item (no parent) or a
+        // folder under a different drive.
         if (currentDrive != prevDrive)
         {
-            DrawHeader(ui->treeWidget_2->currentItem()->parent()->text(0));
-            currentDriveItem = ui->treeWidget_2->currentItem()->parent();
+            if (QTreeWidgetItem *driveItem = FindNavigationDriveItem(currentDrive))
+            {
+                currentDriveItem = driveItem;
+                DrawHeader(driveItem->text(0));
+            }
         }
 
         currentDrive->GetChildFileEntries(folder, updateUI);
@@ -1073,6 +1080,7 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
         parentEntry = folder;
 
         ui->txtPath->setText(QString::fromStdString(folder->path + folder->name + "\\"));
+        return true;
     }
     catch (std::string error)
     {
@@ -1083,6 +1091,8 @@ void DeviceViewer::LoadFolderAll(FatxFileEntry *folder)
     {
         QtHelpers::ShowUnexpectedError(this, exception);
     }
+
+    return false;
 }
 
 void DeviceViewer::LoadFolderTree(QTreeWidgetItem *item)
@@ -1135,6 +1145,138 @@ void DeviceViewer::LoadFolderTree(QTreeWidgetItem *item)
     }
 }
 
+QTreeWidgetItem *DeviceViewer::FindNavigationDriveItem(FatxDrive *drive)
+{
+    if (drive == nullptr)
+        return nullptr;
+
+    for (int i = 0; i < ui->treeWidget_2->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *item = ui->treeWidget_2->topLevelItem(i);
+        if (item->data(0, Qt::UserRole).value<FatxDrive*>() == drive)
+            return item;
+    }
+
+    return nullptr;
+}
+
+QTreeWidgetItem *DeviceViewer::FindNavigationChild(QTreeWidgetItem *parent, FatxFileEntry *entry,
+        const std::string &name)
+{
+    if (parent == nullptr)
+        return nullptr;
+
+    if (parent->childCount() == 0)
+        LoadFolderTree(parent);
+
+    // Prefer the exact entry: deletion only marks an entry in the cached
+    // listing, so a deleted folder and a re-created one can share a name.
+    for (int i = 0; i < parent->childCount(); ++i)
+        if (GetFatxFileEntry(parent->child(i)) == entry)
+            return parent->child(i);
+
+    for (int i = 0; i < parent->childCount(); ++i)
+    {
+        FatxFileEntry *child = GetFatxFileEntry(parent->child(i));
+        if (child == nullptr || child->nameLen == FATX_ENTRY_DELETED)
+            continue;
+        if (FatxDrive::NamesEqual(child->name, name))
+            return parent->child(i);
+    }
+
+    return nullptr;
+}
+
+void DeviceViewer::SelectNavigationItem(FatxFileEntry *entry)
+{
+    if (entry == nullptr || entry->partition == nullptr ||
+            entry->partition->drive == nullptr || !drivesLoaded)
+        return;
+
+    QTreeWidgetItem *driveItem = FindNavigationDriveItem(entry->partition->drive);
+    if (driveItem == nullptr)
+        return;
+
+    QTreeWidgetItem *partitionItem = nullptr;
+    for (int i = 0; i < driveItem->childCount(); ++i)
+    {
+        QTreeWidgetItem *item = driveItem->child(i);
+        if (item->data(5, Qt::UserRole).toBool() &&
+                item->data(0, Qt::UserRole).value<Partition*>() == entry->partition)
+        {
+            partitionItem = item;
+            break;
+        }
+    }
+
+    if (partitionItem == nullptr)
+        return;
+
+    // Walk one path component at a time. A recursive search would lazily read
+    // unrelated folders; on a miss this keeps the deepest item reached.
+    QTreeWidgetItem *target = partitionItem;
+    if (entry != &entry->partition->root)
+    {
+        const std::string prefix = "Drive:\\" + entry->partition->name + "\\";
+        const std::string fullPath = entry->path + entry->name;
+
+        bool matchesPrefix = fullPath.size() >= prefix.size();
+        for (size_t i = 0; matchesPrefix && i < prefix.size(); ++i)
+            if (std::tolower(static_cast<unsigned char>(fullPath[i])) !=
+                    std::tolower(static_cast<unsigned char>(prefix[i])))
+                matchesPrefix = false;
+
+        if (matchesPrefix)
+        {
+            const std::string relative = fullPath.substr(prefix.size());
+            size_t start = 0;
+            while (start < relative.size())
+            {
+                size_t end = relative.find('\\', start);
+                if (end == std::string::npos)
+                    end = relative.size();
+
+                const std::string component = relative.substr(start, end - start);
+                if (!component.empty())
+                {
+                    QTreeWidgetItem *child = FindNavigationChild(target, entry, component);
+                    if (child == nullptr)
+                        break;
+                    target = child;
+                }
+
+                start = end + 1;
+            }
+        }
+    }
+
+    // Purely visual: the caller has already updated the drive state and header,
+    // and expanding a top-level item must not reload the partition list.
+    QSignalBlocker blocker(ui->treeWidget_2);
+    for (QTreeWidgetItem *parent = target->parent(); parent != nullptr; parent = parent->parent())
+        parent->setExpanded(true);
+    ui->treeWidget_2->setCurrentItem(target);
+    ui->treeWidget_2->scrollToItem(target);
+}
+
+void DeviceViewer::NavigateToFolder(FatxFileEntry *folder)
+{
+    if (!LoadFolderAll(folder))
+        return;
+
+    try
+    {
+        SelectNavigationItem(folder);
+    }
+    catch (const std::string &)
+    {
+        // Revealing the folder is best effort; the file list is already correct.
+    }
+    catch (const std::exception &)
+    {
+    }
+}
+
 void DeviceViewer::on_btnBack_clicked()
 {
     int index = directoryChain.size() - 2;
@@ -1142,9 +1284,17 @@ void DeviceViewer::on_btnBack_clicked()
     parentEntry = entry;
 
     if (entry->name == "Drive Root")
+    {
         LoadPartitions();
+
+        // The partition list is shown for currentDrive; keep the left tree on
+        // that drive instead of leaving the folder we came from selected.
+        QSignalBlocker blocker(ui->treeWidget_2);
+        if (currentDriveItem != nullptr)
+            ui->treeWidget_2->setCurrentItem(currentDriveItem);
+    }
     else
-        LoadFolderAll(entry);
+        NavigateToFolder(entry);
     directoryChain.removeLast();
     directoryChain.removeLast();
 
@@ -1313,7 +1463,7 @@ void DeviceViewer::on_txtPath_returnPressed()
         QMessageBox::critical(this, "Error",
                 "Velocity can't find " + ui->txtPath->text() + ". Check the spelling and try again.");
     else
-        LoadFolderAll(parent);
+        NavigateToFolder(parent);
 }
 
 void updateUI([[maybe_unused]] void *arg, [[maybe_unused]] bool finished)

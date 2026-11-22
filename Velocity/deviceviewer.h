@@ -98,7 +98,17 @@ private:
     bool loadingFolder;
     std::shared_ptr<HelperClient> helperClient;
 
-    void LoadFolderAll(FatxFileEntry *folder);
+    // Returns false when the load was skipped (already loading) or failed, so
+    // callers do not sync the navigation tree to a folder the list never showed.
+    bool LoadFolderAll(FatxFileEntry *folder);
+    // Load a folder and reveal it in the left navigation tree. Used by the
+    // right-pane double click, the back button and the path box; the left tree
+    // itself already selects the item the user clicked.
+    void NavigateToFolder(FatxFileEntry *folder);
+    void SelectNavigationItem(FatxFileEntry *entry);
+    QTreeWidgetItem *FindNavigationDriveItem(FatxDrive *drive);
+    QTreeWidgetItem *FindNavigationChild(QTreeWidgetItem *parent, FatxFileEntry *entry,
+            const std::string &name);
     void ToggleFriendlyNames();
     // Real title name from the first package in a title-ID folder (cached);
     // empty when it cannot be determined.

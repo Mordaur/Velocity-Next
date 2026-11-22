@@ -94,6 +94,19 @@
   "No KeyVault ... the package was not resigned" instead of announcing a
   successful rehash.
 
+### 🗂️ Device Viewer
+
+- Opening a folder from the right-hand list now reveals it in the left
+  navigation tree: the ancestors are expanded and the folder is selected. The
+  same happens after the Back button and after typing a path into the path box,
+  which previously left the tree on whatever was selected before.
+- The tree sync walks the FATX path one component at a time, matches the exact
+  cached entry before falling back to the kernel's case-insensitive name rule,
+  skips deleted entries, and keeps the deepest ancestor selected when a folder
+  cannot be found.
+- Navigating to a folder on another drive no longer dereferences a null parent
+  or points `currentDriveItem` at a partition or folder row.
+
 ### 🔍 Device Content Viewer
 
 - The "Scanning for content..." overlay and the busy bar track their own state,
