@@ -311,6 +311,9 @@ private:
     // Description: find the cached entry that owns the given file's first block, or null
     StfsFileEntry* FindCachedFileEntry(StfsFileListing *listing, const StfsFileEntry &entry);
 
+    // Description: whether a sibling file or folder already uses the name
+    bool SiblingExists(const StfsFileListing &parent, const std::string &name);
+
     // Description: get the number of bytes to skip over the hash table
     u32 GetHashTableSkipSize(u32 tableAddress);
 

@@ -1502,6 +1502,63 @@ namespace
         fs::remove_all(dir, ignored);
     }
 
+    void testStfsNameCollisions()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_collisions.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        bool completed = false;
+        try
+        {
+            StfsPackage package(path.string(), StfsPackageCreate);
+            std::vector<u8> a(0x1000, 0x11);
+            std::vector<u8> b(0x2000, 0x22);
+            package.InjectData(a.data(), static_cast<u32>(a.size()), "a.bin");
+            package.InjectData(b.data(), static_cast<u32>(b.size()), "b.bin");
+            package.CreateFolder("dir");
+
+            check(throws([&] { package.RenameFile("b.bin", "a.bin"); }),
+                  "STFS rejects renaming onto an existing sibling");
+            check(throws([&] { package.RenameFile("B.BIN", "a.bin"); }),
+                  "STFS rejects a case-insensitive rename collision");
+
+            // A case-only rename of the same entry is allowed.
+            package.RenameFile("A.BIN", "a.bin");
+            check(package.GetFileEntry("A.BIN").name == "A.BIN",
+                  "STFS allows a case-only rename");
+            check(package.GetFileEntry("b.bin").fileSize == 0x2000,
+                  "the untouched sibling is unchanged");
+
+            check(throws([&] { package.CreateFolder("A.BIN"); }),
+                  "STFS rejects a folder named like a file");
+            check(throws([&] { package.InjectData(a.data(),
+                    static_cast<u32>(a.size()), "dir"); }),
+                  "STFS rejects injecting a file named like a folder");
+            check(throws([&] { package.InjectData(a.data(),
+                    static_cast<u32>(a.size()), "DIR"); }),
+                  "STFS rejects a case-insensitive file/folder collision");
+
+            StfsFileListing listing = package.GetFileListing();
+            check(listing.fileEntries.size() == 2, "the listing still has two files");
+            check(listing.folderEntries.size() == 1, "the listing still has one folder");
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS collision test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS collision test threw: %s)\n", e.what());
+        }
+
+        check(completed, "STFS collision test completes");
+        fs::remove(path, ignored);
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1881,6 +1938,7 @@ int main()
     testStfsCounterRepair();
     testFatxEraseRanges();
     testIndexableMultiFileIO();
+    testStfsNameCollisions();
     testFileTimeConversion();
     testGarbageImages();
 

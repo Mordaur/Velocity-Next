@@ -1963,6 +1963,20 @@ StfsFileEntry* StfsPackage::FindCachedFileEntry(StfsFileListing *listing, const 
     return nullptr;
 }
 
+bool StfsPackage::SiblingExists(const StfsFileListing &parent, const std::string &name)
+{
+    // Kernel lookups are case-insensitive, so collisions are too.
+    for (const StfsFileEntry &file : parent.fileEntries)
+        if (MatchesFileName(name, file.name, false))
+            return true;
+
+    for (const StfsFileListing &folder : parent.folderEntries)
+        if (MatchesFileName(name, folder.folder.name, false))
+            return true;
+
+    return false;
+}
+
 StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     void(*injectProgress)(void*, u32, u32), void* arg)
 {
@@ -1991,6 +2005,9 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
         fileName = pathInPackage;
         folder = &fileListing;
     }
+
+    if (SiblingExists(*folder, fileName))
+        throw string("STFS: A file or folder with that name already exists.\n");
 
     FileIO fileIn(path);
 
@@ -2122,6 +2139,9 @@ StfsFileEntry StfsPackage::InjectData(u8* data, u32 length, string pathInPackage
         fileName = pathInPackage;
         folder = &fileListing;
     }
+
+    if (SiblingExists(*folder, fileName))
+        throw string("STFS: A file or folder with that name already exists.\n");
 
     u32 fileSize = length;
 
@@ -2308,7 +2328,27 @@ void StfsPackage::ReplaceFile(string path, string pathInPackage, void (*replaceP
 
 void StfsPackage::RenameFile(string newName, string pathInPackage)
 {
+    if (newName.empty() || newName.length() > 0x28)
+        throw string("STFS: File entry name length must be 1 to 40(0x28) characters.\n");
+
     StfsFileEntry entry = GetFileEntry(pathInPackage, true, NULL, false);
+
+    // A case-only rename keeps the same entry; anything else must not collide
+    // with a sibling in the same folder.
+    if (!MatchesFileName(newName, entry.name, false))
+    {
+        vector<string> parentPath = SplitString(pathInPackage, "\\");
+        parentPath.pop_back();
+
+        StfsFileListing *parent = NULL;
+        FindDirectoryListing(parentPath, &fileListing, &parent, false);
+        if (parent == NULL)
+            throw string("STFS: The given folder could not be found.\n");
+
+        if (SiblingExists(*parent, newName))
+            throw string("STFS: A file or folder with that name already exists.\n");
+    }
+
     entry.name = newName;
 
     // update the entry in memory
@@ -2351,6 +2391,9 @@ void StfsPackage::CreateFolder(string pathInPackage)
         fileName = pathInPackage;
         folder = &fileListing;
     }
+
+    if (SiblingExists(*folder, fileName))
+        throw string("STFS: A file or folder with that name already exists.\n");
 
     // set up the entry
     StfsFileEntry entry;
