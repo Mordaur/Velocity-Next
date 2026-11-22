@@ -1,6 +1,8 @@
 #include "profileeditor.h"
 #include "ui_profileeditor.h"
 
+#include <QSignalBlocker>
+
 ProfileEditor::ProfileEditor(QStatusBar *statusBar, StfsPackage *profile, bool dispose,
         QWidget *parent) :
     QDialog(parent), ui(new Ui::ProfileEditor), profile(profile), PEC(nullptr), dashGpd(nullptr),
@@ -1010,7 +1012,11 @@ void ProfileEditor::loadAchievementInfo(int gameIndex, unsigned int chievIndex)
         ui->dteAchTimestamp->setEnabled(false);
     }
 
-    ui->dteAchTimestamp->setDateTime(QDateTime::fromSecsSinceEpoch(entry.unlockTime).addMSecs(entry.unlockTimeMilliseconds));
+    {
+        const QSignalBlocker blocker(ui->dteAchTimestamp);
+        ui->dteAchTimestamp->setDateTime(
+                QDateTime::fromSecsSinceEpoch(entry.unlockTime).addMSecs(entry.unlockTimeMilliseconds));
+    }
 
     // set the thumbnail
     ImageEntry img;
@@ -1154,7 +1160,11 @@ void ProfileEditor::loadAvatarAwardInfo(int gameIndex, unsigned int awardIndex)
         ui->dteAwTimestamp->setEnabled(false);
     }
 
-    ui->dteAwTimestamp->setDateTime(QDateTime::fromSecsSinceEpoch(award->unlockTime).addMSecs(award->unlockTimeMilliseconds));
+    {
+        const QSignalBlocker blocker(ui->dteAwTimestamp);
+        ui->dteAwTimestamp->setDateTime(
+                QDateTime::fromSecsSinceEpoch(award->unlockTime).addMSecs(award->unlockTimeMilliseconds));
+    }
 
     // download the thumbnail
     string tmp = AvatarAwardGpd::GetLargeAwardImageURL(award);
@@ -1916,13 +1926,15 @@ void ProfileEditor::on_dteAchTimestamp_dateTimeChanged(const QDateTime &date)
     AchievementEntry *achievement = &entry->gpd->achievements.at(static_cast<size_t>(achRow));
 
     // make sure the user changed the time
-    if (date.currentSecsSinceEpoch() == achievement->unlockTime)
+    const qint64 secs = date.toSecsSinceEpoch();
+    if (secs == achievement->unlockTime &&
+            static_cast<unsigned int>(date.time().msec()) == achievement->unlockTimeMilliseconds)
         return;
 
     entry->gpd->StartWriting();
 
-    achievement->unlockTime = date.currentSecsSinceEpoch();
-    achievement->unlockTimeMilliseconds = date.time().msec();
+    achievement->unlockTime = static_cast<unsigned int>(secs);
+    achievement->unlockTimeMilliseconds = static_cast<unsigned int>(date.time().msec());
 
     ui->dteAchTimestamp->setDateTime(QDateTime::fromSecsSinceEpoch(achievement->unlockTime).addMSecs(
             achievement->unlockTimeMilliseconds));
@@ -1948,11 +1960,13 @@ void ProfileEditor::on_dteAwTimestamp_dateTimeChanged(const QDateTime &date)
     AvatarAwardData *award = &entry->gpd->avatarAwards.at(static_cast<size_t>(awardRow));
 
     // make sure the user changed the time
-    if (date.currentSecsSinceEpoch() == award->unlockTime)
+    const qint64 secs = date.toSecsSinceEpoch();
+    if (secs == award->unlockTime &&
+            static_cast<unsigned int>(date.time().msec()) == award->unlockTimeMilliseconds)
         return;
 
-    award->unlockTime = date.currentSecsSinceEpoch();
-    award->unlockTimeMilliseconds = date.time().msec();
+    award->unlockTime = static_cast<unsigned int>(secs);
+    award->unlockTimeMilliseconds = static_cast<unsigned int>(date.time().msec());
     entry->gpd->WriteAvatarAward(award);
     entry->updated = true;
 

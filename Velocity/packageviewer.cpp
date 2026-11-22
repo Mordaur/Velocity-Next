@@ -7,6 +7,23 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string>
+
+static QString StartAddressText(StfsPackage *package, const StfsFileEntry &entry)
+{
+    // A zero-block entry has no start block (0xFFFFFF, or 0x7FFFFF from older Velocity).
+    if (entry.blocksForFile == 0)
+        return QStringLiteral("N/A");
+
+    try
+    {
+        return "0x" + QString::number(package->BlockToAddress(entry.startingBlockNum), 16).toUpper();
+    }
+    catch (const std::string &)
+    {
+        return QStringLiteral("Invalid");
+    }
+}
 
 PackageViewer::PackageViewer(QStatusBar *statusBar, StfsPackage *package,
         QList<QAction *> gpdActions, QList<QAction *> gameActions, QWidget *parent, bool disposePackage) :
@@ -139,6 +156,11 @@ PackageViewer::~PackageViewer()
     // Stop any extraction that still holds `package` before it is released.
     cancelProgressDialogs(this);
 
+    // Child XexDialogs own an StfsIO whose destructor flushes through `package`.
+    const auto xexDialogs = findChildren<XexDialog*>();
+    for (XexDialog *dialog : xexDialogs)
+        delete dialog;
+
     for (int i = 0; i < gpdActions.size(); i++)
         if (gpdActions.at(i)->property("package").isValid())
             gpdActions.at(i)->setProperty("package", QVariant());
@@ -192,8 +214,7 @@ void PackageViewer::PopulateTreeWidget(StfsFileListing *entry, QTreeWidgetItem *
         QString name = QString::fromStdString(entry->fileEntries.at(i).name);
         fileEntry->setText(0, name);
         fileEntry->setText(1, QString::fromStdString(ByteSizeToString(entry->fileEntries.at(i).fileSize)));
-        fileEntry->setText(2, "0x" + QString::number(package->BlockToAddress(entry->fileEntries.at(
-                    i).startingBlockNum), 16).toUpper());
+        fileEntry->setText(2, StartAddressText(package, entry->fileEntries.at(i)));
         fileEntry->setText(3, "0x" + QString::number(entry->fileEntries.at(i).startingBlockNum,
                 16).toUpper());
 
@@ -665,8 +686,7 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
 
             fileEntry->setText(0, QString::fromStdString(injectedEntry.name));
             fileEntry->setText(1, QString::fromStdString(ByteSizeToString(injectedEntry.fileSize)));
-            fileEntry->setText(2, "0x" + QString::number(package->BlockToAddress(
-                        injectedEntry.startingBlockNum), 16).toUpper());
+            fileEntry->setText(2, StartAddressText(package, injectedEntry));
             fileEntry->setText(3, "0x" + QString::number(injectedEntry.startingBlockNum, 16).toUpper());
 
             statusBar->showMessage("File injected successfully", 3000);
@@ -715,8 +735,7 @@ void PackageViewer::showRemoveContextMenu(QPoint point)
                         SetIcon(entry.name, &entry, items.at(0));
                         items.at(0)->setText(0, QString::fromStdString(entry.name));
                         items.at(0)->setText(1, "0x" + QString::number(entry.fileSize, 16).toUpper());
-                        items.at(0)->setText(2, "0x" + QString::number(package->BlockToAddress(entry.startingBlockNum),
-                                16).toUpper());
+                        items.at(0)->setText(2, StartAddressText(package, entry));
                         items.at(0)->setText(3, "0x" + QString::number(entry.startingBlockNum, 16).toUpper());
                     }
                 }
