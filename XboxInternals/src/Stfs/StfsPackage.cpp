@@ -233,6 +233,14 @@ void StfsPackage::Parse()
         topTable.entries[i].nextBlock = io->ReadInt24();
     }
 
+    // Older builds wrapped the free count. The kernel trusts it at mount and
+    // asserts when the hash tree cannot supply it, so rebuild it from the tree.
+    // In memory only: opening must not write; the next descriptor write saves it.
+    if (!(flags & StfsPackageCreate) &&
+            metaData->stfsVolumeDescriptor.unallocatedBlockCount >
+            metaData->stfsVolumeDescriptor.allocatedBlockCount)
+        metaData->stfsVolumeDescriptor.unallocatedBlockCount = CountFreeBlocks();
+
     // set default values for the root of the file listing
     StfsFileEntry fe;
     fe.pathIndicator = 0xFFFF;
@@ -1417,6 +1425,28 @@ void StfsPackage::FreeBlock(u32 blockNum)
 
     BumpFreeCount(topTable.addressInFile + topIndex * 0x18, topTable.entries[topIndex]);
     ++metaData->stfsVolumeDescriptor.unallocatedBlockCount;
+}
+
+u32 StfsPackage::CountFreeBlocks()
+{
+    u64 total = 0;
+    for (u32 i = 0; i < topTable.entryCount && i < 0xAA; i++)
+    {
+        const HashEntry &e = topTable.entries[i];
+        if (topLevel == Zero)
+        {
+            total += (e.status & 0x80) == 0; // 0x00 free, 0x40 pending free
+            continue;
+        }
+
+        const u32 word = (static_cast<u32>(e.status) << 24) | (e.nextBlock & 0xFFFFFF);
+        const u32 count = (word & 0x7FFF) + ((word >> 15) & 0x7FFF);
+        if (count <= dataBlocksPerHashTreeLevel[topLevel])
+            total += count;
+    }
+
+    return total <= metaData->stfsVolumeDescriptor.allocatedBlockCount
+            ? static_cast<u32>(total) : 0;
 }
 
 void StfsPackage::HashBlock(u8* block, u8* outBuffer)

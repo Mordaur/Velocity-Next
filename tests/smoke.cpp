@@ -1341,6 +1341,74 @@ namespace
         fs::remove(path, ignored);
     }
 
+    void testStfsCounterRepair()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_repair.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        const auto fnv = [](const fs::path &p) {
+            std::ifstream in(p, std::ios::binary);
+            u64 hash = 1469598103934665603ULL;
+            char c;
+            while (in.get(c))
+            {
+                hash ^= static_cast<u8>(c);
+                hash *= 1099511628211ULL;
+            }
+            return hash;
+        };
+
+        bool completed = false;
+        try
+        {
+            {
+                StfsPackage package(path.string(), StfsPackageCreate);
+                std::vector<u8> data(0x1000, 0x42);
+                package.InjectData(data.data(), static_cast<u32>(data.size()), "a.bin");
+                package.metaData->stfsVolumeDescriptor.unallocatedBlockCount = 0xFFFFFFFF;
+                package.metaData->WriteVolumeDescriptor();
+            }
+
+            const u64 sizeBefore = fs::file_size(path);
+            const u64 hashBefore = fnv(path);
+
+            {
+                StfsPackage reopened(path.string());
+                check(reopened.metaData->stfsVolumeDescriptor.unallocatedBlockCount == 0,
+                      "a wrapped free count is rebuilt from the hash tree");
+            }
+
+            check(fs::file_size(path) == sizeBefore && fnv(path) == hashBefore,
+                  "opening a package does not rewrite the descriptor");
+
+            // The repaired value is persisted by the next edit.
+            {
+                StfsPackage edited(path.string());
+                std::vector<u8> more(0x1000, 0x43);
+                edited.InjectData(more.data(), static_cast<u32>(more.size()), "b.bin");
+            }
+
+            StfsPackage reopened(path.string());
+            check(reopened.metaData->stfsVolumeDescriptor.unallocatedBlockCount == 0,
+                  "the repaired free count is persisted by the next edit");
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS counter repair test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS counter repair test threw: %s)\n", e.what());
+        }
+
+        check(completed, "STFS counter repair test completes");
+        fs::remove(path, ignored);
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1717,6 +1785,7 @@ int main()
     testStfsCachedListing();
     testStfsReplaceFreesBlocks();
     testStfsZeroBlockResize();
+    testStfsCounterRepair();
     testFileTimeConversion();
     testGarbageImages();
 

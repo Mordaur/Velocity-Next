@@ -279,6 +279,9 @@ private:
     // Description: increment the free counter packed into a hash entry
     void BumpFreeCount(u32 entryAddress, HashEntry &entry);
 
+    // Description: derive the free block count from the loaded top hash table
+    u32 CountFreeBlocks();
+
     // Description: set the next block of the current block
     void SetNextBlock(u32 blockNum, u32 nextBlockNum);
 
