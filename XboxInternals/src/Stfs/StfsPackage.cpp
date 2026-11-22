@@ -1840,6 +1840,22 @@ void StfsPackage::UpdateEntry(string pathInPackage, StfsFileEntry entry)
     GetFileEntry(SplitString(pathInPackage, "\\"), &fileListing, NULL, &entry, true, false, false);
 }
 
+StfsFileEntry* StfsPackage::FindCachedFileEntry(StfsFileListing *listing, const StfsFileEntry &entry)
+{
+    // A file's first block belongs to no other file; its table slot moves
+    // whenever WriteFileListing rewrites the table.
+    for (StfsFileEntry &file : listing->fileEntries)
+        if (file.blocksForFile != 0 && file.startingBlockNum == entry.startingBlockNum &&
+                file.name == entry.name)
+            return &file;
+
+    for (StfsFileListing &folder : listing->folderEntries)
+        if (StfsFileEntry *found = FindCachedFileEntry(&folder, entry))
+            return found;
+
+    return nullptr;
+}
+
 StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
     void(*injectProgress)(void*, u32, u32), void* arg)
 {
@@ -1968,7 +1984,7 @@ StfsFileEntry StfsPackage::InjectFile(string path, string pathInPackage,
             topTable.entries[i].nextBlock = io->ReadInt24();
         }
     }
-    return entry;
+    return GetFileEntry(pathInPackage, false, NULL, false);
 }
 
 StfsFileEntry StfsPackage::InjectData(u8* data, u32 length, string pathInPackage,
@@ -2082,7 +2098,7 @@ StfsFileEntry StfsPackage::InjectData(u8* data, u32 length, string pathInPackage
         }
     }
 
-    return entry;
+    return GetFileEntry(pathInPackage, false, NULL, false);
 }
 
 void StfsPackage::ReplaceFile(string path, StfsFileEntry* entry, string pathInPackage,

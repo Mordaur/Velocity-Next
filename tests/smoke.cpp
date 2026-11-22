@@ -1054,6 +1054,71 @@ namespace
         fs::remove(path, ignored);
     }
 
+    void testStfsCachedListing()
+    {
+        namespace fs = std::filesystem;
+
+        const fs::path path = fs::temp_directory_path() / "xbi_smoke_stfs_cached.bin";
+        std::error_code ignored;
+        fs::remove(path, ignored);
+
+        bool completed = false;
+        try
+        {
+            StfsPackage package(path.string(), StfsPackageCreate);
+            std::vector<u8> seed(1, 0x11);
+            std::vector<u8> tail(0x1000, 0x22);
+            package.InjectData(seed.data(), 1, "a.bin");
+
+            {
+                std::unique_ptr<StfsIO> io(package.GetStfsIO("a.bin"));
+                io->SetPosition(1);
+                io->WriteBytes(tail.data(), static_cast<u32>(tail.size()));
+                io->Flush();
+                check(package.GetFileEntry("a.bin").fileSize == 0x1001,
+                      "StfsIO growth updates the cached entry");
+
+                // CreateFolder rewrites the file table, moving every entry slot.
+                package.CreateFolder("dir");
+                io->SetPosition(0x1001);
+                io->WriteBytes(tail.data(), static_cast<u32>(tail.size()));
+            }
+
+            StfsFileEntry file = package.GetFileEntry("a.bin");
+            check(file.fileSize == 0x2001, "StfsIO growth survives a table rewrite");
+            check((file.flags & Folder) == 0, "the grown file is still a file");
+            check(file.blocksForFile == 3, "the grown file reports its new block count");
+
+            StfsFileListing listing = package.GetFileListing();
+            bool folderStillFolder = false;
+            for (const StfsFileListing &folder : listing.folderEntries)
+                if (folder.folder.name == "dir")
+                    folderStillFolder = (folder.folder.flags & Folder) != 0;
+            check(folderStillFolder, "the folder entry is still a folder");
+
+            std::unique_ptr<StfsIO> readBack(package.GetStfsIO("a.bin"));
+            std::vector<u8> got(0x2001);
+            readBack->ReadBytes(got.data(), static_cast<u32>(got.size()));
+            check(got[0] == 0x11, "the original byte survives growth");
+            check(std::equal(tail.begin(), tail.end(), got.begin() + 1),
+                  "the first append lands at offset 1");
+            check(std::equal(tail.begin(), tail.end(), got.begin() + 0x1001),
+                  "the second append lands after the table rewrite");
+            completed = true;
+        }
+        catch (const std::string &e)
+        {
+            std::fprintf(stderr, "  (STFS cached listing test threw: %s)\n", e.c_str());
+        }
+        catch (const std::exception &e)
+        {
+            std::fprintf(stderr, "  (STFS cached listing test threw: %s)\n", e.what());
+        }
+
+        check(completed, "STFS cached listing test completes");
+        fs::remove(path, ignored);
+    }
+
     void testGarbageImages()
     {
         namespace fs = std::filesystem;
@@ -1427,6 +1492,7 @@ int main()
     testStfsUnalignedIo();
     testStfsCountersAndResize();
     testStfsCorruptChain();
+    testStfsCachedListing();
     testGarbageImages();
 
     if (g_failures != 0)

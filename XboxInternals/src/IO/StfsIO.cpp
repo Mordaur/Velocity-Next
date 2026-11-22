@@ -119,6 +119,9 @@ void StfsIO::WriteBytes(u8 *buffer, u32 len)
             {
                 u32 currentBlock = this->package->AllocateBlock();
 
+                if (currentBlock != previousBlock + 1)
+                    this->entry.flags &= static_cast<u8>(~ConsecutiveBlocks);
+
                 this->package->SetNextBlock(previousBlock, currentBlock);
 
                 this->entry.blockChain.push_back(currentBlock);
@@ -156,12 +159,30 @@ void StfsIO::Flush()
 {
     if (didChangeSize)
     {
-        this->io->SetPosition(this->entry.fileEntryAddress + 0x29);
-        this->io->WriteInt24(blocksAllocated, LittleEndian);
-        this->io->WriteInt24(blocksAllocated, LittleEndian);
+        this->entry.blocksForFile = blocksAllocated;
 
-        this->io->SetPosition(this->entry.fileEntryAddress + 0x34);
-        this->io->Write((u32)entry.fileSize);
+        // Not found means the file was removed while open; its old slot may now
+        // hold another entry, so write nothing.
+        if (StfsFileEntry *cached = package->FindCachedFileEntry(&package->fileListing, this->entry))
+        {
+            this->entry.fileEntryAddress = cached->fileEntryAddress;
+            this->entry.nameLen = cached->nameLen;
+
+            this->io->SetPosition(this->entry.fileEntryAddress + 0x28);
+            this->io->Write(static_cast<u8>((this->entry.nameLen & 0x3F) | (this->entry.flags << 6)));
+            this->io->WriteInt24(blocksAllocated, LittleEndian);
+            this->io->WriteInt24(blocksAllocated, LittleEndian);
+
+            this->io->SetPosition(this->entry.fileEntryAddress + 0x34);
+            this->io->Write(static_cast<u32>(this->entry.fileSize));
+
+            cached->fileSize = this->entry.fileSize;
+            cached->blocksForFile = this->entry.blocksForFile;
+            cached->flags = this->entry.flags;
+            cached->blockChain = this->entry.blockChain;
+        }
+
+        didChangeSize = false;
     }
 
     this->io->Flush();
@@ -220,6 +241,10 @@ void StfsIO::Resize(u64 size)
         for (u32 i = 0; i < amountOfBlocksToAllocate; i++)
         {
             u32 currentBlock = this->package->AllocateBlock();
+
+            if (currentBlock != previousBlock + 1)
+                this->entry.flags &= static_cast<u8>(~ConsecutiveBlocks);
+
             this->package->SetNextBlock(previousBlock, currentBlock);
             this->entry.blockChain.push_back(currentBlock);
             previousBlock = currentBlock;
