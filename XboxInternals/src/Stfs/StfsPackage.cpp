@@ -1360,6 +1360,62 @@ void StfsPackage::SetBlockStatus(u32 blockNum, BlockStatusLevelZero status)
     u32 statusAddress = GetHashAddressOfBlock(blockNum) + 0x14;
     io->SetPosition(statusAddress);
     io->Write((u8)status);
+
+    // RebuildHashes rewrites the top table from memory, so a status change that
+    // is not mirrored here is lost at the next rehash.
+    if (topLevel == Zero)
+    {
+        if (blockNum >= 0xAA)
+            throw string("STFS: Illegal top-level block index.\n");
+        topTable.entries[blockNum].status = static_cast<u8>(status);
+    }
+}
+
+bool StfsPackage::HasFreeCountRoom(const HashEntry &entry, u32 coverage)
+{
+    // Level-N entries pack status (2 bits), pending (15) and free (15) into
+    // the big-endian dword at +0x14, of which the status byte is the top 8.
+    const u32 word = (static_cast<u32>(entry.status) << 24) | (entry.nextBlock & 0xFFFFFF);
+    return (word & 0x7FFF) + ((word >> 15) & 0x7FFF) < coverage;
+}
+
+void StfsPackage::BumpFreeCount(u32 entryAddress, HashEntry &entry)
+{
+    entry.nextBlock = (entry.nextBlock & 0xFF8000) | ((entry.nextBlock & 0x7FFF) + 1);
+    io->SetPosition(entryAddress + 0x15);
+    io->WriteInt24(entry.nextBlock);
+}
+
+void StfsPackage::FreeBlock(u32 blockNum)
+{
+    SetBlockStatus(blockNum, Unallocated);
+
+    // The kernel trusts the descriptor's free count and asserts when the hash
+    // tree cannot supply it, so only count a block every level can record. An
+    // uncounted free block is still found by the level-0 scan.
+    if (topLevel == Zero)
+    {
+        ++metaData->stfsVolumeDescriptor.unallocatedBlockCount;
+        return;
+    }
+
+    const u32 topIndex = blockNum / dataBlocksPerHashTreeLevel[topLevel];
+    if (topIndex >= topTable.entryCount ||
+            !HasFreeCountRoom(topTable.entries[topIndex], dataBlocksPerHashTreeLevel[topLevel]))
+        return;
+
+    if (topLevel == Two)
+    {
+        HashTable level1 = GetLevelNHashTable(topIndex, One);
+        const u32 index = (blockNum / 0xAA) % 0xAA;
+        if (index >= level1.entryCount || !HasFreeCountRoom(level1.entries[index], 0xAA))
+            return;
+        BumpFreeCount(level1.addressInFile + index * 0x18, level1.entries[index]);
+        cached.trueBlockNumber = 0xFFFFFFFF;
+    }
+
+    BumpFreeCount(topTable.addressInFile + topIndex * 0x18, topTable.entries[topIndex]);
+    ++metaData->stfsVolumeDescriptor.unallocatedBlockCount;
 }
 
 void StfsPackage::HashBlock(u8* block, u8* outBuffer)
@@ -1417,7 +1473,7 @@ void StfsPackage::RemoveFile(StfsFileEntry entry)
         GenerateBlockChain(&entry, true);
         const size_t owned = std::min<size_t>(entry.blockChain.size(), entry.blocksForFile);
         for (size_t i = 0; i < owned; ++i)
-            SetBlockStatus(entry.blockChain[i], Unallocated);
+            FreeBlock(entry.blockChain[i]);
     }
 
     // update the file listing

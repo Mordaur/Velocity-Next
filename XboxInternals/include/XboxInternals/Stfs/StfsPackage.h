@@ -270,6 +270,15 @@ private:
     // Description: set the status of the block in the corresponding hash table
     void SetBlockStatus(u32 blockNum, BlockStatusLevelZero status);
 
+    // Description: free a block through the hash tree and update the free count
+    void FreeBlock(u32 blockNum);
+
+    // Description: whether a hash entry's free/pending counters can record another block
+    static bool HasFreeCountRoom(const HashEntry &entry, u32 coverage);
+
+    // Description: increment the free counter packed into a hash entry
+    void BumpFreeCount(u32 entryAddress, HashEntry &entry);
+
     // Description: set the next block of the current block
     void SetNextBlock(u32 blockNum, u32 nextBlockNum);
 

@@ -241,12 +241,11 @@ void StfsIO::Resize(u64 size)
             this->entry.blockChain.pop_back();
 
             // Freed blocks stay inside the package and stay addressable, so the
-            // allocated count is unchanged; only the free count grows.
-            this->package->SetBlockStatus(currentBlock, PreviouslyAllocated);
+            // allocated count is unchanged; FreeBlock records the free count.
+            this->package->FreeBlock(currentBlock);
         }
 
         this->package->SetNextBlock(this->entry.blockChain.back(), kBlockChainTerminator);
-        this->package->metaData->stfsVolumeDescriptor.unallocatedBlockCount += amountOfBlocksToDeallocate;
         this->package->metaData->WriteVolumeDescriptor();
     }
     else if (originalBlockCount < newBlockCount)
